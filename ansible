@@ -1,0 +1,33 @@
+cat inv
+host1
+host2
+
+ansible -i inv all -a 'uptime'
+ansible -i inv all -m command -a 'uptime'
+
+ansible -i inv all -m ping
+ansible -i inv host2 -m ping
+
+ansible -i inv all -m setup
+ansible -i inv host2 -m setup
+
+ansible-doc -l
+ansible-doc setup
+ansible-doc ping
+
+ansible -i inv all -m setup -a 'filter=ansible_processor_count'
+ansible -i inv host2 -m setup -a 'filter=ansible_processor_count'
+ansible -i inv all -m setup -a 'filter=ansible_memtotal_mb'
+ansible -i inv host2 -m setup -a 'filter=ansible_memtotal_mb'
+
+ansible -i inv all -m yum -a 'name=python state=present'
+ansible -i inv all -m yum -a 'name=python state=latest'
+
+ansible -i inv all -m yum -a 'name=ruby state=present' --sudo
+ansible -i inv all -m yum -a 'name=ruby-docs state=present' --sudo
+ansible -i inv all -m yum -a 'name=ruby-irb state=present' --sudo
+ansible -i inv all -m yum -a 'name=ruby-rdoc state=present' --sudo
+ansible -i inv all -m yum -a 'name=ruby-ri state=present' --sudo
+
+ansible -i inv all -m service -a 'name=sshd state=started enabled=yes'
+ansible -i inv all -m service -a 'name=crond state=started enabled=yes'
