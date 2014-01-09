@@ -1,0 +1,22 @@
+http://gvmtool.net/
+
+gvm install groovy
+gvm install groovy 2.2.1
+
+gvm use groovy 2.2.1
+
+gvm default groovy 2.2.1
+
+gvm current
+gvm current groovy
+
+gvm list groovy
+
+gvm uninstall groovy
+gvm uninstall groovy 2.2.1
+
+gvm broadcast
+
+gvm selfupdate
+
+gvm version

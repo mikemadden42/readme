@@ -1,0 +1,3 @@
+https://aws.amazon.com/amazon-linux-ami/2013.09-release-notes/
+
+ssh -i devec2.pem ec2-user@HOST

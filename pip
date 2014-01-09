@@ -1,0 +1,24 @@
+sudo rm -rf /tmp/pip-build-*
+
+sudo pip install --upgrade boto
+sudo pip install --upgrade awscli
+sudo pip install --upgrade youtube-dl
+
+sudo pip install --upgrade boto awscli youtube-dl
+
+pip show boto
+pip show awscli
+pip show youtube-dl
+
+pip show --files boto
+pip show --files awscli
+pip show --files youtube-dl
+
+sudo pip uninstall boto
+
+pip list
+pip list --outdated
+
+pip search boto
+pip search awscli
+pip search youtube_dl
