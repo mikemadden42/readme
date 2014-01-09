@@ -1,8 +1,16 @@
+--------
+
+http://wiki.centos.org/HowTos/Network/SecuringSSH
+http://www.ansibleworks.com/docs/gettingstarted.html
+
+--------
+
 cat inv
 host1
 host2
 
 ansible -i inv all -a 'uptime'
+ansible -i inv all -a "python --version"
 ansible -i inv all -m command -a 'uptime'
 
 ansible -i inv all -m ping
@@ -31,3 +39,16 @@ ansible -i inv all -m yum -a 'name=ruby-ri state=present' --sudo
 
 ansible -i inv all -m service -a 'name=sshd state=started enabled=yes'
 ansible -i inv all -m service -a 'name=crond state=started enabled=yes'
+
+--------
+
+ansible-playbook -v -c local -i inv site.yml
+ansible-playbook -v -c local -i inv site.yml --sudo
+
+ansible-playbook -c local -i inv site.yml
+ansible-playbook -c local -i inv site.yml --sudo
+
+ansible-playbook -i inv site.yml
+ansible-playbook -v -i inv site.yml
+
+--------
