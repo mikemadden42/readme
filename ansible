@@ -51,4 +51,6 @@ ansible-playbook -c local -i inv site.yml --sudo
 ansible-playbook -i inv site.yml
 ansible-playbook -v -i inv site.yml
 
+ansible-playbook -c local -i inv.local update-git.yaml
+
 --------
