@@ -1,0 +1,18 @@
+pypm sync
+
+pypm info
+pypm info --full
+
+pypm search requests
+
+pypm install requests
+
+pypm files requests
+
+pypm show requests
+
+pypm list
+
+pypm uninstall requests
+
+pypm upgrade
