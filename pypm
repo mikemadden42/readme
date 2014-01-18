@@ -7,6 +7,13 @@ pypm search requests
 
 pypm install requests
 
+This command will download requests and its depdendencies automatically.
+Unless the -g option is specified, packages are not installed into the
+ActivePython installation directory. Instead, PyPM follows the PEP 370
+specification and installs packages by default in ~/.local on Unix and
+Mac and %APPDATA%\Python on Windows; and the Python interpreter
+automatically picks up the local packages.
+
 pypm files requests
 
 pypm show requests
