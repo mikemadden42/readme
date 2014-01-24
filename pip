@@ -22,3 +22,5 @@ pip list --outdated
 pip search boto
 pip search awscli
 pip search youtube_dl
+
+sudo rm -rf /tmp/pip-build-* && sudo pip install --upgrade boto awscli youtube-dl
