@@ -1,0 +1,36 @@
+How do I simply encrypt a file?
+
+Simple file encryption is probably better done using a tool like GPG.
+Still, you may have occasion to want to encrypt a file without having to
+build or use a key/certificate structure. All you want to have to remember
+is a password. It can nearly be that simple—if you can also remember the
+cipher you employed for encryption.
+
+To choose a cipher, consult the enc(1) man page. More simply (and perhaps
+more accurately), you can ask openssl for a list in one of two ways.
+
+# see the list under the 'Cipher commands' heading
+openssl -h
+
+# or get a long list, one cipher per line
+openssl list-cipher-commands
+
+After you choose a cipher, you’ll also have to decide if you want to
+base64-encode the data. Doing so will mean the encrypted data can be,
+say, pasted into an email message. Otherwise, the output will be a binary
+file.
+
+# encrypt file.txt to file.enc using 256-bit AES in CBC mode
+openssl enc -aes-256-cbc -salt -in file.txt -out file.enc
+
+# the same, only the output is base64 encoded for, e.g., e-mail
+openssl enc -aes-256-cbc -a -salt -in file.txt -out file.enc
+
+To decrypt file.enc you or the file’s recipient will need to remember
+the cipher and the passphrase.
+
+# decrypt binary file.enc
+openssl enc -d -aes-256-cbc -in file.enc -out file.txt
+
+# decrypt base64-encoded version
+openssl enc -d -aes-256-cbc -a -in file.enc -out file.txt

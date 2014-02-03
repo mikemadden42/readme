@@ -1,0 +1,36 @@
+# http://guide.macports.org/#using.port
+
+# sync the local ports tree
+sudo port selfupdate
+
+# checks your installed ports against the current ports tree to see if updated Portfiles have been released since your ports were installed
+port outdated
+
+# upgrade all outdated ports
+sudo port upgrade outdated
+
+# lists the currently available version of the specified ports
+port list
+
+# allows finding ports by partial matches of the name or description
+port search perl5
+
+# get information about a port: description, maintainer, etc.
+port info perl5.16
+
+# install a port
+sudo port install perl5.16
+
+# remove a port
+sudo port uninstall perl5.16 
+
+# displays the files that have been installed by a given port
+port contents perl5.16
+
+# displays the installed versions, variants and activation status of the specified ports
+port installed
+port list installed
+port -v installed perl5.16
+
+# uninstall
+http://guide.macports.org/chunked/installing.macports.uninstalling.html
