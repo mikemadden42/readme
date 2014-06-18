@@ -1,0 +1,34 @@
+# gem help commands | less
+# gem help examples | less
+
+# Clean up old versions of installed gems in the local repository
+sudo gem cleanup
+
+# Show the dependencies of an installed gem
+gem dependency
+gem dependency rubocop
+
+# Display information about the RubyGems environment
+gem environment
+
+# Install a gem into the local repository
+sudo gem install
+sudo gem install rubocop
+
+# Display gems whose name starts with STRING
+gem list
+gem list rubocop
+
+# Display all gems that need updates
+gem outdated
+
+# Display all gems whose name contains STRING
+gem search
+gem search rubocop
+
+# Uninstall gems from the local repository
+gem uninstall
+
+# Update installed gems to the latest version
+sudo gem update
+sudo gem update rubocop
