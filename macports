@@ -34,3 +34,7 @@ port -v installed perl5.16
 
 # uninstall
 http://guide.macports.org/chunked/installing.macports.uninstalling.html
+
+# Removing inactive version(s) of upgraded port(s)
+port installed inactive
+sudo port uninstall inactive
