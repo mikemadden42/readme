@@ -1,0 +1,61 @@
+--------
+
+vagrant box add centos-base ~/Downloads/vagrant/boxes/CentOS-6.4-x86_64-v20130731.box
+vagrant box add ubuntu-base ~/Downloads/vagrant/boxes/cloud-images.ubuntu.com/cloud-images/vagrant/precise/current/precise-server-cloudimg-amd64-vagrant-disk1.box
+
+vagrant box list
+
+mkdir -p ~/Documents/vagrant-boxes/centos-dev
+cd ~/Documents/vagrant-boxes/centos-dev
+vagrant init centos-base
+
+mkdir -p ~/Documents/vagrant-boxes/ubuntu-dev
+cd ~/Documents/vagrant-boxes/ubuntu-dev
+vagrant init ubuntu-base
+
+# boot up box
+vagrant up
+
+# ssh to box
+vagrant ssh
+
+# halt box
+vagrant halt
+
+# load new setting on box
+vagrant reload
+
+# supend / resume box
+vagrant suspend
+vagrant resume
+
+# get status on box
+vagrant status
+
+# destroy box, not the base box
+vagrant destroy
+
+# destroy base box
+vagrant box remove centos-base
+
+--------
+
+sudo yum clean all && sudo yum upgrade -y
+
+sudo sysctl -w vm.swappiness=5
+
+--------
+
+http://www.vagrantup.com/
+https://github.com/NREL/vagrant-boxes
+http://nrel.github.io/vagrant-boxes/
+http://developer.nrel.gov/downloads/vagrant-boxes/
+http://tech.pro/tutorial/1125/create-virtual-environments-in-a-snap
+https://www.virtualbox.org/wiki/VBox_vs_Others
+http://cloud-images.ubuntu.com/vagrant/
+
+http://docs.vagrantup.com/v2/
+http://vagrantup.com/v1/docs/troubleshooting.html
+http://vagrantup.com/v1/docs/debugging.html
+
+--------
