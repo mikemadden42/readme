@@ -1,17 +1,12 @@
 --------
 
-vagrant box add centos-base ~/Downloads/vagrant/boxes/CentOS-6.4-x86_64-v20130731.box
-vagrant box add ubuntu-base ~/Downloads/vagrant/boxes/cloud-images.ubuntu.com/cloud-images/vagrant/precise/current/precise-server-cloudimg-amd64-vagrant-disk1.box
+vagrant box add centos-base ~/Downloads/vagrant/boxes/CentOS-6.5-x86_64-v20140504.box
 
 vagrant box list
 
 mkdir -p ~/Documents/vagrant-boxes/centos-dev
 cd ~/Documents/vagrant-boxes/centos-dev
 vagrant init centos-base
-
-mkdir -p ~/Documents/vagrant-boxes/ubuntu-dev
-cd ~/Documents/vagrant-boxes/ubuntu-dev
-vagrant init ubuntu-base
 
 # boot up box
 vagrant up
