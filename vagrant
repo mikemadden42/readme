@@ -1,6 +1,6 @@
 --------
 
-vagrant box add centos-base ~/Downloads/vagrant/boxes/CentOS-6.5-x86_64-v20140504.box
+vagrant box add centos-base ~/Downloads/vagrant/boxes/centos-65-x64-virtualbox-puppet.box
 
 vagrant box list
 
