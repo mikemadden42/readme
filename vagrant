@@ -43,6 +43,9 @@ sudo /etc/cron.daily/makewhatis.cron
 sudo /etc/cron.daily/mlocate.cron 
 sudo /etc/cron.daily/prelink
 
+git clone https://github.com/mikemadden42/puppet.git
+sudo puppet apply ./puppet/manifests/site.pp
+
 --------
 
 https://www.vagrantup.com/downloads.html
