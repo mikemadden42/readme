@@ -39,7 +39,14 @@ sudo yum clean all && sudo yum upgrade -y
 
 sudo sysctl -w vm.swappiness=5
 
+sudo /etc/cron.daily/makewhatis.cron
+sudo /etc/cron.daily/mlocate.cron 
+sudo /etc/cron.daily/prelink
+
 --------
+
+https://www.vagrantup.com/downloads.html
+https://www.virtualbox.org/wiki/Downloads
 
 http://www.vagrantup.com/
 https://github.com/NREL/vagrant-boxes
@@ -48,6 +55,8 @@ http://developer.nrel.gov/downloads/vagrant-boxes/
 http://tech.pro/tutorial/1125/create-virtual-environments-in-a-snap
 https://www.virtualbox.org/wiki/VBox_vs_Others
 http://cloud-images.ubuntu.com/vagrant/
+http://puppet-vagrant-boxes.puppetlabs.com/
+https://vagrantcloud.com/
 
 http://docs.vagrantup.com/v2/
 http://vagrantup.com/v1/docs/troubleshooting.html
