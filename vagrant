@@ -35,6 +35,7 @@ vagrant box remove centos-base
 
 --------
 
+# This update now occurs in the puppet apply below.
 sudo yum clean all && sudo yum upgrade -y
 
 sudo sysctl -w vm.swappiness=5
@@ -44,6 +45,8 @@ sudo /etc/cron.daily/mlocate.cron
 sudo /etc/cron.daily/prelink
 
 git clone https://github.com/mikemadden42/puppet.git
+sudo gem install puppet-lint
+puppet-lint puppet/manifests/site.pp
 sudo puppet apply ./puppet/manifests/site.pp
 
 --------
