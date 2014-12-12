@@ -1,12 +1,17 @@
 --------
 
-vagrant box add centos-base ~/Downloads/vagrant/boxes/centos-65-x64-virtualbox-puppet.box
+vagrant box add centos6 ~/Downloads/vagrant/boxes/opscode_centos-6.6_chef-provisionerless.box
+vagrant box add centos7 ~/Downloads/vagrant/boxes/opscode_centos-7.0_chef-provisionerless.box
 
 vagrant box list
 
-mkdir -p ~/Documents/vagrant-boxes/centos-dev
-cd ~/Documents/vagrant-boxes/centos-dev
-vagrant init centos-base
+mkdir -p ~/Documents/vagrant-boxes/centos-6-dev
+cd ~/Documents/vagrant-boxes/centos-6-dev
+vagrant init centos6
+
+mkdir -p ~/Documents/vagrant-boxes/centos-7-dev
+cd ~/Documents/vagrant-boxes/centos-7-dev
+vagrant init centos7
 
 # boot up box
 vagrant up
@@ -35,8 +40,9 @@ vagrant box remove centos-base
 
 --------
 
-# This update now occurs in the puppet apply below.
 sudo yum clean all && sudo yum upgrade -y
+
+sudo yum install -y gcc cpp kernel-devel kernel-headers perl
 
 sudo sysctl -w vm.swappiness=5
 
