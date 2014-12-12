@@ -44,21 +44,26 @@ sudo yum clean all && sudo yum upgrade -y
 
 sudo yum install -y gcc cpp kernel-devel kernel-headers perl
 
+reboot
+
+sudo /etc/init.d/vboxadd setup
+
 sudo sysctl -w vm.swappiness=5
 
-sudo /etc/cron.daily/makewhatis.cron
-sudo /etc/cron.daily/mlocate.cron 
-sudo /etc/cron.daily/prelink
-
+sudo yum install -y git
 git clone https://github.com/mikemadden42/puppet.git
-sudo gem install puppet-lint
+sudo ./puppet/scripts/setup_puppet.bash
 puppet-lint puppet/manifests/site.pp
 sudo puppet apply ./puppet/manifests/site.pp
+
+# List available package groups
+yum -v grouplist
 
 --------
 
 https://www.vagrantup.com/downloads.html
 https://www.virtualbox.org/wiki/Downloads
+https://github.com/opscode/bento
 
 http://www.vagrantup.com/
 https://github.com/NREL/vagrant-boxes
