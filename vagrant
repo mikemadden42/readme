@@ -50,14 +50,24 @@ sudo /etc/init.d/vboxadd setup
 
 sudo sysctl -w vm.swappiness=5
 
-sudo yum install -y git
+sudo yum install -y git xz
 git clone https://github.com/mikemadden42/puppet.git
 sudo ./puppet/scripts/setup_puppet.bash
+sudo ./puppet/scripts/setup_epel.bash
 puppet-lint puppet/manifests/site.pp
 sudo puppet apply ./puppet/manifests/site.pp
 
 # List available package groups
 yum -v grouplist
+
+# List available repos 
+yum repolist
+
+# Backup user
+cd ~/..
+tar cfJ /tmp/$USER-$(date +%Y-%m-%d-%H-%M-%S).tar.xz $USER
+cd /tmp
+rsync -avP *.xz mjmadden@10.0.1.6:/Users/mjmadden/Downloads/vagrant/backups/centos
 
 --------
 
