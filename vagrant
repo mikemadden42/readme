@@ -40,9 +40,10 @@ vagrant box remove centos-base
 
 --------
 
-sudo yum clean all && sudo yum upgrade -y
-
+sudo yum install -y git rsync yum-presto yum-cron xz
 sudo yum install -y gcc cpp kernel-devel kernel-headers perl
+
+sudo yum clean all && sudo yum upgrade -y
 
 reboot
 
@@ -50,7 +51,6 @@ sudo /etc/init.d/vboxadd setup
 
 sudo sysctl -w vm.swappiness=5
 
-sudo yum install -y git xz
 git clone https://github.com/mikemadden42/puppet.git
 sudo ./puppet/scripts/setup_puppet.bash
 sudo ./puppet/scripts/setup_epel.bash
