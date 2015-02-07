@@ -54,6 +54,7 @@ sudo sysctl -w vm.swappiness=5
 git clone https://github.com/mikemadden42/puppet.git
 sudo ./puppet/scripts/setup_puppet.bash
 sudo ./puppet/scripts/setup_epel.bash
+sudo ./puppet/scripts/setup_pip.bash
 puppet-lint puppet/manifests/site.pp
 sudo puppet apply ./puppet/manifests/site.pp
 
