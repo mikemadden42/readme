@@ -1,0 +1,53 @@
+# install / start docker
+sudo yum install -y docker
+sudo service docker start
+sudo chkconfig --list docker
+
+# list docker version, info, images, containers
+sudo docker version
+sudo docker info
+sudo docker images
+sudo docker ps
+
+# search for & download images
+sudo docker search ubuntu
+sudo docker search centos
+sudo docker pull ubuntu:latest
+sudo docker pull centos:latest
+
+# list local images
+sudo docker images
+
+# run a non interactive container
+sudo docker run ubuntu:latest cat /etc/os-release
+sudo docker run centos:latest cat /etc/redhat-release
+
+# run an interactive container
+sudo docker run -t -i ubuntu:latest /bin/bash
+sudo docker run -t -i centos:latest /bin/bash
+
+# list all containers
+sudo docker ps -a
+sudo docker ps -a -q
+
+# list all images
+sudo docker images 
+sudo docker images -q
+sudo docker images -q | uniq
+
+# start & attach to a previously stopped container
+sudo docker ps -a
+sudo docker start f255c259d46d
+sudo docker attach f255c259d46d
+
+# remove a single container
+sudo docker rm f255c259d46d
+# remove all containers
+sudo docker rm $(sudo docker ps -a -q) 
+
+# remove a single image
+sudo docker rm 2d24f826cb16
+# remove all images
+# make sure all containers are removed first
+sudo docker rmi $(sudo docker images -q | uniq) 
+
