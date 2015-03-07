@@ -6,14 +6,18 @@ sudo chkconfig --list docker
 # list docker version, info, images, containers
 sudo docker version
 sudo docker info
-sudo docker images
-sudo docker ps
 
 # search for & download images
 sudo docker search ubuntu
 sudo docker search centos
 sudo docker pull ubuntu:latest
 sudo docker pull centos:latest
+
+# list running containers
+sudo docker ps
+
+# list last container
+sudo docker ps -l
 
 # list local images
 sudo docker images
@@ -50,4 +54,3 @@ sudo docker rm 2d24f826cb16
 # remove all images
 # make sure all containers are removed first
 sudo docker rmi $(sudo docker images -q | uniq) 
-
