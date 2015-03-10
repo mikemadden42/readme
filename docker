@@ -12,6 +12,9 @@ sudo docker search ubuntu
 sudo docker search centos
 sudo docker pull ubuntu:latest
 sudo docker pull centos:latest
+# use tags when possible to ensure you get the expected release
+sudo docker pull centos:6
+sudo docker pull centos:7
 
 # list running containers
 sudo docker ps
@@ -30,22 +33,38 @@ sudo docker run centos:latest cat /etc/redhat-release
 sudo docker run -t -i ubuntu:latest /bin/bash
 sudo docker run -t -i centos:latest /bin/bash
 
+# run an interactive container & give it a name
+sudo docker run --name centos6_dev -t -i centos:6 /bin/bash
+sudo docker run --name centos7_dev -t -i centos:7 /bin/bash
+
 # list all containers
 sudo docker ps -a
 sudo docker ps -a -q
 
 # list all images
 sudo docker images 
+sudo docker images centos
 sudo docker images -q
 sudo docker images -q | uniq
 
-# start & attach to a previously stopped container
+# start, attach, stop a container
 sudo docker ps -a
 sudo docker start f255c259d46d
 sudo docker attach f255c259d46d
+sudo docker stop f255c259d46d
+sudo docker start centos6_dev
+sudo docker attach centos6_dev
+sudo docker stop centos6_dev
+
+# get info for a container
+sudo docker logs centos6_dev
+sudo docker top centos6_dev
+sudo docker stats centos6_dev
+sudo docker inspect centos6_dev
 
 # remove a single container
 sudo docker rm f255c259d46d
+sudo docker rm centos6_dev
 # remove all containers
 sudo docker rm $(sudo docker ps -a -q) 
 
