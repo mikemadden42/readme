@@ -1,7 +1,33 @@
-# install / start docker
+# Amazon EC2 docker setup
 sudo yum install -y docker
 sudo service docker start
 sudo chkconfig --list docker
+
+# OS X docker setup
+# Create a new Boot2Docker VM.
+boot2docker init
+# Start the boot2docker VM.
+boot2docker up
+boot2docker start
+# Display the environment variables for the Docker client.
+boot2docker shellinit
+# To set the environment variables in your shell do the following:
+$(boot2docker shellinit)
+echo $DOCKER_HOST
+echo $DOCKER_CERT_PATH
+echo $DOCKER_TLS_VERIFY
+# Display boot2docker info.
+boot2docker cfg
+boot2docker info
+boot2docker ip
+boot2docker status
+boot2docker version
+# Upgrade boot2docker.
+boot2docker down
+boot2docker stop
+boot2docker upgrade
+# Delete boot2docker VM.
+boot2docker delete
 
 # list docker version, info, images, containers
 sudo docker version
