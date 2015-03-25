@@ -109,5 +109,7 @@ docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOA
 docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=386 golang:1.4-cross go build -v -o myapp-linux-386
 docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=amd64 golang:1.4-cross go build -v -o myapp-linux-amd64
 
-# compact VirtualBox disk images
-http://www.netreliant.com/news/8/17/Compacting-VirtualBox-Disk-Images-Linux-Guests.htm
+# run groovy script 
+# https://registry.hub.docker.com/u/webratio/groovy/
+sudo docker pull webratio/groovy:2.4.3
+sudo docker run --rm -v "$PWD":/source webratio/groovy hello.groovy 
