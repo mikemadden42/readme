@@ -41,6 +41,7 @@ sudo docker pull centos:latest
 # use tags when possible to ensure you get the expected release
 sudo docker pull centos:6
 sudo docker pull centos:7
+sudo docker pull debian:7
 
 # list running containers
 sudo docker ps
@@ -58,10 +59,12 @@ sudo docker run centos:latest cat /etc/redhat-release
 # run an interactive container
 sudo docker run -t -i ubuntu:latest /bin/bash
 sudo docker run -t -i centos:latest /bin/bash
+sudo docker run -t -i debian:latest /bin/bash
 
 # run an interactive container & give it a name
 sudo docker run --name centos6_dev -t -i centos:6 /bin/bash
 sudo docker run --name centos7_dev -t -i centos:7 /bin/bash
+sudo docker run --name debian7_dev -t -i debian:7 /bin/bash
 
 # list all containers
 sudo docker ps -a
