@@ -1,7 +1,7 @@
 --------
 
 vagrant box add centos6 ~/Downloads/vagrant/boxes/opscode_centos-6.6_chef-provisionerless.box
-vagrant box add centos7 ~/Downloads/vagrant/boxes/opscode_centos-7.0_chef-provisionerless.box
+vagrant box add centos7 ~/Downloads/vagrant/boxes/opscode_centos-7.1_chef-provisionerless.box
 
 vagrant box list
 
@@ -40,8 +40,16 @@ vagrant box remove centos-base
 
 --------
 
-sudo yum install -y git rsync yum-presto yum-cron xz
-sudo yum install -y gcc cpp kernel-devel kernel-headers perl
+sudo yum install -y \
+cpp \
+gcc \
+git \
+kernel-devel \
+kernel-headers \
+perl \
+rsync \
+yum-cron xz \
+yum-presto
 
 sudo yum clean all && sudo yum upgrade -y
 
@@ -50,13 +58,18 @@ reboot
 sudo /etc/init.d/vboxadd setup
 
 sudo sysctl -w vm.swappiness=5
+sudo vi /etc/sysctl.conf
 
+mkdir github
+cd github
 git clone https://github.com/mikemadden42/puppet.git
 sudo ./puppet/scripts/setup_puppet.bash
 sudo ./puppet/scripts/setup_epel.bash
-sudo ./puppet/scripts/setup_pip.bash
 puppet-lint puppet/manifests/site.pp
 sudo puppet apply ./puppet/manifests/site.pp
+
+sudo /etc/cron.daily/makewhatis.cron
+sudo /etc/cron.daily/mlocate.cron
 
 # List available package groups
 yum -v grouplist
