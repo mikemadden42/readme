@@ -1,0 +1,21 @@
+# https://docs.puppetlabs.com/puppet/latest/reference/services_commands.html
+# https://docs.puppetlabs.com/references/4.1.latest/man/
+
+# list all current users
+puppet resource user
+
+# list specific user
+puppet resource user jimmy
+
+# add a user with debug turned on
+puppet resource user jimmy ensure=present --debug --noop
+puppet resource user jimmy ensure=present --debug
+
+# display help about resource types 
+puppet describe user
+puppet describe package
+
+# apply a local manifest
+puppet apply site.pp --noop --debug
+puppet apply site.pp --noop
+puppet apply site.pp
