@@ -19,3 +19,21 @@ puppet describe package
 puppet apply site.pp --noop --debug
 puppet apply site.pp --noop
 puppet apply site.pp
+
+# list facts
+facter processorcount
+facter physicalprocessorcount
+facter memorysize
+facter swapsize
+facter architecture
+facter hostname
+facter fqdn
+facter ipaddress
+facter operatingsystem
+facter osfamily
+facter operatingsystemrelease
+facter lsbdistrelease
+facter is_virtual
+facter puppetversion
+facter facterversion
+facter rubyversion
