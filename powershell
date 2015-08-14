@@ -1,0 +1,16 @@
+# https://msdn.microsoft.com/en-us/library/aa394554(v=vs.85).aspx
+
+Get-WmiObject -List
+
+Get-WmiObject Win32_ComputerSystem
+Get-WmiObject Win32_ComputerSystem | Select Model,Manufacturer
+
+Get-WmiObject Win32_Processor | Select-Object Name,NumberOfLogicalProcessors,MaxClockSpeed,L3CacheSize
+
+Get-WmiObject Win32_PhysicalMemory | Select-Object Tag,Capacity,Speed
+
+Get-WmiObject Win32_Product | Select-Object Name,Version
+Get-WmiObject Win32_Product | Select-Object Name,Version | Sort-Object Name
+Get-WmiObject Win32_Product | Select-Object Name,Version | Sort-Object Name | Out-File Applications.txt
+
+Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID,FreeSpace,Size
