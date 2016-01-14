@@ -1,0 +1,13 @@
+- ubuntu 14.04
+# server setup
+set -o vi
+sudo dpkg-reconfigure tzdata
+mkdir -p github.com/mikemadden42
+cd github.com/mikemadden42/
+sudo apt-get install -y acpi git
+git clone https://github.com/mikemadden42/puppet
+sudo vi /etc/apt/sources.list
+./puppet/scripts/setup_puppet_trusty.bash
+puppet-lint puppet/manifests/site_trusty.pp
+sudo puppet apply puppet/manifests/site_trusty.pp
+sudo apt-get install bash coreutils firefox git gnome-terminal golang ipython openssl python vim zsh

@@ -1,0 +1,4 @@
+- centos 7
+# firewall
+systemctl status firewalld
+systemctl stop firewalld
