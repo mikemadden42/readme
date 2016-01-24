@@ -1,0 +1,5 @@
+https://github.com/golang/lint
+https://github.com/BurntSushi/toml
+https://github.com/otium/ytdl
+https://github.com/aws/aws-sdk-go
+https://github.com/tatsushid/go-fastping
