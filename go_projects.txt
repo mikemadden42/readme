@@ -1,5 +1,14 @@
+https://github.com/trending?l=go
+https://github.com/avelino/awesome-go
+
 https://github.com/golang/lint
 https://github.com/BurntSushi/toml
+
 https://github.com/otium/ytdl
+https://github.com/Sirupsen/logrus
+https://github.com/cheggaaa/pb
+https://github.com/codegangsta/cli
+https://github.com/mattn/go-isatty
+
 https://github.com/aws/aws-sdk-go
 https://github.com/tatsushid/go-fastping
