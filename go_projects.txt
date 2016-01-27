@@ -10,5 +10,7 @@ https://github.com/cheggaaa/pb
 https://github.com/codegangsta/cli
 https://github.com/mattn/go-isatty
 
+https://github.com/dbohdan/remarshal
+
 https://github.com/aws/aws-sdk-go
 https://github.com/tatsushid/go-fastping
