@@ -1,0 +1,6 @@
+# https://docs.python.org/2/library/simplehttpserver.html
+python -m SimpleHTTPServer 8000
+
+# https://docs.python.org/3/library/http.server.html
+python -m http.server 8000
+python -m http.server 8000 --bind 127.0.0.1
