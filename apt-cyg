@@ -1,0 +1,19 @@
+# install packages
+apt-cyg install cmake gcc-g++ git make perl python
+
+# remove packages
+apt-cyg remove cmake gcc-g++ git make perl python
+
+# update package repo
+apt-cyg update
+
+# list packages
+apt-cyg show
+
+# find packages
+apt-cyg find perl
+apt-cyg find python
+
+# get package info
+apt-cyg describe perl
+apt-cyg describe python
