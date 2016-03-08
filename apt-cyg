@@ -1,8 +1,8 @@
 # install packages
-apt-cyg install cmake gcc-g++ git make perl python vim-minimal
+apt-cyg install cmake curl gcc-g++ git make perl python vim-minimal
 
 # remove packages
-apt-cyg remove cmake gcc-g++ git make perl python vim-minimal
+apt-cyg remove cmake curl gcc-g++ git make perl python vim-minimal
 
 # update package repo
 apt-cyg update
