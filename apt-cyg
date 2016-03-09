@@ -1,8 +1,8 @@
 # install packages
-apt-cyg install cmake curl gcc-g++ git make perl python vim-minimal
+apt-cyg install -u cmake curl gcc-g++ git make perl python python-requests python-jinja2 python-yaml
 
 # remove packages
-apt-cyg remove cmake curl gcc-g++ git make perl python vim-minimal
+apt-cyg remove -u cmake curl gcc-g++ git make perl python python-requests python-jinja2 python-yaml
 
 # update package repo
 apt-cyg update
@@ -17,3 +17,6 @@ apt-cyg find python
 # get package info
 apt-cyg describe perl
 apt-cyg describe python
+
+# build a project with cmake
+rm -rf release; mkdir release; cd release; /usr/bin/cmake ..; make
