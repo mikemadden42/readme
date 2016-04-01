@@ -1,34 +1,3 @@
-# Amazon EC2 docker setup
-sudo yum install -y docker
-sudo service docker start
-sudo chkconfig --list docker
-
-# OS X docker setup
-# Create a new Boot2Docker VM.
-boot2docker init
-# Start the boot2docker VM.
-boot2docker up
-boot2docker start
-# Display the environment variables for the Docker client.
-boot2docker shellinit
-# To set the environment variables in your shell do the following:
-$(boot2docker shellinit)
-echo $DOCKER_HOST
-echo $DOCKER_CERT_PATH
-echo $DOCKER_TLS_VERIFY
-# Display boot2docker info.
-boot2docker cfg
-boot2docker info
-boot2docker ip
-boot2docker status
-boot2docker version
-# Upgrade boot2docker.
-boot2docker down
-boot2docker stop
-boot2docker upgrade
-# Delete boot2docker VM.
-boot2docker delete
-
 # list docker version, info, images, containers
 sudo docker version
 sudo docker info
@@ -36,12 +5,13 @@ sudo docker info
 # search for & download images
 sudo docker search ubuntu
 sudo docker search centos
+sudo docker search jenkins
 sudo docker pull ubuntu:latest
 sudo docker pull centos:latest
+sudo docker pull jenkins:latest
 # use tags when possible to ensure you get the expected release
 sudo docker pull centos:6
 sudo docker pull centos:7
-sudo docker pull debian:7
 
 # list running containers
 sudo docker ps
@@ -59,12 +29,10 @@ sudo docker run centos:latest cat /etc/redhat-release
 # run an interactive container
 sudo docker run -t -i ubuntu:latest /bin/bash
 sudo docker run -t -i centos:latest /bin/bash
-sudo docker run -t -i debian:latest /bin/bash
 
 # run an interactive container & give it a name
 sudo docker run --name centos6_dev -t -i centos:6 /bin/bash
 sudo docker run --name centos7_dev -t -i centos:7 /bin/bash
-sudo docker run --name debian7_dev -t -i debian:7 /bin/bash
 
 # list all containers
 sudo docker ps -a
@@ -96,6 +64,8 @@ sudo docker rm f255c259d46d
 sudo docker rm centos6_dev
 # remove all containers
 sudo docker rm $(sudo docker ps -a -q) 
+# remove all containers & their volumes
+sudo docker rm -v $(sudo docker ps -a -q) 
 
 # remove a single image
 sudo docker rm 2d24f826cb16
@@ -104,15 +74,20 @@ sudo docker rm 2d24f826cb16
 sudo docker rmi $(sudo docker images -q | uniq) 
 
 # golang cross-complile an app
-docker pull golang:1.4-cross
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=386 golang:1.4-cross go build -v -o myapp-windows-386.exe
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=amd64 golang:1.4-cross go build -v -o myapp-windows-amd64.exe
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=386 golang:1.4-cross go build -v -o myapp-darwin-386
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=amd64 golang:1.4-cross go build -v -o myapp-darwin-amd64
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=386 golang:1.4-cross go build -v -o myapp-linux-386
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=amd64 golang:1.4-cross go build -v -o myapp-linux-amd64
+docker pull golang:latest
+docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=386 golang:latest go build -v -o myapp-windows-386.exe
+docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=amd64 golang:latest go build -v -o myapp-windows-amd64.exe
+docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=386 golang:latest go build -v -o myapp-darwin-386
+docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=amd64 golang:latest go build -v -o myapp-darwin-amd64
+docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=386 golang:latest go build -v -o myapp-linux-386
+docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=amd64 golang:latest go build -v -o myapp-linux-amd64
 
-# run groovy script 
-# https://registry.hub.docker.com/u/webratio/groovy/
-sudo docker pull webratio/groovy:2.4.3
-sudo docker run --rm -v "$PWD":/source webratio/groovy hello.groovy 
+# list all orphaned volumes
+docker volume ls -qf dangling=true
+# eliminate all orphaned volumes 
+docker volume rm $(docker volume ls -qf dangling=true)
+
+# run jenkins & use a volume container
+docker run --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
+# run jenkins detached & use a volume container
+docker run -d --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
