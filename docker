@@ -74,20 +74,21 @@ sudo docker rm 2d24f826cb16
 sudo docker rmi $(sudo docker images -q | uniq) 
 
 # golang cross-complile an app
-docker pull golang:latest
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=386 golang:latest go build -v -o myapp-windows-386.exe
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=amd64 golang:latest go build -v -o myapp-windows-amd64.exe
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=386 golang:latest go build -v -o myapp-darwin-386
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=amd64 golang:latest go build -v -o myapp-darwin-amd64
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=386 golang:latest go build -v -o myapp-linux-386
-docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=amd64 golang:latest go build -v -o myapp-linux-amd64
+sudo docker pull golang:latest
+sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=386 golang:latest go build -v -o myapp-windows-386.exe
+sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=windows -e GOARCH=amd64 golang:latest go build -v -o myapp-windows-amd64.exe
+sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=386 golang:latest go build -v -o myapp-darwin-386
+sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=darwin -e GOARCH=amd64 golang:latest go build -v -o myapp-darwin-amd64
+sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=386 golang:latest go build -v -o myapp-linux-386
+sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e GOARCH=amd64 golang:latest go build -v -o myapp-linux-amd64
 
 # list all orphaned volumes
-docker volume ls -qf dangling=true
+sudo docker volume ls -qf dangling=true
 # eliminate all orphaned volumes 
-docker volume rm $(docker volume ls -qf dangling=true)
+sudo docker volume rm $(docker volume ls -qf dangling=true)
 
 # run jenkins & use a volume container
-docker run --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
+sudo docker run --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
 # run jenkins detached & use a volume container
-docker run -d --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
+sudo docker run -d --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
+sudo docker logs myjenkins 
