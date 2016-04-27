@@ -24,3 +24,23 @@ pip search awscli
 pip search youtube_dl
 
 sudo rm -rf /tmp/pip-build-* && sudo pip install --upgrade boto awscli youtube-dl
+
+# pip_install.bash
+
+rm -rf $HOME/.pip/cache
+
+pip install --upgrade pip
+
+pip install --upgrade \
+    Jinja2 \
+    PyYAML \
+    awscli \
+    boto \
+    ipython \
+    pep8 \
+    psutil \
+    pyflakes \
+    pylint \
+    requests \
+    six \
+    yapf
