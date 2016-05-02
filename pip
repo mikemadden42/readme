@@ -34,11 +34,14 @@ pip install --upgrade pip
 pip install --upgrade \
     Jinja2 \
     PyYAML \
+    artifactory \
     awscli \
     boto \
     ipython \
+    nose \
     pep8 \
     psutil \
+    pyfiglet \
     pyflakes \
     pylint \
     requests \
