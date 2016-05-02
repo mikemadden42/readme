@@ -1,0 +1,7 @@
+virtualenv venv
+source venv/bin/activate
+deactivate
+
+virtualenv -p /usr/bin/python2.7 python2.7
+source python2.7/bin/activate
+deactivate
