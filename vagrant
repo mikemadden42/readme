@@ -81,7 +81,7 @@ yum repolist
 cd ~/..
 tar cfJ /tmp/$USER-$(date +%Y-%m-%d-%H-%M-%S).tar.xz $USER
 cd /tmp
-rsync -avP *.xz mjmadden@10.0.1.6:/Users/mjmadden/Downloads/vagrant/backups/centos
+rsync -avP *.xz mjmadden@10.0.1.14:/Users/mjmadden/Downloads/vagrant/backups/centos
 
 --------
 
