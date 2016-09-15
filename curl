@@ -1,0 +1,11 @@
+# download single file
+curl -O https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.21.tar.xz
+
+# download single file, keep remote timestamp
+curl -O -R https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.21.tar.xz
+
+# resume download of single file, keep remote timestamp
+curl -C - -O -R https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.21.tar.xz
+
+# resume download of single file, keep remote timestamp, follow redirect
+curl -C - -O -R -L https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.21.tar.xz
