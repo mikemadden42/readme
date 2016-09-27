@@ -1,0 +1,30 @@
+# install a package
+pkg install git
+
+# install a package
+pkg delete git
+
+# list packages
+pkg info
+
+# upgrade packages
+pkg upgrade
+
+# remove unneeded dependencies
+pkg autoremove
+
+# remove stale packages
+pkg clean
+pkg clean -a
+
+# determine if any outstanding patches are available
+freebsd-update fetch
+
+# apply the patches
+freebsd-update install
+
+# print the version and patch level of the installed kernel
+freebsd-version -k
+
+# print the version and patch level of the installed userland
+freebsd-version -u
