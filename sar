@@ -1,0 +1,20 @@
+# cpu
+sar -p
+
+# run queue
+sar -q
+
+# memory
+sar -r
+
+# swap
+sar -S
+
+# cpu utilization
+sar -u
+
+# swap
+sar -W
+
+# io
+sar -b
