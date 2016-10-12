@@ -1,5 +1,6 @@
 # install a package
 pkg install git
+pkg install gmake
 
 # install a package
 pkg delete git
