@@ -1,0 +1,93 @@
+PACKAGE MANAGEMENT
+------------------
+
+# refresh available packages
+sudo apt-get update
+
+# install a package
+sudo apt-get install tinyproxy
+
+# remove a package
+sudo apt-get remove tinyproxy
+
+# remove a package with config files
+sudo apt-get purge tinyproxy
+
+# check for package upgrades
+sudo apt-get -s upgrade
+sudo apt-get -s dist-upgrade
+
+# upgrade packages
+sudo apt-get upgrade
+
+# upgrade entire system
+sudo apt-get dist-upgrade
+
+# get info on available package
+apt-cache search tinyproxy
+
+# show available packages
+apt-cache dumpavail
+
+# list installed packages
+dpkg -l
+dpkg --list
+
+# get info on a package
+apt-cache show tinyproxy
+
+# get info on an installed package
+dpkg --status tinyproxy
+
+# list files in an installed package
+dpkg -L tinyproxy
+dpkg --listfiles tinyproxy
+
+# list config files in an installed package
+dpkg-query --show -f'${Conffiles}\n' tinyproxy
+
+# list size of an installed package
+dpkg-query --show -f'${Installed-Size}\n' tinyproxy
+dpkg -P tinyproxy
+
+# list largest installed packages
+dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head
+
+# show 32-bit packages
+dpkg-query -W --showformat='${Architecture}\t${Package}\n' | grep i386
+
+# list depends of an installed package
+dpkg-query --show -f'${Depends}\n' tinyproxy
+apt-cache depends tinyproxy
+
+# list reverse depends of an installed package
+apt-cache rdepends tinyproxy
+
+# get info about a package file dpkg --info package.deb # get contents of a package file
+dpkg --contents package.deb
+
+# extract file from a package file
+dpkg-deb --extract package.deb
+
+# find package that installed a file
+dpkg -S /usr/sbin/tinyproxy
+dpkg --search /usr/sbin/tinyproxy
+
+# show cache stats
+apt-cache stats
+
+# remove package from the local cache
+sudo apt-get clean
+
+# remove obsolete package from the local cache
+sudo apt-get autoclean
+
+# remove headers from the local cache
+sudo apt-file purge
+
+# verify all packages
+debsums
+debsums -as
+
+# verify a package
+debsums -as tinyproxy
