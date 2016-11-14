@@ -12,6 +12,8 @@ sudo docker pull jenkins:latest
 # use tags when possible to ensure you get the expected release
 sudo docker pull centos:6
 sudo docker pull centos:7
+sudo docker pull ubuntu:14.04
+sudo docker pull ubuntu:16.04
 
 # list running containers
 sudo docker ps
@@ -27,19 +29,26 @@ sudo docker run ubuntu:latest cat /etc/os-release
 sudo docker run centos:latest cat /etc/redhat-release
 
 # run an interactive container
-sudo docker run -t -i ubuntu:latest /bin/bash
-sudo docker run -t -i centos:latest /bin/bash
+sudo docker run -i -t ubuntu:latest /bin/bash
+sudo docker run -i -t centos:latest /bin/bash
+
+# run an interactive container & remove it upon exit
+sudo docker run -i -t -rm ubuntu:latest /bin/bash
+sudo docker run -i -t -rm centos:latest /bin/bash
 
 # run an interactive container & give it a name
-sudo docker run --name centos6_dev -t -i centos:6 /bin/bash
-sudo docker run --name centos7_dev -t -i centos:7 /bin/bash
+sudo docker run --name centos6_dev -i -t centos:6 /bin/bash
+sudo docker run --name centos7_dev -i -t centos:7 /bin/bash
+
+# run a daemonized container
+sudo docker run --name daemon_dave -d ubuntu:16.04 /bin/sh -c "while true; do echo hello world; sleep 1; done"
 
 # list all containers
 sudo docker ps -a
 sudo docker ps -a -q
 
 # list all images
-sudo docker images 
+sudo docker images
 sudo docker images centos
 sudo docker images -q
 sudo docker images -q | uniq
@@ -55,6 +64,9 @@ sudo docker stop centos6_dev
 
 # get info for a container
 sudo docker logs centos6_dev
+sudo docker logs -f centos6_dev
+sudo docker logs -ft centos6_dev
+sudo docker logs --tail 10 centos6_dev
 sudo docker top centos6_dev
 sudo docker stats centos6_dev
 sudo docker inspect centos6_dev
@@ -63,15 +75,15 @@ sudo docker inspect centos6_dev
 sudo docker rm f255c259d46d
 sudo docker rm centos6_dev
 # remove all containers
-sudo docker rm $(sudo docker ps -a -q) 
+sudo docker rm $(sudo docker ps -a -q)
 # remove all containers & their volumes
-sudo docker rm -v $(sudo docker ps -a -q) 
+sudo docker rm -v $(sudo docker ps -a -q)
 
 # remove a single image
 sudo docker rm 2d24f826cb16
 # remove all images
 # make sure all containers are removed first
-sudo docker rmi $(sudo docker images -q | uniq) 
+sudo docker rmi $(sudo docker images -q | uniq)
 
 # golang cross-complile an app
 sudo docker pull golang:latest
@@ -84,11 +96,11 @@ sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e
 
 # list all orphaned volumes
 sudo docker volume ls -qf dangling=true
-# eliminate all orphaned volumes 
+# eliminate all orphaned volumes
 sudo docker volume rm $(docker volume ls -qf dangling=true)
 
 # run jenkins & use a volume container
 sudo docker run --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
 # run jenkins detached & use a volume container
 sudo docker run -d --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
-sudo docker logs myjenkins 
+sudo docker logs myjenkins
