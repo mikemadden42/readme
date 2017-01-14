@@ -1,0 +1,39 @@
+# install brew
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+
+# list cache location
+brew --cache
+
+# install dependencies from Brewfile
+vim Brewfile
+brew bundle
+
+# clean up brew
+brew cleanup -s -v
+rm -f $(brew --cache)
+
+# check brew
+brew doctor
+
+# check for missing dependencies
+brew missing
+
+# get help
+brew help
+man brew
+
+# get info
+brew info python
+
+# install a dependency
+brew install python -v
+
+# list
+brew list
+brew list --version
+
+# install a tap
+brew tap Homebrew/bundle
+
+# update
+brew update -v && brew upgrade -v
