@@ -10,7 +10,7 @@ brew bundle
 
 # clean up brew
 brew cleanup -s -v
-rm -f $(brew --cache)
+rm -f $(brew --cache)/*
 
 # check brew
 brew doctor
@@ -30,7 +30,7 @@ brew install python -v
 
 # list
 brew list
-brew list --version
+brew list --versions
 
 # install a tap
 brew tap Homebrew/bundle
