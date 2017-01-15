@@ -4,7 +4,13 @@
 # list cache location
 brew --cache
 
-# install dependencies from Brewfile
+# list cellar location
+brew --cellar
+
+# list prefix location
+brew --prefix
+
+# install formulas from Brewfile
 vim Brewfile
 brew bundle
 
@@ -15,7 +21,7 @@ rm -f $(brew --cache)/*
 # check brew
 brew doctor
 
-# check for missing dependencies
+# check for missing formula
 brew missing
 
 # get help
@@ -25,8 +31,11 @@ man brew
 # get info
 brew info python
 
-# install a dependency
+# install a formula
 brew install python -v
+
+# remove a formula
+brew remove python
 
 # list
 brew list
@@ -37,3 +46,9 @@ brew tap Homebrew/bundle
 
 # update
 brew update -v && brew upgrade -v
+
+# list outdated formulas
+brew outdated
+
+# search for a formula
+brew boost python
