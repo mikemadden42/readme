@@ -1,0 +1,2 @@
+# http://ruby-doc.org/stdlib-1.9.3/libdoc/un/rdoc/Object.html#method-i-httpd
+ruby -run -e httpd . -p 8080
