@@ -1,6 +1,6 @@
 --------
 
-vagrant box add centos6 ~/Downloads/vagrant/boxes/opscode_centos-6.6_chef-provisionerless.box
+vagrant box add centos6 ~/Downloads/vagrant/boxes/CentOS-6-x86_64-Vagrant-1701_01.VirtualBox.box
 vagrant box add centos7 ~/Downloads/vagrant/boxes/opscode_centos-7.1_chef-provisionerless.box
 
 vagrant box list
@@ -36,7 +36,7 @@ vagrant status
 vagrant destroy
 
 # destroy base box
-vagrant box remove centos-base
+vagrant box remove centos6
 
 --------
 
@@ -63,10 +63,10 @@ sudo vi /etc/sysctl.conf
 mkdir github
 cd github
 git clone https://github.com/mikemadden42/puppet.git
-sudo ./puppet/scripts/setup_puppet.bash
-sudo ./puppet/scripts/setup_epel.bash
-puppet-lint puppet/manifests/site.pp
-sudo puppet apply ./puppet/manifests/site.pp
+sudo ./puppet/scripts/setup_puppet_centos_6.bash
+sudo ./puppet/scripts/setup_epel_centos_6.bash
+puppet-lint puppet/manifests/site_centos_6.pp
+sudo puppet apply puppet/manifests/site_centos_6.pp
 
 sudo /etc/cron.daily/makewhatis.cron
 sudo /etc/cron.daily/mlocate.cron
@@ -74,7 +74,7 @@ sudo /etc/cron.daily/mlocate.cron
 # List available package groups
 yum -v grouplist
 
-# List available repos 
+# List available repos
 yum repolist
 
 # Backup user
