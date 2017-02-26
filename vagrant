@@ -1,7 +1,7 @@
 --------
 
 vagrant box add centos6 ~/Downloads/vagrant/boxes/CentOS-6-x86_64-Vagrant-1701_01.VirtualBox.box
-vagrant box add centos7 ~/Downloads/vagrant/boxes/opscode_centos-7.1_chef-provisionerless.box
+vagrant box add centos7 ~/Downloads/vagrant/boxes/CentOS-7-x86_64-Vagrant-1701_01.VirtualBox.box
 
 vagrant box list
 
@@ -48,8 +48,22 @@ kernel-devel \
 kernel-headers \
 perl \
 rsync \
-yum-cron xz \
+yum-cron \
+xz \
 yum-presto
+
+sudo yum install -y \
+cpp \
+deltarpm \
+gcc \
+git \
+kernel-devel \
+kernel-headers \
+perl \
+rsync \
+yum-cron \
+xz
+
 
 sudo yum clean all && sudo yum upgrade -y
 
@@ -67,6 +81,14 @@ sudo ./puppet/scripts/setup_puppet_centos_6.bash
 sudo ./puppet/scripts/setup_epel_centos_6.bash
 puppet-lint puppet/manifests/site_centos_6.pp
 sudo puppet apply puppet/manifests/site_centos_6.pp
+
+mkdir github
+cd github
+git clone https://github.com/mikemadden42/puppet.git
+sudo ./puppet/scripts/setup_puppet_centos_7.bash
+sudo ./puppet/scripts/setup_epel_centos_7.bash
+puppet-lint puppet/manifests/site_centos_7.pp
+sudo puppet apply puppet/manifests/site_centos_7.pp
 
 sudo /etc/cron.daily/makewhatis.cron
 sudo /etc/cron.daily/mlocate.cron
