@@ -5,10 +5,12 @@ vagrant box add centos7 ~/Downloads/vagrant/boxes/CentOS-7-x86_64-Vagrant-1701_0
 
 vagrant box list
 
+# centos 6
 mkdir -p ~/Documents/vagrant-boxes/centos-6-dev
 cd ~/Documents/vagrant-boxes/centos-6-dev
 vagrant init centos6
 
+# centos 7
 mkdir -p ~/Documents/vagrant-boxes/centos-7-dev
 cd ~/Documents/vagrant-boxes/centos-7-dev
 vagrant init centos7
@@ -40,6 +42,7 @@ vagrant box remove centos6
 
 --------
 
+# centos 6
 sudo yum install -y \
 cpp \
 gcc \
@@ -52,6 +55,7 @@ yum-cron \
 xz \
 yum-presto
 
+# centos 7
 sudo yum install -y \
 cpp \
 deltarpm \
@@ -64,16 +68,19 @@ rsync \
 yum-cron \
 xz
 
-
 sudo yum clean all && sudo yum upgrade -y
-
-reboot
 
 sudo /etc/init.d/vboxadd setup
 
+# centos 6
 sudo sysctl -w vm.swappiness=5
 sudo vi /etc/sysctl.conf
 
+# centos 7
+sudo sysctl -w vm.swappiness=5
+sudo vi /etc/sysctl.d/10-swap.conf
+
+# centos 6
 mkdir github
 cd github
 git clone https://github.com/mikemadden42/puppet.git
@@ -82,6 +89,7 @@ sudo ./puppet/scripts/setup_epel_centos_6.bash
 puppet-lint puppet/manifests/site_centos_6.pp
 sudo puppet apply puppet/manifests/site_centos_6.pp
 
+# centos 7
 mkdir github
 cd github
 git clone https://github.com/mikemadden42/puppet.git
@@ -90,11 +98,21 @@ sudo ./puppet/scripts/setup_epel_centos_7.bash
 puppet-lint puppet/manifests/site_centos_7.pp
 sudo puppet apply puppet/manifests/site_centos_7.pp
 
+# centos 6
 sudo /etc/cron.daily/makewhatis.cron
 sudo /etc/cron.daily/mlocate.cron
 
+# centos 7
+sudo /etc/cron.daily/man-db.cron
+sudo /etc/cron.daily/mlocate
+
+# centos 6
 # List available package groups
 yum -v grouplist
+
+# centos 7
+# List available package groups
+yum -v group list
 
 # List available repos
 yum repolist
@@ -104,6 +122,8 @@ cd ~/..
 tar cfJ /tmp/$USER-$(date +%Y-%m-%d-%H-%M-%S).tar.xz $USER
 cd /tmp
 rsync -avP *.xz mjmadden@10.0.1.14:/Users/mjmadden/Downloads/vagrant/backups/centos
+
+reboot
 
 --------
 
