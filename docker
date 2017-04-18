@@ -3,13 +3,14 @@ sudo docker version
 sudo docker info
 
 # search for & download images
-sudo docker search ubuntu
+sudo docker search alpine
 sudo docker search centos
-sudo docker search jenkins
-sudo docker pull ubuntu:latest
+sudo docker search ubuntu
+sudo docker pull alpine:latest
 sudo docker pull centos:latest
-sudo docker pull jenkins:latest
+sudo docker pull ubuntu:latest
 # use tags when possible to ensure you get the expected release
+sudo docker pull alpine:3.5
 sudo docker pull centos:6
 sudo docker pull centos:7
 sudo docker pull ubuntu:14.04
@@ -25,18 +26,19 @@ sudo docker ps -l
 sudo docker images
 
 # run a non interactive container
-sudo docker run ubuntu:latest cat /etc/os-release
 sudo docker run centos:latest cat /etc/redhat-release
+sudo docker run ubuntu:latest cat /etc/os-release
 
 # run an interactive container
-sudo docker run -i -t ubuntu:latest /bin/bash
 sudo docker run -i -t centos:latest /bin/bash
+sudo docker run -i -t ubuntu:latest /bin/bash
 
 # run an interactive container & remove it upon exit
-sudo docker run -i -t -rm ubuntu:latest /bin/bash
 sudo docker run -i -t -rm centos:latest /bin/bash
+sudo docker run -i -t -rm ubuntu:latest /bin/bash
 
 # run an interactive container & give it a name
+sudo docker run --name alpine_dev -i -t alpine:3.5 /bin/sh
 sudo docker run --name centos6_dev -i -t centos:6 /bin/bash
 sudo docker run --name centos7_dev -i -t centos:7 /bin/bash
 
@@ -99,8 +101,7 @@ sudo docker volume ls -qf dangling=true
 # eliminate all orphaned volumes
 sudo docker volume rm $(docker volume ls -qf dangling=true)
 
-# run jenkins & use a volume container
-sudo docker run --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
-# run jenkins detached & use a volume container
-sudo docker run -d --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
-sudo docker logs myjenkins
+# manage disk space used by docker
+docker system df
+docker system prune
+docker system prune -a
