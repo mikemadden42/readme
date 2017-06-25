@@ -1,0 +1,16 @@
+INITIAL SETUP
+-------------
+cryptsetup -y luksFormat /dev/sdc
+cryptsetup luksOpen /dev/sdc files
+mkfs.ext4 /dev/mapper/files
+mkdir /mnt/files
+mount /dev/mapper/files /mnt/files
+umount /mnt/files
+cryptsetup luksClose /dev/mapper/files
+
+DAILY SETUP
+-----------
+cryptsetup luksOpen /dev/sdc files
+mount /dev/mapper/files /mnt/files
+umount /mnt/files
+cryptsetup luksClose /dev/mapper/files
