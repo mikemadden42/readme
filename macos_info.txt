@@ -1,0 +1,20 @@
+# hardware
+system_profiler SPHardwareDataType
+
+# memory
+system_profiler SPMemoryDataType
+
+# storage
+system_profiler SPStorageDataType
+
+# display
+system_profiler SPDisplaysDataType
+
+# power
+system_profiler SPPowerDataType
+
+# network
+system_profiler SPNetworkDataType
+
+# firewall
+system_profiler SPFirewallDataType
