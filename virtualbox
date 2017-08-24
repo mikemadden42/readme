@@ -1,0 +1,11 @@
+# http://wiki.inisec.com/index.php/Virtualbox_management_commands
+
+VBoxManage list vms
+
+VBoxManage showvminfo "CentOS"
+
+VBoxManage startvm "CentOS"
+
+VBoxHeadless --startvm "CentOS"
+
+VBoxManage controlvm "CentOS" poweroff
