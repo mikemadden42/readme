@@ -1,0 +1,8 @@
+# backup
+find book-6th-edition -name '*.pdf' | cpio -ova > ~/book-6th-edition.cpio
+find book-7th-edition -name '*.pdf' | cpio -ova > ~/book-7th-edition.cpio
+
+# restore
+mkdir books && cd books
+cpio -ivdm < ../book-6th-edition.cpio
+cpio -ivdm < ../book-7th-edition.cpio
