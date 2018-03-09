@@ -1,0 +1,181 @@
+# get powershell version
+$PSVersionTable
+
+# get computer info
+Get-WmiObject Win32_ComputerSystem
+Get-WmiObject Win32_Processor | Select-Object Name,NumberOfLogicalProcessors,MaxClockSpeed,L3CacheSize
+Get-WmiObject Win32_PhysicalMemory | Select-Object Tag,Capacity,Speed
+Get-WmiObject Win32_Product | Select-Object Name,Version | Sort-Object Name
+Get-WmiObject Win32_Product | Select-Object Name,Version | Sort-Object Name | Out-File Applications.txt
+Get-PSDrive -PSProvider FileSystem
+
+# setup powershell profile
+Test-Path $profile
+New-Item –Type File –Force $profile
+notepad $profile
+Set-ExecutionPolicy RemoteSigned
+
+# setup visual studio tools in powershell
+# can be added to powershell profile
+Write-Host "`nVisual Studio 2017 Command Prompt variables setup starting." -ForegroundColor Yellow
+pushd "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\Common7\Tools"
+cmd /c "VsDevCmd.bat -arch=amd64 &set" |
+foreach {
+  if ($_ -match "=") {
+    $v = $_.split("="); set-item -force -path "ENV:\$($v[0])"  -value "$($v[1])"
+  }
+}
+popd
+Write-Host "`nVisual Studio 2017 Command Prompt variables setup complete." -ForegroundColor Yellow
+
+# show firewall state
+netsh advfirewall show all state
+
+# add a new user
+net user hulk smashpassword /add
+net localgroup "Administrators" hulk /add
+net localgroup "Remote Desktop Users" hulk /add
+net accounts /maxpwage:unlimited
+net user hulk /expires:never
+
+# useful utils
+arp
+arp -a
+calc
+cleanmgr
+cmd
+defrag
+explorer
+hostname
+ipconfig
+ipconfig /all
+ipconfig /displaydns
+ipconfig /flushdns
+msinfo32
+mstsc
+netstat
+netstat -an
+notepad
+robocopy
+sconfig
+systeminfo
+taskmgr
+tracert
+winver
+
+# manage the path
+$env:Path
+$env:Path += ';C:\Program Files\CMake\bin'
+$env:Path += ';C:\Program Files\OpenSSH\bin'
+$env:Path += ';C:\Program Files (x86)\Google\Chrome\Application'
+$env:Path += ';C:\Program Files (x86)\JAM Software\TreeSize Free\'
+$env:Path += ';C:\Program Files (x86)\WinMerge\'
+$env:Path += ';C:\tools\cmder'
+$env:Path += ';C:\tools\go\bin'
+
+# go commands
+go build -ldflags "-s -w"
+go install -ldflags "-s -w"
+go get -u -ldflags "-s -w" github.com/ddo/fast
+go get -u -ldflags "-s -w" github.com/schollz/croc
+go get -u -ldflags "-s -w" github.com/mikemadden42/serve
+
+# backup directories
+7z a -t7z Documents_20171031.7z Documents
+7z a -t7z go_20171031.7z go
+
+# start chrome
+chrome.exe --incognito
+
+# view recently updated files
+Get-ChildItem | Sort-Object LastWriteTime
+
+# run an interactive docker container
+docker run -it microsoft/windowsservercore:latest powershell.exe
+docker run -it --name windev microsoft/windowsservercore:latest powershell.exe
+
+# manage docker
+Install-Package -Name docker -ProviderName DockerProvider -Update -Force
+Get-Service Docker
+Stop-Service Docker
+Start-Service Docker
+Restart-Service Docker
+
+# get current date & time
+Get-Date -UFormat "%Y%m%d%H%M"
+$CurrentDate = Get-Date -UFormat "%Y%m%d%H%M"
+
+# manage time sync
+w32tm /tz
+w32tm /resync
+
+# build a cmake project with ninja
+mkdir build
+cd build
+cmake -G Ninja -D CMAKE_BUILD_TYPE=Release ..
+cmake -G Ninja -D CMAKE_BUILD_TYPE=MinSizeRel ..
+cmake -G Ninja -D CMAKE_BUILD_TYPE=Debug ..
+cmake -G Ninja -D CMAKE_BUILD_TYPE=RelWithDebInfo ..
+ninja
+
+# time a build
+Measure-Command { ninja.exe }
+
+# count lines in a file
+type hello.cc | Measure-Object
+
+# find all exe files in current directory
+Get-ChildItem -Recurse -Filter *.exe
+
+####
+
+# command reference
+# https://chocolatey.org/docs/commands-reference
+
+# install choco
+# https://chocolatey.org/install
+Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+
+# install packages
+choco install 7zip -y
+choco install ag -y
+choco install cmake -y
+choco install cmder -y
+choco install curl -y
+choco install dependencywalker -y
+choco install git -y
+choco install golang -y
+choco install googlechrome -y
+choco install mls-software-openssh -y
+choco install nmap -y
+choco install ninja -y
+choco install powershell -y
+choco install putty -y
+choco install python2 -y
+choco install slack -y
+choco install sysinternals -y
+choco install treesizefree -y
+choco install vim -y
+choco install visualstudio2017buildtools -y
+choco install visualstudio2017-workload-vctools -y
+choco install wget -y
+choco install windows-sdk-10.1 -y
+choco install winmerge -y
+choco install wireshark -y
+
+# list packages
+choco list -l
+choco list -la
+choco list -lai
+
+# search packages
+choco search visualstudio2017
+
+# list outdated packages
+choco outdated
+
+# remove packages
+# choco uninstall putty
+
+# upgrade packages
+choco upgrade all -y
