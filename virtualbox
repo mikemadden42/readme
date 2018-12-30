@@ -2,10 +2,18 @@
 
 VBoxManage list vms
 
-VBoxManage showvminfo "CentOS"
+VBoxManage showvminfo "kali"
 
-VBoxManage startvm "CentOS"
+VBoxManage startvm "kali"
 
-VBoxHeadless --startvm "CentOS"
+VBoxHeadless --startvm "kali"
 
-VBoxManage controlvm "CentOS" poweroff
+VBoxManage controlvm "kali" poweroff
+
+VBoxManage snapshot "kali" list
+
+VBoxManage snapshot "kali" take stable_snap
+
+VBoxManage snapshot "kali" delete stable_snap
+
+VBoxManage snapshot "kali" restore stable_snap
