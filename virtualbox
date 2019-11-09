@@ -1,4 +1,5 @@
 # http://wiki.inisec.com/index.php/Virtualbox_management_commands
+# https://blog.scottlowe.org/2016/11/10/intro-to-vbox-cli/
 
 VBoxManage list vms
 
@@ -9,6 +10,8 @@ VBoxManage startvm "kali"
 VBoxHeadless --startvm "kali"
 
 VBoxManage controlvm "kali" poweroff
+
+VBoxManage unregistervm "kali" --delete
 
 VBoxManage snapshot "kali" list
 
