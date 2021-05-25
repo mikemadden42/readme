@@ -1,3 +1,27 @@
+built-in
+========
+df -hl
+diskutil list
+hostinfo
+ls /Applications
+ls /Applications/Utilites
+mount
+sw_vers
+sysctl -a
+system_profiler
+uname -a
+
+3rd party
+=========
+brew doctor
+clinfo
+inv
+ls-devtools.sh
+macchina
+neofetch
+stats
+sysinfo
+
 # hardware
 system_profiler SPHardwareDataType
 
