@@ -1,0 +1,21 @@
+pip3 install pipenv
+
+eval "$(pipenv --completion)"
+
+pipenv install
+pipenv install flask
+
+pipenv shell
+
+pipenv run ./fub
+
+pipenv update --outdated
+pipenv update
+
+pipenv lock
+pipenv lock -r > requirements.txt
+
+pipenv check
+
+pipenv uninstall
+pipenv uninstall --all
