@@ -1,0 +1,26 @@
+# https://github.com/apple/swift-package-manager/blob/main/Documentation/Usage.md
+
+# create a new project
+mkdir hello && cd hello
+swift package init --type executable
+
+# reformat code
+swiftformat --swiftversion 5 -v .
+
+# build with debug or release configuration
+swift build -c debug
+swift build -c release
+
+# create & sign universal binary
+# https://www.smileykeith.com/2020/12/24/swiftpm-cross-compile/
+swift build -c release --arch arm64 --arch x86_64
+swift build -c release --arch arm64 --arch x86_64 -v
+codesign -s - .build/apple/Products/Release/hello
+
+# build with debug or release configuration
+swift test -c debug
+swift test -c release
+
+# clean up project
+swift package clean
+swift package reset
