@@ -1,0 +1,20 @@
+cd /Applications
+rsync -avP bbanner@lab:/home/bbanner/Downloads/xcode/Xcode_12.5.1.xip\* .
+
+# This xip command can take 10+ minutes.
+xip --expand Xcode_12.5.1.xip
+xip: signing certificate was "Software Update" (validation not attempted)
+xip: expanded items from "/Applications/Xcode_12.5.1.xip
+
+rm Xcode_12.5.1.xip
+
+sudo xcodebuild -license
+sudo xcodebuild -runFirstLaunch
+
+# This is not needed unless you are upgrading xcode versions.
+sudo xcode-select -s /Applications/Xcode.app
+
+xcodebuild -version
+swift package --version
+swift build --version
+swift test --version
