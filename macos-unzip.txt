@@ -1,0 +1,18 @@
+On macOS, which by default uses Info-Zip
+
+First list off the files to find what you want
+unzip -l my.zip
+
+Then extract file from the archive
+unzip my.zip annoying/path/to/file/in/zip
+
+Combine with -p for stdout
+unzip -p my.zip annoying/path/to/file/in/zip >./file
+
+or -j for extracting to the current directory (discard junk path)
+unzip -j my.zip annoying/path/to/file/in/zip
+
+with -d you can specify to create an arbitrary directory
+unzip -d /path/to/dir my.zip annoying/path/to/file/in/zip
+
+If you want the file in the -d directory you probably want to combine it with the -j option.
