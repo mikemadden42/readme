@@ -1,5 +1,22 @@
 ========
 
+softwareupdate --fetch-full-installer --full-installer-version 12.1
+
+hdiutil create -o /tmp/macOS-12.1 -size 14000m -volname macOS-12.1 -layout SPUD -fs HFS+J
+
+hdiutil attach /tmp/macOS-12.1.dmg -noverify -mountpoint /Volumes/macOS-12.1
+
+sudo /Applications/Install\ macOS\ Monterey.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-12.1 --nointeraction
+
+# I did encounter an issue with this detach. I had to force eject it from Finder.
+hdiutil detach /Volumes/Install*
+
+hdiutil convert /tmp/macOS-12.1.dmg -format UDTO -o ~/Desktop/macOS-12.1.cdr
+
+mv ~/Desktop/macOS-12.1.cdr ~/Desktop/macOS-12.1.iso
+
+========
+
 softwareupdate --fetch-full-installer --full-installer-version 11.5.2
 
 hdiutil create -o /tmp/macOS-11.5.2 -size 13000m -volname macOS-11.5.2 -layout SPUD -fs HFS+J
