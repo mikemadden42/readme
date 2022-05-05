@@ -1,0 +1,42 @@
+These are the most common poetry commands that I've used.
+
+The full cli reference for poetry can be found here:
+https://python-poetry.org/docs/master/cli/
+
+# Kickstart your new Python project by creating a directory structure suitable for most projects.
+poetry new my-package
+
+# If you want to name your project differently than the folder, you can pass the --name option:
+poetry new my-folder --name my-package
+
+# If you want to use a src folder, you can use the --src option:
+poetry new --src my-package
+
+# Create a pyproject.toml file interactively by prompting you to provide basic information about your package.
+poetry init
+
+# Read the pyproject.toml file from the current project, resolves the dependencies, and installs them.
+poetry install
+# Output the operations but do not execute anything (implicitly enables –verbose).
+poetry install --dry-run
+
+# In order to get the latest versions of the dependencies and to update the poetry.lock file, you should use the update command.
+poetry update
+# Output the operations but do not execute anything (implicitly enables –verbose).
+poetry update --dry-run
+
+# The add command adds required packages to your pyproject.toml and installs them.
+poetry add requests requests
+
+# The remove command removes a package from the current list of installed packages.
+poetry remove requests
+
+# The run command executes the given command inside the project’s virtualenv.
+poetry run python -V
+
+# The shell command spawns a shell, according to the $SHELL environment variable, within the virtual environment. If one doesn’t exist yet, it will be created.
+poetry shell
+
+# This command exports the lock file to other formats.
+poetry export -f requirements.txt --output requirements.txt
+poetry export -f requirements.txt --output requirements.txt --without-hashes
