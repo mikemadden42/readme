@@ -18,3 +18,9 @@ xcodebuild -version
 swift package --version
 swift build --version
 swift test --version
+
+# change to seperate xcode cli installation
+sudo xcode-select --switch /Library/Developer/CommandLineTools
+
+# change to default full xcode installation
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
