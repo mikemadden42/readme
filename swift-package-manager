@@ -7,6 +7,9 @@ swift package init --type executable
 # reformat code
 swiftformat --swiftversion 5 -v .
 
+# lint code
+swiftLint -v .
+
 # build with debug or release configuration
 swift build -c debug
 swift build -c release
