@@ -1,0 +1,49 @@
+####
+
+The following command invokes shred with its default settings and displays the progress.
+
+shred -v /dev/sdX
+
+The -z option is useful to add a final overwrite with zeros to hide shredding.
+
+shred -vz /dev/sdX
+
+Shred can also be used on a single partition, e.g. to wipe the first partition use shred -v /dev/sdX1.
+
+Alternatively, shred can be instructed to do only one pass, with entropy from e.g. /dev/urandom, and a final overwrite with zeros.
+
+shred --verbose --random-source=/dev/urandom -n1 --zero /dev/sdX
+
+####
+
+badblocks -wsv /dev/device
+
+Options:
+
+-w: do a destructive write test
+-s: show progress
+-v: be "verbose" and output bad sectors detected to stdout
+Additional options you might consider:
+
+-b number: specify the block size of the hard disk which can significantly improve testing time. (tune2fs -l partition as the root user)
+-p number: run through the extensive four pass test number of sequent iterations
+-o /path/to/output-file: print bad sectors to output-file instead of stdout
+-t test_pattern: Specify a pattern. See below.
+
+Badblocks can be made to repeatedly write a single "random pattern" with the -t random option.
+
+badblocks -wsv -t random /dev/device
+
+####
+
+Zero-fill the disk by writing a zero byte to every addressable location on the disk using the /dev/zero stream.
+
+dd if=/dev/zero of=/dev/sdX bs=4096 status=progress
+
+Or the /dev/urandom stream:
+
+dd if=/dev/urandom of=/dev/sdX bs=4096 status=progress
+
+The process is finished when dd reports No space left on device and returns control back.
+
+####
