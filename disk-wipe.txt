@@ -1,5 +1,16 @@
 ####
 
+dpkg -S /bin/dd
+coreutils: /bin/dd
+
+dpkg -S /usr/bin/shred
+coreutils: /usr/bin/shred
+
+dpkg -S /sbin/badblocks
+e2fsprogs: /sbin/badblocks
+
+####
+
 The following command invokes shred with its default settings and displays the progress.
 
 shred -v /dev/sdX
@@ -29,6 +40,8 @@ Additional options you might consider:
 -p number: run through the extensive four pass test number of sequent iterations
 -o /path/to/output-file: print bad sectors to output-file instead of stdout
 -t test_pattern: Specify a pattern. See below.
+
+badblocks -wsv -o badblocks.log /dev/device
 
 Badblocks can be made to repeatedly write a single "random pattern" with the -t random option.
 
