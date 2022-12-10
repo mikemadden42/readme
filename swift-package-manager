@@ -27,3 +27,6 @@ swift test -c release
 # clean up project
 swift package clean
 swift package reset
+
+# format project
+swiftformat --swiftversion 5 -v .
