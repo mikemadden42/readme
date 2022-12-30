@@ -11,3 +11,7 @@ sudo vi /etc/apt/sources.list
 puppet-lint puppet/manifests/site_trusty.pp
 sudo puppet apply puppet/manifests/site_trusty.pp
 sudo apt-get install bash coreutils firefox git gnome-terminal golang ipython openssl python vim zsh
+
+
+# remove adds in apt
+sudo pro config set apt_news=false
