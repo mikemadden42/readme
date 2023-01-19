@@ -2,6 +2,8 @@ https://github.com/pyenv/pyenv#getting-pyenv
 https://github.com/pyenv/pyenv-installer
 https://github.com/pyenv/pyenv/wiki#suggested-build-environment
 https://github.com/pyenv/pyenv/blob/master/COMMANDS.md
+https://blog.jayway.com/2019/12/28/pyenv-poetry-saviours-in-the-python-chaos/
+https://realpython.com/intro-to-pyenv/
 
 ####
 
@@ -33,10 +35,14 @@ pyenv update
 
 pyenv install -l
 
+pyenv install -l | grep " 3\.11"
+pyenv install -l | grep " 3\.12"
+
 pyenv install 3.8.16
 pyenv install 3.9.16
 pyenv install 3.10.9
 pyenv install 3.11.1
+pyenv install -v 3.11.1
 
 pyenv versions
 
