@@ -1,0 +1,9 @@
+General setup
+- license pycharm
+- install IdeaVim plugin
+- set IDE font to 14.0
+- Add black as external tool - https://black.readthedocs.io/en/stable/integrations/editors.html
+- set python interpreter to use poetry's current setup
+- allow for repeated keys
+defaults write com.jetbrains.pycharm ApplePressAndHoldEnabled -bool false
+defaults read com.jetbrains.pycharm ApplePressAndHoldEnabled
