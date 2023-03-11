@@ -1,0 +1,4 @@
+# write out a 32 GB file
+# on macOS use gdd (brew install coreutils) instead of dd
+time dd if=/dev/zero of=test.out bs=32768 count=1000000
+time dd if=/dev/zero of=test.out bs=32768 count=1000000 status=progress
