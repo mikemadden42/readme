@@ -3,6 +3,7 @@ General setup
 - install IdeaVim plugin
 - set IDE font to 14.0
 - Add black as external tool - https://black.readthedocs.io/en/stable/integrations/editors.html
+- Add ruff as external tool - https://beta.ruff.rs/docs/editor-integrations/#pycharm-external-tool
 - set python interpreter to use poetry's current setup
 - allow for repeated keys
 defaults write com.jetbrains.pycharm ApplePressAndHoldEnabled -bool false
