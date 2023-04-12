@@ -1,0 +1,32 @@
+brew pin python3
+brew unpin python3
+
+brew update -v && brew outdated
+
+brew outdated 2>&1 | tee brew-outdated.log
+
+update_brew.sh 2>&1 | tee update_brew.log
+
+uninstall_poetry.sh 2>&1 | tee uninstall_poetry.log
+
+cd $HOME/Library/Caches/pypoetry/virtualenvs
+ls -d */ | sd '/' '' > ~/venvs-01.log
+cd
+
+rm -rf $HOME/Library/Caches/pypoetry
+
+install_poetry.sh 2>&1 | tee install_poetry.log
+
+update_poetry.sh 2>&1 | tee update_poetry.log
+
+Remove projects from pycharm.
+
+Remove .idea directory from each git repo.
+
+Resetup poetry environment with 'poetry install' in each git repo.
+
+Open project in pycharm.
+
+Select the newly created interpreter.
+- https://www.jetbrains.com/help/pycharm/installing-uninstalling-and-reloading-interpreter-paths.html
+
