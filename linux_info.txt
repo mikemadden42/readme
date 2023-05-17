@@ -1,5 +1,7 @@
 # network name
 uname -n
+hostnamectl
+hostname
 
 # kernel version
 uname -v
@@ -21,13 +23,17 @@ uname -a
 
 # hardware summary
 sudo lshw -short
+hwinfo
 
 # cpu summary
+nproc
 lscpu
 
 # block device summary
 lsblk
 lsblk -a
+sudo fdisk -l
+df -hl
 
 # pci summary
 lspci
@@ -47,6 +53,10 @@ free -h
 sudo dmidecode -t memory
 sudo dmidecode -t bios
 sudo dmidecode -t system
+
+# distro information
+lsb_release -a
+lsb_release -sir
 
 # system summary
 neofetch
