@@ -28,6 +28,7 @@ hwinfo
 # cpu summary
 nproc
 lscpu
+lscpu --all --extended
 
 # block device summary
 lsblk
