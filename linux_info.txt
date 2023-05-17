@@ -1,0 +1,56 @@
+# network name
+uname -n
+
+# kernel version
+uname -v
+
+# kernel release
+uname -r
+
+# machine type
+uname -m
+uname -p
+uname -i
+
+# system name
+uname -s
+uname -o
+
+# all uname values
+uname -a
+
+# hardware summary
+sudo lshw -short
+
+# cpu summary
+lscpu
+
+# block device summary
+lsblk
+lsblk -a
+
+# pci summary
+lspci
+lspci -v
+
+# usb summary
+lsusb
+
+# memory summary
+free
+free -m
+free -g
+free -t
+free -h
+
+# dmi info
+sudo dmidecode -t memory
+sudo dmidecode -t bios
+sudo dmidecode -t system
+
+# system summary
+neofetch
+inxi
+inxi -Fx
+macchina
+
