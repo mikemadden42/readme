@@ -10,6 +10,7 @@ sw_vers
 sysctl -a
 system_profiler
 uname -a
+ioreg -p IOUSB
 
 3rd party
 =========
@@ -42,3 +43,6 @@ system_profiler SPNetworkDataType
 
 # firewall
 system_profiler SPFirewallDataType
+
+# usb
+system_profiler SPUSBDataType
