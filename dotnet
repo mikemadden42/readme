@@ -1,0 +1,22 @@
+Install these packages with choco:
+visualstudio2022-workload-manageddesktopbuildtools
+dotnet-6.0-sdk-4xx
+
+# create a new project
+New-Item -Path hello -Type Directory
+Set-Location -Path hello
+dotnet new console
+
+# create a release build
+dotnet build --configuration Release
+
+# run a release build
+dotnet run --configuration Release
+
+# list dotnet info
+dotnet --list-runtimes
+dotnet --list-sdks
+dotnet --info
+
+# build a single C# file into an exe
+csc /target:exe /out:hello.exe /optimize hello.cs
