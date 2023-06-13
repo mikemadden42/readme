@@ -1,9 +1,0 @@
-$ go version -m ~/go/bin/stats
-go/bin/stats: go1.17.6
-	path	github.com/mikemadden42/stats
-	mod	github.com/mikemadden42/stats	v0.0.0-20220109012508-42219f575dac	h1:Iulcyy59Ee0bfJfqs9qCZ8QFrSOVoaaV+DbyK29UpYo=
-	dep	github.com/dustin/go-humanize	v1.0.0	h1:VSnTsYCnlFHaM2/igO1h6X3HA71jcobQuxemgkq4zYo=
-	dep	github.com/elastic/go-sysinfo	v1.7.1	h1:Wx4DSARcKLllpKT2TnFVdSUJOsybqMYCNQZq1/wO+s0=
-	dep	github.com/joeshaw/multierror	v0.0.0-20140124173710-69b34d4ec901	h1:rp+c0RAYOWj8l6qbCUTSiRLG/iKnW3K3/QfPPuSsBt4=
-	dep	github.com/pkg/errors	v0.9.1	h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
-	dep	howett.net/plist	v1.0.0	h1:7CrbWYbPPO/PyNy38b2EB/+gYbjCe2DXBxgtOOZbSQM=
