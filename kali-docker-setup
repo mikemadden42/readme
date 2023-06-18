@@ -1,0 +1,27 @@
+docker run -it --rm kalilinux/kali-rolling:latest /bin/bash
+docker run -it --name kali kalilinux/kali-rolling:latest /bin/bash
+docker exec -it kali /bin/bash
+docker container start kali
+docker container stop kali
+
+set -o vi
+cd
+
+apt update
+
+apt list --upgradable
+
+apt dist-upgrade -y
+
+mkdir src
+cd src
+
+apt install -y git sudo
+
+git clone https://github.com/mikemadden42/ripley.git
+cd ripley/
+
+./setup_ansible_kali.sh
+
+ansible-playbook -c local -i hosts.txt kali-mini.yml --check
+ansible-playbook -c local -i hosts.txt kali-mini.yml
