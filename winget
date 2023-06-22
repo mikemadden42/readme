@@ -1,0 +1,32 @@
+# https://adamtheautomator.com/winget/
+# https://www.makeuseof.com/how-to-download-install-and-use-the-windows-package-manager-winget/
+
+# search for a tool
+winget search vlc
+
+# install a tool
+winget install VideoLAN.VLC
+
+# uninstall a tool
+winget uninstall VideoLAN.VLC
+
+# show details for a tool
+winget show VideoLAN.VLC
+
+# list upgrades
+winget upgrade
+
+# upgrade a tool
+winget upgrade VideoLAN.VLC
+
+# upgrade all tools
+winget upgrade --all
+
+# list all available tools
+winget list
+
+# export list of installed tools
+winget export -o .\winget-export.json
+
+# import list tools to install
+winget import -i .\winget-export.json --accept-package-agreements
