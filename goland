@@ -1,0 +1,6 @@
+General setup
+- license goland
+- install IdeaVim plugin
+- set IDE font to 14.0
+- allow for repeated keys
+defaults write -g ApplePressAndHoldEnabled 0
