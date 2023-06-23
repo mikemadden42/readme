@@ -3,6 +3,7 @@
 # https://learn.microsoft.com/en-us/windows/package-manager/winget/
 # https://tech.nicolonsky.ch/inside-windows-package-manager/
 # https://www.makeuseof.com/how-to-download-install-and-use-the-windows-package-manager-winget/
+# https://winget.run/
 
 # search for a tool
 winget search vlc
