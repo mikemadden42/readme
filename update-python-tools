@@ -3,7 +3,7 @@ brew unpin python3
 
 brew update -v && brew outdated
 
-brew outdated 2>&1 | tee brew-outdated.log
+brew outdated -v 2>&1 | tee brew-outdated-v.log
 
 update_brew.sh 2>&1 | tee update_brew.log
 
