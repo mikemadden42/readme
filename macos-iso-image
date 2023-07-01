@@ -1,59 +1,59 @@
 ========
 
-softwareupdate --fetch-full-installer --full-installer-version 13.2
+softwareupdate --fetch-full-installer --full-installer-version 13.4.1
 
-hdiutil create -o /tmp/macOS-13.2 -size 14100m -volname macOS-13.2 -layout SPUD -fs HFS+J
+hdiutil create -o /tmp/macOS-13.4.1 -size 14100m -volname macOS-13.4.1 -layout SPUD -fs HFS+J
 
-hdiutil attach /tmp/macOS-13.2.dmg -noverify -mountpoint /Volumes/macOS-13.2
+hdiutil attach /tmp/macOS-13.4.1.dmg -noverify -mountpoint /Volumes/macOS-13.4.1
 
-sudo /Applications/Install\ macOS\ Ventura.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-13.2 --nointeraction
+sudo /Applications/Install\ macOS\ Ventura.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-13.4.1 --nointeraction
 
 hdiutil detach /Volumes/Install*
 
 # If you encounter an issue with this detach pass -force.
 hdiutil detach /Volumes/Install* -force
 
-hdiutil convert /tmp/macOS-13.2.dmg -format UDTO -o ~/Desktop/macOS-13.2.cdr
+hdiutil convert /tmp/macOS-13.4.1.dmg -format UDTO -o ~/Desktop/macOS-13.4.1.cdr
 
-mv ~/Desktop/macOS-13.2.cdr ~/Desktop/macOS-13.2.iso
+mv ~/Desktop/macOS-13.4.1.cdr ~/Desktop/macOS-13.4.1.iso
 
 ========
 
-softwareupdate --fetch-full-installer --full-installer-version 12.6.3
+softwareupdate --fetch-full-installer --full-installer-version 12.6.7
 
-hdiutil create -o /tmp/macOS-12.6.3 -size 14000m -volname macOS-12.6.3 -layout SPUD -fs HFS+J
+hdiutil create -o /tmp/macOS-12.6.7 -size 14000m -volname macOS-12.6.7 -layout SPUD -fs HFS+J
 
-hdiutil attach /tmp/macOS-12.6.3.dmg -noverify -mountpoint /Volumes/macOS-12.6.3
+hdiutil attach /tmp/macOS-12.6.7.dmg -noverify -mountpoint /Volumes/macOS-12.6.7
 
-sudo /Applications/Install\ macOS\ Monterey.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-12.6.3 --nointeraction
+sudo /Applications/Install\ macOS\ Monterey.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-12.6.7 --nointeraction
 
 hdiutil detach /Volumes/Install*
 
 # If you encounter an issue with this detach pass -force.
 hdiutil detach /Volumes/Install* -force
 
-hdiutil convert /tmp/macOS-12.6.3.dmg -format UDTO -o ~/Desktop/macOS-12.6.3.cdr
+hdiutil convert /tmp/macOS-12.6.7.dmg -format UDTO -o ~/Desktop/macOS-12.6.7.cdr
 
-mv ~/Desktop/macOS-12.6.3.cdr ~/Desktop/macOS-12.6.3.iso
+mv ~/Desktop/macOS-12.6.7.cdr ~/Desktop/macOS-12.6.7.iso
 
 ========
 
-softwareupdate --fetch-full-installer --full-installer-version 11.7.3
+softwareupdate --fetch-full-installer --full-installer-version 11.7.8
 
-hdiutil create -o /tmp/macOS-11.7.3 -size 13000m -volname macOS-11.7.3 -layout SPUD -fs HFS+J
+hdiutil create -o /tmp/macOS-11.7.8 -size 13000m -volname macOS-11.7.8 -layout SPUD -fs HFS+J
 
-hdiutil attach /tmp/macOS-11.7.3.dmg -noverify -mountpoint /Volumes/macOS-11.7.3
+hdiutil attach /tmp/macOS-11.7.8.dmg -noverify -mountpoint /Volumes/macOS-11.7.8
 
-sudo /Applications/Install\ macOS\ Big\ Sur.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-11.7.3 --nointeraction
+sudo /Applications/Install\ macOS\ Big\ Sur.app/Contents/Resources/createinstallmedia --volume /Volumes/macOS-11.7.8 --nointeraction
 
 hdiutil detach /Volumes/Install*
 
 # If you encounter an issue with this detach pass -force.
 hdiutil detach /Volumes/Install* -force
 
-hdiutil convert /tmp/macOS-11.7.3.dmg -format UDTO -o ~/Desktop/macOS-11.7.3.cdr
+hdiutil convert /tmp/macOS-11.7.8.dmg -format UDTO -o ~/Desktop/macOS-11.7.8.cdr
 
-mv ~/Desktop/macOS-11.7.3.cdr ~/Desktop/macOS-11.7.3.iso
+mv ~/Desktop/macOS-11.7.8.cdr ~/Desktop/macOS-11.7.8.iso
 
 ========
 
