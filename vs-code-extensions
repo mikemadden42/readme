@@ -1,4 +1,3 @@
-bungcip.better-toml
 DavidAnson.vscode-markdownlint
 DimitarNonov.jellybeans-theme
 frhtylcn.pythonsnippets
@@ -20,6 +19,7 @@ redhat.vscode-xml
 redhat.vscode-yaml
 rust-lang.rust-analyzer
 sswg.swift-lang
+tamasfe.even-better-toml
 vadimcn.vscode-lldb
 vscodevim.vim
 wholroyd.jinja
