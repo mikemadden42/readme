@@ -1,0 +1,8 @@
+- powershell not available on arm64
+- add 'bindkey -v' to .zshrc
+- copy over dotfiles - https://github.com/mikemadden42/dotfiles
+- run ansible - https://github.com/mikemadden42/ripley
+- put network in bridged mode
+- common display resolutions - 1400x900, 1400x1000, 1680x1050, 2560x1440
+- add cpu monitor to top panel
+- qterminal - 12 pt font - dark pastels scheme
