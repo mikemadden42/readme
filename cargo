@@ -1,0 +1,11 @@
+cargo test --bins
+cargo test --lib
+cargo test --examples
+cargo test --benches
+cargo test --doc
+
+cargo build --bins
+cargo build --lib
+cargo build --examples
+cargo build --benches
+cargo build --tests
