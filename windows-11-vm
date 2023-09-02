@@ -1,0 +1,9 @@
+- 1400x-1050 screen resolution
+- 100% scale
+- pin terminal
+- set account password
+- Get-ExecutionPoligy
+- Set-ExecutionPolicy RemoteSigned
+- Expand-Archive
+- Compress-Archive
+- setup network to bridged
