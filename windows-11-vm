@@ -7,3 +7,5 @@
 - Expand-Archive
 - Compress-Archive
 - setup network to bridged
+- winget upgrade
+- winget upgrade --all
