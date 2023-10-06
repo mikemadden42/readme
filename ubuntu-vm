@@ -1,0 +1,24 @@
+- Run 'set -o vi' in Terminal.
+
+- Apply updates.
+dpkg -l > pkgs.base
+sudo apt update
+apt list --upgradable 2>&1 | tee apt-list--upgradeable.log
+sudo apt dist-upgrade && sudo apt autoclean && sudo apt autoremove
+dpkg -l > pkgs.curr
+sudo apt install git vim-nox
+
+- copy over dotfiles - https://github.com/mikemadden42/dotfiles
+
+- run ansible - https://github.com/mikemadden42/ripley
+git clone https://github.com/mikemadden42/ripley.git
+cd ripley
+./setup_ansible_ubuntu_jammy.sh
+sudo ansible-playbook -c local -i hosts.txt ubuntu-jammy.yml --check
+sudo ansible-playbook -c local -i hosts.txt ubuntu-jammy.yml
+
+- put network in bridged mode
+
+- common display resolutions - 1400x900, 1400x1050, 1680x1050, 2560x1600
+
+- Terminal - Monospace 12 pt font - Tango dark scheme
