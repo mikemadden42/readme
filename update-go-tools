@@ -6,3 +6,4 @@ go list -u -m -json all | go-mod-outdated -update -direct -style markdown
 gomajor
 
 gomajor list
+gomajor get all
