@@ -1,3 +1,4 @@
+docker pull kalilinux/kali-rolling:latest
 docker run -it --rm kalilinux/kali-rolling:latest /bin/bash
 docker run -it --name kali kalilinux/kali-rolling:latest /bin/bash
 docker exec -it kali /bin/bash
@@ -11,12 +12,12 @@ apt update
 
 apt list --upgradable
 
-apt dist-upgrade -y
+apt upgrade -y
 
 mkdir src
 cd src
 
-apt install -y git sudo
+apt install -y git sudo vim-nox
 
 git clone https://github.com/mikemadden42/ripley.git
 cd ripley/
