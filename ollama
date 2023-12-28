@@ -13,3 +13,9 @@ chmod 755 ./ollama-darwin
 
 # run a model
 ./ollama-darwin run dolphin-phi:latest
+
+# list models
+./ollama-darwin list
+
+# remove a model
+./ollama-darwin rm dolphin-phi:latest
