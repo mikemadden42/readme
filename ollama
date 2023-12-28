@@ -1,0 +1,15 @@
+# find the graphics card on macOS
+system_profiler SPDisplaysDataType
+
+# get the latest ollama release
+curl -L -R -O https://github.com/jmorganca/ollama/releases/download/v0.1.17/ollama-darwin
+chmod 755 ./ollama-darwin
+
+# start ollama
+./ollama-darwin serve 2>&1 | tee ollama-darwin-serve.log
+
+# pull a model
+./ollama-darwin pull dolphin-phi:latest
+
+# run a model
+./ollama-darwin run dolphin-phi:latest
