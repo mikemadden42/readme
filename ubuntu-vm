@@ -4,9 +4,9 @@
 dpkg -l > pkgs.base
 sudo apt update
 apt list --upgradable 2>&1 | tee apt-list--upgradeable.log
-sudo apt dist-upgrade && sudo apt autoclean && sudo apt autoremove
+sudo apt upgrade -y && sudo apt autoclean -y && sudo apt autoremove -y
 dpkg -l > pkgs.curr
-sudo apt install git vim-nox
+sudo apt install git vim-nox -y
 
 - copy over dotfiles - https://github.com/mikemadden42/dotfiles
 
@@ -17,8 +17,29 @@ cd ripley
 sudo ansible-playbook -c local -i hosts.txt ubuntu-jammy.yml --check
 sudo ansible-playbook -c local -i hosts.txt ubuntu-jammy.yml
 
+- Install HWE kernel
+sudo apt-get install --install-recommends linux-generic-hwe-22.04 -y
+
 - put network in bridged mode
 
 - common display resolutions - 1400x900, 1400x1050, 1680x1050, 2560x1600
 
 - Terminal - Monospace 12 pt font - Tango dark scheme
+
+- General upkeep
+sudo fstrim -av
+sudo updatedb
+
+- Update grub
+sudo vim /etc/default/grub
+
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=30
+GRUB_DISTRIBUTOR=`lsb_release -i -s 2> /dev/null || echo Debian`
+GRUB_CMDLINE_LINUX_DEFAULT=""
+GRUB_CMDLINE_LINUX=""
+
+GRUB_SAVEDEFAULT="true"
+GRUB_DEFAULT="saved"
+
+sudo update-grub
