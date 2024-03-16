@@ -43,3 +43,33 @@ GRUB_SAVEDEFAULT="true"
 GRUB_DEFAULT="saved"
 
 sudo update-grub
+
+- Adjust settings
+
+Background
+- Choose a dark background.
+
+Appearance
+- Set appearance to dark.
+- Set color to blue.
+- Uncheck 'Show Personal Folder'.
+- Uncheck 'Auto-hide the dock'.
+
+Privacy
+- Uncheck 'Connectivity Checking'.
+- Turn off location services.
+- Turn off file history.
+- Choose never send error reports.
+
+Sharing
+- Set computer name.
+
+Display
+- Set desired screen resolution.
+
+Removable media
+- Set all to ask what to do.
+
+Users
+- Set icon for user.
+- Setup fingerprint reader.
