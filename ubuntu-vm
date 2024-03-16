@@ -64,8 +64,16 @@ Privacy
 Sharing
 - Set computer name.
 
+Power
+- Turn off automatic suspend.
+
+Sound
+- Test output device.
+- Set sonar as alert sound.
+
 Display
 - Set desired screen resolution.
+- Make the external display the primary display.
 
 Removable media
 - Set all to ask what to do.
