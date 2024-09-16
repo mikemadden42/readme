@@ -14,6 +14,8 @@ https://ziglang.org/learn/build-system/
 https://github.com/ziglang/vscode-zig
 https://marketplace.visualstudio.com/items?itemName=ziglang.vscode-zig
 
+https://github.com/ziglang/zig.vim
+
 https://learnxinyminutes.com/docs/zig/
 https://gist.github.com/ityonemo/769532c2017ed9143f3571e5ac104e50
 
