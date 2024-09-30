@@ -21,3 +21,6 @@ https://gist.github.com/ityonemo/769532c2017ed9143f3571e5ac104e50
 
 https://dev.to/michidk/after-a-day-of-programming-in-zig-463f
 https://dev.to/arpitsr/writing-a-local-password-generator-in-zig-and-storing-it-in-a-config-file-1llc
+
+zig build --release=fast
+zig build --release=small
