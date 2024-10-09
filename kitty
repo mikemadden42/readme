@@ -1,6 +1,9 @@
 # list fonts
 kitty list-fonts
 
+# debug fonts
+kitty --debug-font-fallback
+
 # list version
 kitty --version
 
