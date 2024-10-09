@@ -1,0 +1,12 @@
+# list fonts
+kitty list-fonts
+
+# list version
+kitty --version
+
+# display an image
+kitty icat ~/Pictures/hulk-4k.jpeg
+
+# skip comments and whitespace in kitty config
+egrep -v ^# .config/kitty/kitty.conf | grep '[[:space:]]'
+
