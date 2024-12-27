@@ -1,0 +1,2 @@
+# summarize number of commits by author
+git shortlog -s -n
