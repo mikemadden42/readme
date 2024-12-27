@@ -24,3 +24,7 @@ https://dev.to/arpitsr/writing-a-local-password-generator-in-zig-and-storing-it-
 
 zig build --release=fast
 zig build --release=small
+
+zig build -Doptimize=ReleaseFast
+
+zig build -Doptimize=ReleaseFast -Dcpu=native -j$(nproc)
