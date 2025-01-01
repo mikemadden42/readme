@@ -2,20 +2,20 @@
 system_profiler SPDisplaysDataType
 
 # get the latest ollama release
-curl -L -R -O https://github.com/jmorganca/ollama/releases/download/v0.1.17/ollama-darwin
+curl -L -R -O https://github.com/ollama/ollama/releases/download/v0.5.4/ollama-darwin
 chmod 755 ./ollama-darwin
 
 # start ollama
 ./ollama-darwin serve 2>&1 | tee ollama-darwin-serve.log
 
 # pull a model
-./ollama-darwin pull dolphin-phi:latest
+./ollama-darwin pull llama3.1:8b
 
 # run a model
-./ollama-darwin run dolphin-phi:latest
+./ollama-darwin run llama3.1:8b
 
 # list models
 ./ollama-darwin list
 
 # remove a model
-./ollama-darwin rm dolphin-phi:latest
+./ollama-darwin rm llama3.1:8b
