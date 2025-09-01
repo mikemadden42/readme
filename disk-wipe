@@ -1,5 +1,12 @@
 ####
 
+# Determine if disk is rotational.
+
+lsblk -d -o name,rota
+smartctl -a /dev/sda | grep rota
+
+####
+
 dpkg -S /bin/dd
 coreutils: /bin/dd
 
@@ -58,5 +65,9 @@ Or the /dev/urandom stream:
 dd if=/dev/urandom of=/dev/sdX bs=4096 status=progress
 
 The process is finished when dd reports No space left on device and returns control back.
+
+####
+
+nwipe
 
 ####
