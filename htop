@@ -1,0 +1,8 @@
+htop build
+
+git describe --abbrev=0 --tags
+3.4.1
+git co 3.4.1
+./autogen.sh && ./configure && make -j4
+strip htop; rsync -avP htop ~/bin
+

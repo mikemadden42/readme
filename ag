@@ -1,0 +1,7 @@
+ag build
+
+git describe --tags $(git rev-list --tags --max-count=1)
+2.2.0
+git co 2.2.0
+./build.sh
+strip ag; rsync -avP ag ~/bin

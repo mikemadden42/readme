@@ -1,0 +1,11 @@
+screen build
+
+git describe --tags $(git rev-list --tags --max-count=1)
+v.5.0.1
+git co v.5.0.1
+cd src
+autoreconf --force --install --verbose -Wall
+./configure
+make -j4
+strip screen; rsync -avP screen ~/bin
+

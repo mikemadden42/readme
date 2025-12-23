@@ -1,0 +1,7 @@
+ncdu build
+
+git co v1.22
+autoreconf --force --install --verbose -Wall
+./configure
+make -j4
+strip ncdu; rsync -avP ncdu ~/bin

@@ -1,0 +1,7 @@
+ninja build
+
+git describe --tags $(git rev-list --tags --max-count=1)
+v1.13.2
+git co v1.13.2
+rm -rf build && mkdir build && cd build && cmake -GNinja -DCMAKE_BUILD_TYPE=Release .. && ninja
+strip ninja; rsync -avP ninja ~/bin
