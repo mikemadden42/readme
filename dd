@@ -1,0 +1,9 @@
+sudo dd if=AlmaLinux-9.7-x86_64-dvd.iso of=/dev/sdb bs=4M status=progress oflag=direct conv=fsync
+
+- bs=4M (Block Size): The default 512 bytes or even 4k is extremely slow because it forces the CPU to issue thousands of tiny write requests. 4M is the "sweet spot" for most modern USB flash drives, allowing the drive's internal controller to optimize writes without overwhelming the memory buffer.
+- oflag=direct (Direct I/O): This is the most important "pro" flag. By default, Linux caches writes in RAM. This often makes dd look like it finished instantly, but the data is still trickling onto the USB drive in the background. oflag=direct bypasses the kernel cache, so the status=progress you see is the actual speed of the hardware.
+- conv=fsync (Synchronized Write): This ensures that dd does not exit until every single bit of data has been physically committed to the storage medium. It's a safer, built-in version of the manual sync command you were using.
+
+If you are on a system where oflag=direct isn't supported (like some older versions or different Unix flavors), use conv=fdatasync:
+
+- sudo dd if=almalinux-9.7.iso of=/dev/sdb bs=1M status=progress conv=fdatasync
