@@ -1,5 +1,8 @@
 neovim build
 
+rpm -q cmake curl gcc gettext git glibc-gconv-extra make ninja-build
+sudo dnf install -y cmake curl gcc gettext git glibc-gconv-extra make ninja-build
+
 git co stable 
 
 make distclean
