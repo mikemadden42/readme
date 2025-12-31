@@ -1,0 +1,9 @@
+neovim build
+
+git co stable 
+
+make distclean
+
+make -j$(nproc) CMAKE_BUILD_TYPE=Release CMAKE_EXTRA_FLAGS="-DUSE_BUNDLED=ON -DCMAKE_INSTALL_PREFIX=$HOME/opt/neovim-stable"
+
+make install
