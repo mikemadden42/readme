@@ -9,3 +9,8 @@ curl -C - -O -R https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.21.tar.xz
 
 # resume download of single file, keep remote timestamp, follow redirect
 curl -C - -O -R -L https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.4.21.tar.xz
+
+# -L - follow redirect
+# -R - use remote time
+# -O - use remote name
+curl -L -R -O URL
