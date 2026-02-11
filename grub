@@ -1,5 +1,12 @@
-# modern approach
-grub2-mkconfig -o /boot/grub2/grub.cfg
+# 1. Edit /etc/default/grub and add/change these lines:
+GRUB_TIMEOUT=30
+GRUB_TIMEOUT_STYLE=menu
 
-# old approach
-grub2-mkconfig -o /boot/efi/EFI/almalinux/grub.cfg
+# 2. Update the config (The ONLY command needed for BIOS & UEFI on Alma 9+)
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+
+# 3. Force the menu to show (Crucial for Alma 9/10 to override "boot success" logic)
+sudo grub2-editenv - unset menu_auto_hide
+
+# 4. Verify the hidden flag is gone
+sudo grub2-editenv - list
