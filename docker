@@ -34,8 +34,8 @@ sudo docker run -i -t centos:latest /bin/bash
 sudo docker run -i -t ubuntu:latest /bin/bash
 
 # run an interactive container & remove it upon exit
-sudo docker run -i -t -rm centos:latest /bin/bash
-sudo docker run -i -t -rm ubuntu:latest /bin/bash
+sudo docker run -i -t --rm centos:latest /bin/bash
+sudo docker run -i -t --rm ubuntu:latest /bin/bash
 
 # run an interactive container & give it a name
 sudo docker run --name alpine_dev -i -t alpine:3.5 /bin/sh
@@ -99,7 +99,7 @@ sudo docker run --rm -v "$PWD":/usr/src/myapp -w /usr/src/myapp -e GOOS=linux -e
 # list all orphaned volumes
 sudo docker volume ls -qf dangling=true
 # eliminate all orphaned volumes
-sudo docker volume rm $(docker volume ls -qf dangling=true)
+sudo docker volume rm $(sudo docker volume ls -qf dangling=true)
 
 # manage disk space used by docker
 docker system df
