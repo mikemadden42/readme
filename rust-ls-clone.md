@@ -10,8 +10,8 @@ Working title — pick a real name when creating the repo.
 - Color output
 - `sweep`-style organization (group by extension)
 - `tidyhome`-style moving (sort into subdirs by extension)
-- Linux + macOS only
-- Single static binary on Linux (musl); self-contained on macOS
+- Linux + macOS first; Windows possible with a reduced `-l` format
+- Single static binary on Linux (musl); self-contained on macOS and Windows
 
 ## Why Rust
 
@@ -27,7 +27,7 @@ Working title — pick a real name when creating the repo.
 - `walkdir` — recursive traversal
 - `terminal_size` — terminal width for column layout
 - `jiff` or `time` — timestamp formatting
-- `nix` — Unix metadata (uid/gid → name, mode bits) on Linux/macOS
+- `nix` — Unix metadata (uid/gid → name, mode bits) on Linux/macOS only; gate behind `cfg(unix)`
 
 ## Feature scope
 
@@ -71,6 +71,13 @@ strip = true
 - Linux static: `cargo build --release --target x86_64-unknown-linux-musl`
 - macOS: per-arch builds, optional `lipo` for universal
 - GitHub Actions release workflow once basics work
+
+## Windows notes
+
+- Default listing, `sweep`, and `tidy` work as-is — pure Rust + cross-platform crates
+- `-l` long listing: skip POSIX perms/owner/group; show size, mtime, and basic attrs (readonly, hidden) instead. See how `eza` and `lsd` handle this
+- Hidden files: `.`-prefix on Unix, `FILE_ATTRIBUTE_HIDDEN` on Windows — check both
+- ANSI colors: fine on Windows Terminal; for legacy `cmd.exe`, enable VT processing via `enable-ansi-support` crate or similar
 
 ## Open questions
 
