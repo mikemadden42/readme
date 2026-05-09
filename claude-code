@@ -1,0 +1,11 @@
+# shift+enter does not work on ptyxis
+# in claude code, shift+enter is meant to insert a newline for multi-line prompts
+# on ptyxis it submits instead because the terminal sends the same code as enter
+
+# fix: configure terminal keybindings (works for vs code, iterm2, kitty)
+/terminal-setup
+
+# alternative: insert a newline with ctrl+j
+
+# alternative: type a backslash then press enter
+\
