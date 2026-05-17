@@ -1,0 +1,75 @@
+# set up the build directory layout (name is <package>_<version>_<arch>)
+mkdir -p mypkg_1.0.0_amd64/DEBIAN
+mkdir -p mypkg_1.0.0_amd64/usr/local/bin
+
+# drop your binary at the install path
+cp mypkg mypkg_1.0.0_amd64/usr/local/bin/mypkg
+
+# write the control file (required: Package, Version, Architecture, Maintainer, Description)
+cat > mypkg_1.0.0_amd64/DEBIAN/control <<'EOF'
+Package: mypkg
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Your Name <you@example.com>
+Description: One-line summary
+ Longer description, each line indented with one space.
+ Use a single dot on its own line for blank paragraphs.
+EOF
+
+# fix permissions
+chmod 755 mypkg_1.0.0_amd64/DEBIAN
+chmod 755 mypkg_1.0.0_amd64/usr/local/bin/mypkg
+
+# build the .deb (--root-owner-group forces uid/gid 0 inside the archive)
+dpkg-deb --build --root-owner-group mypkg_1.0.0_amd64
+
+# inspect the result
+dpkg-deb --info     mypkg_1.0.0_amd64.deb
+dpkg-deb --contents mypkg_1.0.0_amd64.deb
+lintian             mypkg_1.0.0_amd64.deb
+
+# install (the ./ is required so apt resolves declared deps; plain dpkg -i won't)
+sudo apt install ./mypkg_1.0.0_amd64.deb
+
+# remove
+sudo apt remove mypkg
+
+# add maintainer scripts: preinst / postinst / prerm / postrm (mode 755) in DEBIAN/
+# common uses: enable a systemd unit, create a system user, run update-desktop-database
+
+# declare dependencies in DEBIAN/control
+# Depends: libc6 (>= 2.31), curl
+
+# derive shared-library deps automatically
+dpkg-shlibdeps mypkg_1.0.0_amd64/usr/local/bin/mypkg
+
+# preserve user edits to config files across upgrades
+# list paths (one per line) in DEBIAN/conffiles
+
+
+# proper debian packaging (for uploading to debian/ubuntu or lintian-clean builds)
+
+# install tooling
+sudo apt install build-essential devscripts debhelper dh-make
+
+# from upstream source tree, generate the debian/ skeleton
+cd mypkg-1.0.0
+dh_make --createorig -s -y
+
+# edit debian/control, debian/changelog, debian/rules
+
+# build the .deb in the parent directory
+dpkg-buildpackage -us -uc -b
+
+# reference: https://www.debian.org/doc/manuals/maint-guide/
+
+
+# useful tooling
+# lintian      - static checks; run before sharing the .deb
+# pbuilder     - clean-chroot builds; catches missing build-deps
+# sbuild       - similar to pbuilder, used by debian buildds
+# fpm          - multi-format packager (.deb/.rpm/.pkg); minimal config
+# cargo-deb    - emit a .deb from a rust crate
+# nfpm         - emit a .deb (or .rpm) from a single yaml config; common in go projects
