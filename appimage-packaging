@@ -1,0 +1,160 @@
+# appimages are self-contained, single-file linux executables that bundle the
+# app plus all libraries. no installation, no root, no central store.
+#
+# unique vs snap/flatpak:
+# - single file you chmod +x and run; nothing to install
+# - no sandbox by default (firejail / bubblewrap can be layered on externally)
+# - no central distribution channel (AppImageHub is just a community catalog;
+#   most appimages ship via direct download / github releases)
+# - no system integration by default (.desktop entries, mime types) — appimaged
+#   or AppImageLauncher add that on the user's side
+# - portability target: build on the OLDEST distro you want to support
+#   (glibc is forward-compatible, not backward) — typically ubuntu 20.04 lts
+#   or older for broadest reach
+
+
+# install tooling
+
+# appimagetool: bundles an AppDir into a .AppImage
+wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+chmod +x appimagetool-x86_64.AppImage
+sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
+
+# linuxdeploy: modern alternative; also resolves shared lib deps and has plugins
+# for qt / gtk
+wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+chmod +x linuxdeploy-x86_64.AppImage
+sudo mv linuxdeploy-x86_64.AppImage /usr/local/bin/linuxdeploy
+
+
+# minimal walkthrough (manual AppDir + appimagetool)
+
+# stage the AppDir; layout follows the standard /usr filesystem hierarchy
+mkdir -p MyPkg.AppDir/usr/bin
+cp mypkg MyPkg.AppDir/usr/bin/
+chmod 755 MyPkg.AppDir/usr/bin/mypkg
+
+# .desktop entry at the AppDir root (filename must match Icon= below + .desktop)
+cat > MyPkg.AppDir/com.example.MyPkg.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=MyPkg
+Exec=mypkg
+Icon=com.example.MyPkg
+Categories=Utility;
+Terminal=false
+EOF
+
+# icon at the AppDir root (also placed in standard hicolor path)
+cp icon-256.png MyPkg.AppDir/com.example.MyPkg.png
+mkdir -p MyPkg.AppDir/usr/share/icons/hicolor/256x256/apps
+cp icon-256.png MyPkg.AppDir/usr/share/icons/hicolor/256x256/apps/com.example.MyPkg.png
+
+# AppRun: the entry-point script that runs when the AppImage is executed
+cat > MyPkg.AppDir/AppRun <<'EOF'
+#!/bin/sh
+HERE=$(dirname "$(readlink -f "$0")")
+export PATH="$HERE/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+exec "$HERE/usr/bin/mypkg" "$@"
+EOF
+chmod 755 MyPkg.AppDir/AppRun
+
+# build the AppImage (arch is required)
+ARCH=x86_64 appimagetool MyPkg.AppDir/
+
+# produces: MyPkg-x86_64.AppImage
+
+# run
+chmod +x MyPkg-x86_64.AppImage
+./MyPkg-x86_64.AppImage
+
+# inspect
+./MyPkg-x86_64.AppImage --appimage-help
+./MyPkg-x86_64.AppImage --appimage-extract              # dump contents
+./MyPkg-x86_64.AppImage --appimage-mount &              # mount as squashfs
+
+
+# using linuxdeploy (handles shared-lib deps automatically)
+
+linuxdeploy \
+  --appdir MyPkg.AppDir \
+  --executable mypkg \
+  --desktop-file com.example.MyPkg.desktop \
+  --icon-file com.example.MyPkg.png \
+  --output appimage
+
+# qt apps: install the qt plugin alongside
+wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+chmod +x linuxdeploy-plugin-qt-x86_64.AppImage
+sudo mv linuxdeploy-plugin-qt-x86_64.AppImage /usr/local/bin/linuxdeploy-plugin-qt
+linuxdeploy --appdir MyPkg.AppDir --plugin qt --output appimage
+
+# gtk apps: linuxdeploy-plugin-gtk (similar pattern)
+
+
+# bundling: glibc compatibility
+
+# the AppImage will only run on systems with glibc >= what you built against.
+# build on the oldest supported distro (e.g. ubuntu 20.04, debian 11) in a
+# docker container or vm. example dockerfile:
+#
+# FROM ubuntu:20.04
+# RUN apt-get update && apt-get install -y build-essential wget file
+# RUN wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+#     && chmod +x appimagetool-x86_64.AppImage \
+#     && mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
+
+
+# signing (optional, but recommended for releases)
+
+# sign at build time with a gpg key
+ARCH=x86_64 appimagetool --sign MyPkg.AppDir/
+
+# verify
+./MyPkg-x86_64.AppImage --appimage-signature
+
+
+# self-updates via zsync
+
+# generate a .zsync file alongside the AppImage so users can do delta updates
+# - requires zsync + zsyncmake on the build host
+# - add update info to the AppImage at build time
+ARCH=x86_64 appimagetool \
+  -u "gh-releases-zsync|exampleuser|mypkg|latest|MyPkg-*x86_64.AppImage.zsync" \
+  MyPkg.AppDir/
+
+# end users update with
+./MyPkg-x86_64.AppImage --appimage-updateinformation
+appimageupdatetool ./MyPkg-x86_64.AppImage
+
+
+# system integration (user-side)
+
+# appimaged: daemon that auto-registers .desktop entries when AppImages appear
+# in well-known dirs (~/Applications, ~/Downloads, etc.)
+# AppImageLauncher: gui prompt on first run to register the AppImage system-wide
+
+# manual integration (without those daemons): extract the .desktop file and
+# install it under ~/.local/share/applications/ with Exec= pointing at the
+# AppImage's absolute path
+
+
+# multi-arch
+# build separately on each arch (x86_64, aarch64, armhf). cross-compiling is
+# possible but most projects just run the build in matching docker containers
+# or github actions runners.
+
+
+# useful tooling
+# appimagetool          - bundle AppDir into .AppImage
+# linuxdeploy           - modern AppDir builder with plugin system
+# linuxdeploy-plugin-qt - qt deps + qml + translations
+# linuxdeploy-plugin-gtk - gtk theme + gdk-pixbuf loaders
+# linuxdeployqt         - older qt-specific tool, still works
+# appimage-builder      - yaml-driven builder; uses apt/dnf to gather deps
+#                         (https://appimage-builder.readthedocs.io/)
+# pkg2appimage          - convert an existing deb/rpm into an AppImage
+# appimaged             - on-system daemon for desktop integration
+# AppImageLauncher      - gui integration prompt
+# AppImageHub           - https://www.appimagehub.com/ - community catalog
