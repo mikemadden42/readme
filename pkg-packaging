@@ -1,0 +1,135 @@
+# two paths on macos:
+# - component pkg: built with `pkgbuild` from a payload directory; what most cli
+#   tools and single-binary apps need.
+# - distribution pkg: built with `productbuild` from one or more component pkgs;
+#   adds the user-facing installer UI (welcome, license, conclusion screens) and
+#   is required for multi-component installs.
+
+
+# minimal walkthrough (component pkg)
+
+# stage the payload (mirrors final install paths)
+mkdir -p payload/usr/local/bin
+cp mypkg payload/usr/local/bin/mypkg
+chmod 755 payload/usr/local/bin/mypkg
+
+# build the component pkg
+# --identifier: reverse-dns, must be unique per package
+# --version:    user-facing version string
+# --install-location: where the payload root maps to ("/" means payload paths
+#               are absolute system paths)
+pkgbuild \
+  --root payload \
+  --identifier com.example.mypkg \
+  --version 1.0.0 \
+  --install-location / \
+  mypkg-1.0.0.pkg
+
+# inspect the result
+pkgutil --payload-files mypkg-1.0.0.pkg
+pkgutil --check-signature mypkg-1.0.0.pkg
+
+# install (gui)
+open mypkg-1.0.0.pkg
+
+# install (cli, requires sudo)
+sudo installer -pkg mypkg-1.0.0.pkg -target /
+
+# uninstall (no built-in command; remove files + forget the receipt)
+sudo rm /usr/local/bin/mypkg
+sudo pkgutil --forget com.example.mypkg
+
+
+# pre/post install scripts
+
+# put executable scripts (mode 755) in a scripts directory; reference with --scripts.
+# supported names: preinstall, postinstall
+mkdir scripts
+cat > scripts/postinstall <<'EOF'
+#!/bin/bash
+set -e
+launchctl load /Library/LaunchDaemons/com.example.mypkg.plist || true
+exit 0
+EOF
+chmod 755 scripts/postinstall
+
+pkgbuild \
+  --root payload \
+  --scripts scripts \
+  --identifier com.example.mypkg \
+  --version 1.0.0 \
+  --install-location / \
+  mypkg-1.0.0.pkg
+
+
+# distribution pkg (productbuild)
+
+# wrap one or more component pkgs into an installer with UI.
+# easiest path: generate a distribution xml from the component pkg, then build.
+productbuild --synthesize \
+  --package mypkg-1.0.0.pkg \
+  distribution.xml
+
+# edit distribution.xml to add title, welcome/readme/license/conclusion htmls,
+# minimum os version, etc.
+
+productbuild \
+  --distribution distribution.xml \
+  --package-path . \
+  mypkg-1.0.0-installer.pkg
+
+
+# signing (required for distribution outside the mac app store)
+
+# requires a "developer id installer" certificate from apple developer program,
+# installed in the login keychain. list signing identities:
+security find-identity -v -p basic | grep "Developer ID Installer"
+
+# sign at build time
+pkgbuild ... --sign "Developer ID Installer: Your Name (TEAMID)" mypkg-1.0.0.pkg
+productbuild ... --sign "Developer ID Installer: Your Name (TEAMID)" mypkg-1.0.0-installer.pkg
+
+# or sign an existing unsigned pkg
+productsign \
+  --sign "Developer ID Installer: Your Name (TEAMID)" \
+  mypkg-1.0.0.pkg \
+  mypkg-1.0.0-signed.pkg
+
+# verify
+pkgutil --check-signature mypkg-1.0.0-signed.pkg
+spctl --assess --type install mypkg-1.0.0-signed.pkg
+
+
+# notarization (required on macos 10.15+ for distribution outside the app store)
+
+# one-time: store credentials in the keychain (apple id + app-specific password
+# from appleid.apple.com, plus your team id)
+xcrun notarytool store-credentials notary-profile \
+  --apple-id you@example.com \
+  --team-id TEAMID \
+  --password app-specific-password
+
+# submit and wait
+xcrun notarytool submit mypkg-1.0.0-signed.pkg \
+  --keychain-profile notary-profile \
+  --wait
+
+# if it failed, fetch the log with the submission id printed above
+xcrun notarytool log <submission-id> --keychain-profile notary-profile
+
+# staple the notarization ticket onto the pkg (so gatekeeper works offline)
+xcrun stapler staple mypkg-1.0.0-signed.pkg
+xcrun stapler validate mypkg-1.0.0-signed.pkg
+
+
+# useful tooling
+# pkgbuild      - build a component pkg from a payload
+# productbuild  - assemble component pkgs into a distribution installer
+# productsign   - sign an existing pkg
+# pkgutil       - inspect / verify / forget receipts
+# notarytool    - submit pkgs for notarization (replaces the old altool)
+# stapler       - attach notarization tickets
+# packages.app  - https://s.sudre.free.fr/Software/Packages/about.html
+#                 free gui frontend for pkgbuild/productbuild
+# fpm           - multi-format packager (.pkg/.deb/.rpm); minimal config
+# create-dmg    - if you want a .dmg wrapper around the pkg or .app
