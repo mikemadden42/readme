@@ -1,0 +1,145 @@
+# snaps are canonical's confined-by-default cross-distro package format.
+# built with `snapcraft` from a single snapcraft.yaml. distributed via the
+# snap store (snapcraft.io) by default, with channels (stable/candidate/beta/edge)
+# for release management.
+#
+# unique vs deb/rpm:
+# - apps run inside an apparmor + seccomp + cgroups sandbox (strict confinement)
+# - access to host resources (network, home, x11, etc.) requires explicit `plugs`
+# - bundles all dependencies inside the snap; one snap runs on any distro with snapd
+# - auto-updates by default; can't be disabled, only deferred
+
+
+# install snapcraft (it's itself a snap)
+sudo snap install snapcraft --classic
+
+# snapcraft builds inside a clean lxd or multipass vm. install one:
+sudo snap install lxd
+sudo lxd init --auto
+sudo usermod -aG lxd $USER     # log out / back in after this
+# (alternative: sudo snap install multipass)
+
+
+# minimal walkthrough
+
+# scaffold a snapcraft.yaml
+mkdir mypkg && cd mypkg
+snapcraft init
+
+# or write one by hand:
+cat > snap/snapcraft.yaml <<'EOF'
+name: mypkg
+base: core24
+version: '1.0.0'
+summary: One-line summary (max 79 chars)
+description: |
+  Longer description. Multiple paragraphs are fine.
+  Indent with two spaces.
+
+grade: stable           # stable | devel  (devel can't go to stable channel)
+confinement: strict     # strict | classic | devmode
+
+parts:
+  mypkg:
+    plugin: dump        # "dump" copies source verbatim; other plugins: rust, go, python, make, cmake, nil
+    source: .
+    organize:
+      mypkg: bin/mypkg
+
+apps:
+  mypkg:
+    command: bin/mypkg
+    plugs:
+      - network         # required for outbound network access under strict confinement
+      - home            # read/write user's home dir
+EOF
+
+# build the snap (runs inside a fresh lxd container)
+snapcraft
+
+# produces something like: mypkg_1.0.0_amd64.snap
+
+# inspect
+unsquashfs -l mypkg_1.0.0_amd64.snap
+snap info --verbose mypkg_1.0.0_amd64.snap
+
+# install locally for testing (--dangerous bypasses store signature check;
+# --devmode disables confinement so you can debug missing plugs)
+sudo snap install --dangerous ./mypkg_1.0.0_amd64.snap
+sudo snap install --dangerous --devmode ./mypkg_1.0.0_amd64.snap
+
+# run
+mypkg
+
+# remove
+sudo snap remove mypkg
+
+
+# confinement & interfaces (plugs/slots)
+
+# list interfaces a running snap connects to
+snap connections mypkg
+
+# manually connect an interface
+sudo snap connect mypkg:removable-media
+
+# common plugs to know about:
+# - network, network-bind     - outbound / listening sockets
+# - home                       - $HOME (auto-connected)
+# - removable-media            - /media, /mnt
+# - x11, wayland               - display server access
+# - audio-playback, audio-record
+# - hardware-observe, system-observe
+# - process-control            - signals to other processes
+
+
+# bases
+
+# `base` is the runtime root filesystem your snap runs against.
+# - core24: ubuntu 24.04 lts (current default for new snaps)
+# - core22: ubuntu 22.04 lts (still widely used)
+# - core20: ubuntu 20.04 lts (legacy)
+# - bare:   no base; for fully static binaries with no dependencies
+
+
+# publishing to the snap store
+
+# create / log in to a snap store account
+snapcraft login
+
+# register the name (must be globally unique across the snap store)
+snapcraft register mypkg
+
+# upload and release to a channel
+snapcraft upload --release=edge ./mypkg_1.0.0_amd64.snap
+
+# release an already-uploaded revision
+snapcraft release mypkg <revision> stable
+
+# list channels / revisions
+snapcraft list-revisions mypkg
+snapcraft status mypkg
+
+# channels:  stable | candidate | beta | edge
+# tracks:    optional, for parallel release lines (e.g. "1.0/stable" vs "2.0/stable")
+
+
+# multi-arch builds
+
+# add architectures to snapcraft.yaml
+# platforms:
+#   amd64:
+#   arm64:
+#   armhf:
+
+# build for a specific arch
+snapcraft --build-for=arm64
+
+
+# useful tooling
+# snapcraft       - build tool; primary cli
+# snap            - end-user package manager (install/remove/refresh/etc.)
+# review-tools    - lint / security review snaps before upload
+# snapcraft.io    - https://snapcraft.io/ - browse/manage published snaps
+# lxd / multipass - build vms snapcraft uses under the hood
+# snapd           - the on-system daemon; snaps depend on it being installed
