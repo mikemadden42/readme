@@ -1,0 +1,154 @@
+# flatpaks are a distro-agnostic sandboxed app format using bubblewrap +
+# ostree-style runtimes. distributed primarily via flathub (flathub.org).
+#
+# unique vs snap/deb/rpm:
+# - sandbox is bubblewrap (namespaces + seccomp; no apparmor required, so works
+#   on every major distro)
+# - apps depend on a shared "runtime" (org.freedesktop.Platform, gnome, kde) so
+#   per-app size is smaller than equivalent snaps
+# - permissions are mediated by portals (xdg-desktop-portal) for files, dbus, etc.
+# - no forced auto-updates; updates are pulled when the user/system decides
+
+
+# install tooling
+
+# fedora / rhel
+sudo dnf install flatpak flatpak-builder
+
+# ubuntu
+sudo apt install flatpak flatpak-builder
+
+# add flathub as a remote (source of runtimes and most published apps)
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+
+# install a runtime + sdk to build against
+
+# common runtimes (24.08 is current stable; check flathub for newer):
+# - org.freedesktop.Platform / Sdk
+# - org.gnome.Platform / Sdk    (built on freedesktop, adds gtk + libadwaita)
+# - org.kde.Platform / Sdk      (built on freedesktop, adds qt + kf6)
+
+flatpak install flathub \
+  org.freedesktop.Platform//24.08 \
+  org.freedesktop.Sdk//24.08
+
+
+# minimal walkthrough
+
+# manifest filename must match the app id (reverse-dns, must be globally unique).
+cat > com.example.MyPkg.yaml <<'EOF'
+id: com.example.MyPkg
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: mypkg
+
+finish-args:
+  - --share=network            # outbound network
+  - --share=ipc                # ipc (required for x11)
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --filesystem=home          # access user's home dir
+
+modules:
+  - name: mypkg
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 mypkg /app/bin/mypkg
+    sources:
+      - type: file
+        path: mypkg
+EOF
+
+# build into a local build directory and a local ostree repo
+flatpak-builder --force-clean --repo=repo build-dir com.example.MyPkg.yaml
+
+# install from the local repo (user install, no sudo)
+flatpak --user remote-add --if-not-exists --no-gpg-verify localrepo repo
+flatpak --user install --reinstall localrepo com.example.MyPkg
+
+# shortcut: build and install in one step
+flatpak-builder --user --install --force-clean build-dir com.example.MyPkg.yaml
+
+# run
+flatpak run com.example.MyPkg
+
+# uninstall
+flatpak --user uninstall com.example.MyPkg
+
+
+# inspect
+flatpak info com.example.MyPkg
+flatpak info --show-permissions com.example.MyPkg
+
+
+# permissions / sandbox (finish-args)
+
+# common args:
+# - --share=network, --share=ipc
+# - --socket=wayland, --socket=fallback-x11, --socket=pulseaudio
+# - --filesystem=home  (suffix with :ro for read-only, :create to create if missing)
+# - --filesystem=xdg-download
+# - --device=dri       (gpu access)
+# - --device=all       (full /dev access; avoid unless absolutely required)
+# - --talk-name=org.freedesktop.Notifications   (session bus access)
+# - --system-talk-name=...                       (system bus access)
+
+# override permissions at runtime (good for debugging missing perms)
+flatpak override --user --filesystem=/data com.example.MyPkg
+flatpak override --user --reset com.example.MyPkg
+
+
+# manifest source types
+
+# - type: file       single file (use path: or url: + sha256)
+# - type: archive    tarball; url + sha256 + optional strip-components
+# - type: git        clone url + tag / commit / branch
+# - type: dir        directory
+# - type: script     inline shell written to a file
+
+
+# desktop integration
+
+# ship a .desktop entry, icon, and metainfo.xml under your sources and install
+# them in build-commands:
+# - install -Dm644 com.example.MyPkg.desktop \
+#     /app/share/applications/com.example.MyPkg.desktop
+# - install -Dm644 com.example.MyPkg.png \
+#     /app/share/icons/hicolor/256x256/apps/com.example.MyPkg.png
+# - install -Dm644 com.example.MyPkg.metainfo.xml \
+#     /app/share/metainfo/com.example.MyPkg.metainfo.xml
+
+# validate
+desktop-file-validate com.example.MyPkg.desktop
+appstreamcli validate com.example.MyPkg.metainfo.xml
+
+
+# publishing to flathub
+
+# 1. fork https://github.com/flathub/flathub
+# 2. open a pr against the "new-pr" branch with your manifest + metainfo + icon
+# 3. reviewers check manifest, permissions, license, metadata, screenshots
+# 4. once approved, flathub creates a dedicated repo at
+#    github.com/flathub/<app-id>
+# 5. push updates to that repo; flathub's buildbot builds and publishes
+#
+# requirements: https://docs.flathub.org/docs/for-app-authors/requirements
+
+
+# multi-arch
+
+# flatpak-builder builds for the host arch by default. flathub buildbot builds
+# both x86_64 and aarch64 from the same manifest automatically.
+
+
+# useful tooling
+# flatpak               - end-user runtime / installer cli
+# flatpak-builder       - build tool; reads the manifest
+# flatpak-spawn         - run host commands from inside the sandbox
+# flatseal              - https://flathub.org/apps/com.github.tchx84.Flatseal
+#                         gui for editing per-app permission overrides
+# appstreamcli          - validate metainfo.xml
+# desktop-file-validate - validate .desktop files
+# flathub-tools         - https://github.com/flathub-infra/flathub-tools
