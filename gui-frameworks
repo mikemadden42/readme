@@ -1,0 +1,30 @@
+# gui framework picks per os
+# for a simple native gui app (e.g. a "check my device" tool),
+# using one language per os for the closest native fit.
+
+# macos                swift   swiftui
+# windows 11           c#      winui 3 (windows app sdk)
+# linux (rhel/ubuntu)  c       gtk4 + libadwaita
+
+
+# why these
+
+# swiftui            - apple's declarative ui framework; default modern path on macos.
+
+# winui 3            - closest to swiftui in spirit: declarative xaml, modern
+#                      microsoft-blessed path. wpf is the older battle-tested
+#                      fallback if tooling friction bites.
+
+# gtk4 + libadwaita  - gtk is written in c, so it's the native fit for a c app.
+#                      libadwaita gives the gnome design language that ships on
+#                      default ubuntu and rhel workstation. qt is the alternative
+#                      if you want broader desktop coverage from one codebase.
+
+
+# tradeoffs
+
+# - three codebases, but each app feels native on its platform.
+# - winui 3's tooling is still catching up to wpf's polish; expect rougher edges
+#   than swiftui or gtk.
+# - cross-platform alternatives (tauri, flutter, qt) are worth a look if "the same
+#   three screens on each os" is good enough and you'd rather maintain one codebase.
