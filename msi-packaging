@@ -1,0 +1,133 @@
+# two formats on windows:
+# - .msi: classic windows installer; built with wix toolset. still the standard
+#   for enterprise distribution (group policy, sccm).
+# - .msix: modern app packaging format (replaces .appx); built with makeappx /
+#   msix packaging tool. preferred for microsoft store and sideloaded modern apps,
+#   but msi is still required for many enterprise / driver / system-level installs.
+#
+# this file covers msi via wix. wix v5 is current (v4 series, schema-compatible).
+# wix v3 (heat/candle/light) is legacy — different schema, avoid for new work.
+
+
+# install wix (cross-platform: runs on windows, linux, macos as a .net tool)
+
+# install the .net sdk first (8.0 lts or newer)
+# - windows:  winget install Microsoft.DotNet.SDK.8
+# - macos:    brew install --cask dotnet-sdk
+# - linux:    sudo dnf install dotnet-sdk-8.0   (fedora/rhel)
+#             sudo apt install dotnet-sdk-8.0   (ubuntu)
+
+# install wix as a global dotnet tool
+dotnet tool install --global wix
+
+# verify
+wix --version
+
+
+# minimal walkthrough
+
+# write the wix source (mypkg.wxs)
+# - UpgradeCode must be a stable guid you generate once and reuse for the life
+#   of the product (controls major-upgrade behavior).
+# - generate one with: uuidgen | tr a-f A-F
+cat > mypkg.wxs <<'EOF'
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="MyPkg"
+           Manufacturer="Example Inc"
+           Version="1.0.0.0"
+           UpgradeCode="PUT-YOUR-GUID-HERE">
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="MyPkg">
+        <Component Id="MainExecutable" Bitness="always64">
+          <File Source="mypkg.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="MyPkg" Level="1">
+      <ComponentRef Id="MainExecutable" />
+    </Feature>
+  </Package>
+</Wix>
+EOF
+
+# build the msi
+wix build mypkg.wxs -o mypkg-1.0.0.msi
+
+# inspect (windows)
+msiexec /a mypkg-1.0.0.msi /qb TARGETDIR=C:\temp\extracted   # admin install: extracts to a folder
+msiinfo                                                       # part of msitools, runs on linux/mac too
+
+# install (windows, gui)
+msiexec /i mypkg-1.0.0.msi
+
+# install (windows, silent)
+msiexec /i mypkg-1.0.0.msi /quiet /norestart /log install.log
+
+# uninstall
+msiexec /x mypkg-1.0.0.msi /quiet
+
+
+# add a start menu shortcut
+
+# inside the Package element:
+# <StandardDirectory Id="ProgramMenuFolder">
+#   <Component Id="StartMenuShortcut" Guid="PUT-ANOTHER-GUID">
+#     <Shortcut Id="MyPkgShortcut"
+#               Name="MyPkg"
+#               Target="[INSTALLFOLDER]mypkg.exe"
+#               WorkingDirectory="INSTALLFOLDER" />
+#     <RegistryValue Root="HKCU" Key="Software\Example\MyPkg"
+#                    Name="installed" Type="integer" Value="1" KeyPath="yes" />
+#   </Component>
+# </StandardDirectory>
+# (then add <ComponentRef Id="StartMenuShortcut" /> to the Feature)
+
+
+# custom actions
+
+# run a program / script during install. prefer declarative wix elements
+# (ServiceInstall, util:User, etc.) over custom actions when possible — custom
+# actions run with elevated privileges and are the #1 source of msi bugs.
+
+
+# signing (authenticode)
+
+# requires a code signing certificate. as of 2023 CA/B requirements, standard
+# OV certs must be issued on a hardware token (yubikey-style); EV certs always
+# were. cloud signing via azure trusted signing or digicert keylocker avoids
+# the hardware.
+
+# sign with signtool (windows sdk; comes with visual studio / windows sdk install)
+signtool sign ^
+  /fd SHA256 ^
+  /tr http://timestamp.digicert.com ^
+  /td SHA256 ^
+  /a ^
+  mypkg-1.0.0.msi
+
+# verify
+signtool verify /pa /v mypkg-1.0.0.msi
+
+
+# cross-platform notes
+
+# wix v4+ builds msis from linux/macos — useful for ci. signing still needs a
+# windows runner (signtool) or a cloud signing service that exposes a non-windows
+# cli (e.g. jsign for java-based authenticode, or azure trusted signing's cli).
+
+
+# useful tooling
+# wix              - https://wixtoolset.org/ - the standard msi builder
+# wixsharp         - c# dsl on top of wix; nicer if you already write c#
+# heatwave         - vs/vscode extension that helps author wix files
+# msitools         - msiinfo / msiextract / msibuild on linux/mac
+# orca             - microsoft msi editor (windows sdk component)
+# inno setup       - https://jrsoftware.org/isinfo.php - .exe installers (not msi)
+#                    but very popular for simple installers
+# nsis             - https://nsis.sourceforge.io/ - script-driven .exe installers
+# advanced installer - commercial gui-driven msi builder
+# msix packaging tool - microsoft's modern app packaging format (replaces appx)
