@@ -1,0 +1,103 @@
+# install build tooling (fedora/rhel/centos)
+sudo dnf install rpm-build rpmdevtools rpmlint
+
+# create the standard rpmbuild tree at ~/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+rpmdev-setuptree
+
+# place the source tarball in SOURCES (name must match Source0 in the spec)
+cp mypkg-1.0.0.tar.gz ~/rpmbuild/SOURCES/
+
+# generate a starter spec
+cd ~/rpmbuild/SPECS
+rpmdev-newspec mypkg
+
+# write the spec (minimal example for a precompiled binary)
+cat > ~/rpmbuild/SPECS/mypkg.spec <<'EOF'
+Name:           mypkg
+Version:        1.0.0
+Release:        1%{?dist}
+Summary:        One-line summary
+
+License:        MIT
+URL:            https://example.com/mypkg
+Source0:        %{name}-%{version}.tar.gz
+
+BuildArch:      x86_64
+Requires:       glibc
+
+%description
+Longer description. Wrap at ~80 columns. Blank lines are fine here.
+
+%prep
+%setup -q
+
+%build
+# no-op for a precompiled binary; otherwise: %configure && %make_build
+
+%install
+mkdir -p %{buildroot}/usr/local/bin
+install -m 0755 mypkg %{buildroot}/usr/local/bin/mypkg
+
+%files
+/usr/local/bin/mypkg
+
+%changelog
+* Sat May 16 2026 Your Name <you@example.com> - 1.0.0-1
+- Initial package
+EOF
+
+# build a binary rpm (output in ~/rpmbuild/RPMS/<arch>/)
+rpmbuild -bb ~/rpmbuild/SPECS/mypkg.spec
+
+# build both binary and source rpms
+rpmbuild -ba ~/rpmbuild/SPECS/mypkg.spec
+
+# inspect the result
+rpm -qpi  ~/rpmbuild/RPMS/x86_64/mypkg-1.0.0-1.*.rpm    # metadata
+rpm -qpl  ~/rpmbuild/RPMS/x86_64/mypkg-1.0.0-1.*.rpm    # file list
+rpm -qp --requires ~/rpmbuild/RPMS/x86_64/mypkg-1.0.0-1.*.rpm
+
+# static checks (run before sharing)
+rpmlint ~/rpmbuild/SPECS/mypkg.spec
+rpmlint ~/rpmbuild/RPMS/x86_64/mypkg-1.0.0-1.*.rpm
+
+# install
+sudo dnf install ~/rpmbuild/RPMS/x86_64/mypkg-1.0.0-1.*.rpm
+
+# remove
+sudo dnf remove mypkg
+
+# scriptlets go in the spec (run on the target during install/remove)
+# %pre / %post / %preun / %postun
+# common uses: enable a systemd unit (systemctl daemon-reload; systemctl enable),
+# create a system user, run gtk-update-icon-cache
+
+# auto-derived dependencies
+# rpmbuild scans ELF binaries and python/perl shebangs to populate Requires automatically.
+# add explicit deps with `Requires:` lines in the spec.
+
+# config files (preserved across upgrades as .rpmsave / .rpmnew)
+# %config(noreplace) /etc/mypkg/mypkg.conf
+
+
+# clean-chroot builds via mock (catches missing BuildRequires)
+
+sudo dnf install mock
+sudo usermod -aG mock $USER   # log out / back in after this
+
+# build a source rpm first
+rpmbuild -bs ~/rpmbuild/SPECS/mypkg.spec
+
+# build inside a clean fedora chroot
+mock -r fedora-40-x86_64 ~/rpmbuild/SRPMS/mypkg-1.0.0-1.*.src.rpm
+
+# output lands in /var/lib/mock/fedora-40-x86_64/result/
+
+
+# useful tooling
+# rpmlint      - static checks; run on both spec and built rpm
+# mock         - clean-chroot builds; matches what koji/copr do
+# copr         - fedora's hosted build/repo service for personal projects
+# fpm          - multi-format packager (.rpm/.deb/.pkg); minimal config
+# cargo-generate-rpm - emit an rpm from a rust crate
+# nfpm         - emit an rpm (or deb) from a single yaml config; common in go projects
