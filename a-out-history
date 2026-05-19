@@ -1,0 +1,48 @@
+# a.out ("assembler output") goes back to the very first unix on the pdp-7 /
+# pdp-11 around 1969-1971. ken thompson's original assembler `as` wrote its
+# output to a fixed filename `a.out` when no `-o` was specified, same as how
+# `cc` later defaulted to it. the name stuck even though the assembler was
+# quickly joined by a c compiler, a linker (`ld`), and others; all of them
+# inherited the same default output name.
+
+
+# the format
+
+# the on-disk format also got the name a.out. early unix executables were a
+# simple header + text + data + symbol table layout, described in
+# /usr/include/a.out.h. the format evolved through several variants:
+#
+# - pdp-11 a.out
+# - 32-bit vax / bsd a.out with ZMAGIC / NMAGIC / OMAGIC variants for
+#   demand paging
+
+
+# where it lived
+
+# - research unix and early bsd into the 1980s
+# - sunos 3.x
+# - linux (until ~1995, kernel 1.2)
+# - 386bsd / early netbsd / freebsd
+
+
+# what replaced it
+
+# - coff (system v)
+# - elf (svr4, ~1988) — eventually adopted by linux (mid-90s) and the bsds
+#   over the following years
+# - mach-o on macos is a separate lineage from nextstep
+
+
+# today
+
+# 1. still the default output filename of cc / gcc / clang when you omit -o
+#    — a 55-year-old default no one bothered to change
+# 2. historical executable format, still readable by `file` and `binutils`,
+#    but essentially extinct in production
+
+
+# trivia
+
+# - gnu ld will still happily produce a.out-format binaries if you ask it to
+# - the linux kernel kept (deprecated) a.out loader support until it was
+#   removed in 5.1 (2019)
