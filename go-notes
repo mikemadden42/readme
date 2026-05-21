@@ -1,0 +1,114 @@
+# where go fits in the c / rust / zig discussion
+
+
+# the category problem
+
+# c, rust, and zig are *systems languages* — they compete for kernel code,
+# drivers, embedded, codecs, anything where you care about exact memory layout
+# and not having a runtime. go is an applications language with systems-ish
+# ambitions. it has a garbage collector, a goroutine scheduler, and a runtime
+# that's always there. that puts it in a different bucket than the other three.
+
+
+# what go is actually for (and dominating)
+
+# - cloud infrastructure. docker, kubernetes, etcd, prometheus, grafana,
+#   terraform, vault, consul, caddy, traefik, minio, nats, cockroachdb,
+#   influxdb, tidb. the entire cncf landscape is mostly go.
+# - backend services / apis. net/http + stdlib is enough for a huge chunk of
+#   rest/grpc work. discord, uber, twitch, cloudflare, dropbox.
+# - cli tools. github cli, hugo, fzf-style tools — anything that needs to ship
+#   a single static binary that runs anywhere.
+# - devops glue. *the* default language for ops tooling now — replaced python
+#   in a lot of places where startup time and single-binary distribution
+#   mattered.
+
+
+# why go won this niche
+
+# 1. compiles to a single static binary. no runtime to install, no shared
+#    libs, no python virtualenv. scp it and run it. this alone won most of
+#    cloud-native.
+# 2. cross-compilation is trivial. GOOS=linux GOARCH=arm64 go build works out
+#    of the box, no toolchains. (zig is even better here; go got there first
+#    for a mainstream audience.)
+# 3. concurrency that's actually usable. goroutines + channels are easier than
+#    threads + locks. easier than rust's async ecosystem. easier than c's
+#    "roll your own."
+# 4. the language is small. read the spec in an afternoon. new hires are
+#    productive in a week.
+# 5. backed by google. stable, well-resourced, won't be abandoned. compare to
+#    rust foundation drama or zig's pre-1.0 status.
+
+
+# where go isn't in the c/rust/zig conversation
+
+# - no kernel / driver / embedded work. the gc and runtime make go a
+#   non-starter for code that runs below the os or with hard real-time
+#   constraints. tinygo exists for microcontrollers but it's a niche fork.
+# - no "manual memory" story. can't write a high-performance allocator in go,
+#   can't avoid the gc, can't lay out cache-friendly structures the way
+#   c/rust/zig let you.
+# - performance ceiling. go is *fast enough* for almost everything but has a
+#   real ceiling vs c/rust/zig for compute-heavy work. game engines, codecs,
+#   parsers handling millions of events/sec — you usually end up writing the
+#   hot path in c via cgo, or you switch languages.
+# - cgo is painful. go's ffi is famously the worst of any modern language.
+#   every cgo call crosses a stack boundary, isn't optimized, and screws with
+#   the scheduler. "if you find yourself reaching for cgo, you've picked the
+#   wrong language."
+
+
+# where go competes with each
+
+# vs c    — if you'd write a daemon, an http server, a cli tool in c: don't.
+#           use go. faster to ship, gc isn't a problem in this space,
+#           deployment story is better.
+# vs rust — the real overlap. both compile to single binaries, both target
+#           backend services and cloud infra. choose rust if you need maximum
+#           performance, no gc pauses, or the type system's correctness
+#           guarantees. choose go if you want to ship 3x faster and your team
+#           isn't already rust-fluent.
+# vs zig  — almost no overlap. zig wants kernels and game engines; go wants
+#           kubernetes controllers. they're not fighting for the same code.
+
+
+# the five-language landscape (2026)
+
+#                  runtime    gc    where it lives
+# c               no         no    kernels, embedded, libs
+# zig             no         no    same niche as c, better ergonomics
+# rust            minimal    no    same niche as c + secure userland + new infra
+# go              yes        yes   cloud-native, apis, clis, devops
+# python/js       big        yes   apps, scripts, data science
+
+
+# the mental model
+
+# - c / zig / rust fight over the bottom of the stack.
+# - go owns the middle: networked services, infrastructure tools, clis,
+#   anything you'd deploy to a server.
+# - python / typescript own the top: apps, scripts, ml, data.
+#
+# rust is the only one that crosses from the bottom into the middle
+# convincingly — and that's why the "rust vs go" debate is real but the
+# "zig vs go" debate basically isn't. zig isn't trying to build your next
+# backend; go isn't trying to write your next kernel driver.
+
+
+# practical 2026 picks
+
+# - cli tool? go if i/o-bound and you want shipping speed; rust if you want
+#   maximum polish; zig if it's tiny and embedded-ish.
+# - backend service? go is the default; rust if you need the perf or
+#   correctness; nothing else competes seriously here.
+# - kernel module, codec, allocator, embedded firmware? c, zig, or rust.
+#   not go.
+# - cloud control plane (operator, crd, sidecar, etc.)? go, full stop. the
+#   ecosystem is built around it.
+
+
+# the takeaway
+
+# go isn't *in* the c/rust/zig discussion so much as it's the language those
+# three keep pointing at and saying "yeah but go already owns that part."
