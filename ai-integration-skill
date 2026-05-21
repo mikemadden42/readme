@@ -1,0 +1,102 @@
+# learning ai integration vs ai eval — both are right, at different layers
+
+
+# the take
+
+# both takes are right, and they're not actually in conflict — they're at
+# different layers of the same stack.
+
+
+# the "learn integration, not a tool" advice
+
+# correct, but slightly under-specified. the real skill it's pointing at is:
+#
+#     treat the llm as a component, not as the system.
+#
+# that mental shift is the actual unlock. once you stop thinking "i'm using
+# ai" and start thinking "i have a stochastic function in my pipeline that
+# takes json and returns json," everything else falls into place. you start
+# asking normal engineering questions: what's the input contract, what's the
+# output contract, what's the failure mode, how do i retry, how do i cache,
+# how do i observe it, how do i swap implementations.
+
+
+# why "learn the api, not a framework" is right
+
+# - api surfaces (openai, anthropic, gemini, openrouter, bedrock) are 90% the
+#   same — messages: [{role, content}], tools, streaming. learn one, you've
+#   learned them all.
+# - cli tools and frameworks (langchain, llamaindex, vercel ai sdk, mastra,
+#   dspy, etc.) come and go. some will be dead in 18 months. the underlying
+#   api will not.
+# - "glue" is where the value gets created. raw model output is worthless
+#   until it's hooked to a database, a queue, a tool, a ui, a downstream
+#   service.
+
+
+# where to push back gently
+
+# "integration" alone is necessary but not sufficient. you can be a beautiful
+# integrator and ship a beautiful pipeline that produces consistently wrong
+# output, and you won't know. that's why eval is the load-bearing skill — but
+# integration is the foundation underneath eval.
+
+
+# the relationship
+
+# integration  →  you can build it                  (engineering)
+# eval         →  you can tell if it's working      (epistemics)
+# agents       →  you can let it run unsupervised   (systems)
+#
+# you need integration first, because eval and agents both *assume* you can
+# wire model calls into a system. but once you can wire them, the next
+# bottleneck is "is this output actually good?" — and that's eval.
+
+
+# revised take
+
+# if you've never written code that calls an llm api: learn integration first.
+# spend a weekend wiring anthropic.messages.create() or
+# openai.chat.completions.create() into something real — a script, a webhook,
+# a small tool. don't use a framework. make the json calls directly.
+# understand:
+#
+# - the message shape, system vs user vs assistant turns
+# - streaming vs non-streaming
+# - tool use (function calling) — where 80% of the value comes from
+# - structured output (json mode / response_format)
+# - token counting, context windows, cost per million tokens
+# - error handling and retry on rate limits
+# - prompt caching (anthropic) / context caching (gemini) — the cost lever
+#   almost nobody uses
+#
+# that's a weekend's work and it's the foundation everything else sits on.
+# you can ignore every framework on the market once you've done this — they
+# are all just thin sugar over those same api calls.
+#
+# then, once you can build pipelines: learn eval. because now the question
+# stops being "can i build this?" and starts being "is what i built actually
+# good?" — and that's where most teams plateau.
+
+
+# the combined one-liner
+
+# learn to treat the llm as a function in your system, wire it in by hand
+# against the raw api, and build feedback loops that tell you whether the
+# function is doing what you think it's doing.
+#
+# integration is how you build with ai.
+# eval is whether what you built works.
+# you need both. the order is integration → eval → agents.
+
+
+# practical advice
+
+# if you're picking one weekend project to internalize all of this, build an
+# eval harness for your own integration. that gets you both skills at once:
+# - you call the api directly (integration)
+# - you wire it into a scoring loop (eval)
+# - you learn the entire stack from one project
+# there's no faster path.
+#
+# see also: [[ai-eval-skill]]
