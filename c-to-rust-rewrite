@@ -1,0 +1,70 @@
+# short answer: no, but a lot of the high-value pieces will be — slowly, over
+# decades.
+
+
+# what's actually happening (2026)
+
+# - linux kernel — accepting rust drivers since 6.1 (2022). new filesystems
+#   (apple fs driver), gpu drivers (asahi, nova for nvidia), network drivers
+#   showing up in rust. core kernel stays c; the *new* code increasingly isn't.
+# - windows — microsoft has been rewriting parts of the nt kernel in rust
+#   since ~2023 (dwritecore, parts of win32k). slow but real.
+# - android — google: ~25% of new native code in android is rust, ~0
+#   memory-safety cves in rust components.
+# - userland tools — coreutils (uutils), sudo (sudo-rs), curl is adding rust
+#   optional backends, openssh has experimental rust. many cli tools have rust
+#   replacements (ripgrep, fd, bat, eza, zellij).
+# - browsers — servo, parts of firefox (stylo, webrender), big chunks of
+#   chromium's networking stack.
+# - crypto libraries — rustls is genuinely displacing openssl in new code.
+# - cloud infra — cloudflare, aws firecracker, fastly's wasm runtime, lots of
+#   new infra software is born in rust.
+
+
+# what's NOT getting rewritten
+
+# - old, stable, working c — sqlite, postgres, redis core, the bsds, libc
+#   itself, the gigantic mass of embedded firmware. there's no business case.
+#   "if it ain't broke" applies harder when the code is 30 years old and
+#   battle-tested.
+# - microcontrollers below a certain size — rust is gaining, but c still
+#   dominates 8 / 16-bit mcus and the long tail of vendor toolchains.
+# - posix-api code — much of it is fine.
+# - code where the c *is* the spec — reference implementations, abis, language
+#   runtimes whose semantics are defined by the c version.
+
+
+# why "no" overall
+
+# 1. volume. estimates put the c codebase in active production at hundreds of
+#    billions of lines. the rust-ecosystem economy can't rewrite that in 50
+#    years even at full tilt.
+# 2. incentives. memory-safety cves drive rewrites in *security-critical* code
+#    (kernels, browsers, network parsers). most c code isn't security-critical
+#    — it's a database engine, a codec, an embedded controller. rewrites cost
+#    millions and add bugs; the roi just isn't there.
+# 3. interop is the actual pattern. real-world rust usually lives *alongside*
+#    c (via ffi), not as a replacement. linux, firefox, android — none are
+#    "rust rewrites"; they're hybrid systems.
+# 4. c has political momentum too. iso c23 shipped, c2y is in flight,
+#    hardening efforts like cheri, _BitInt, [[reproducible]] annotations, and
+#    bounds-checking proposals are real. c isn't a corpse waiting to be
+#    replaced.
+
+
+# the realistic 2030-2040 outcome
+
+# - new security-critical systems software: mostly rust.
+# - new cloud / infrastructure software: rust or go, your call.
+# - new embedded on capable mcus: increasingly rust.
+# - existing c: still there, still maintained, slowly absorbing rust modules
+#   at the seams.
+# - linux: a hybrid kernel where c is the floor and rust is the new
+#   construction.
+
+
+# the take
+
+# stop thinking "rewrite" and start thinking "succession." rust is what people
+# *reach for* now when they would have reached for c. that's the change. the c
+# codebase isn't going anywhere — it's just going to stop growing.
