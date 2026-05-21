@@ -1,0 +1,67 @@
+# even in 2026, learning c is still high-leverage — not because it's modern,
+# but because so much of computing is built on it and inherits its shape.
+
+
+# 1. it's the ground floor
+
+# the linux kernel, bsds, the macos xnu kernel, the windows nt kernel, every
+# major libc, cpython, the ruby / php / lua interpreters, sqlite, postgresql,
+# redis, ffmpeg, openssl, git, curl, nginx, postfix — all c. even rust and go
+# compilers ship runtimes that interoperate with c abis. learning c is learning
+# the substrate.
+
+
+# 2. the c abi is the universal interface
+
+# every language eventually grows an ffi to c — because that's how libraries
+# cross language boundaries:
+# - python ctypes
+# - node n-api
+# - ruby ffi
+# - go cgo
+# - rust extern "C"
+# - swift @_cdecl
+# all of them target the c calling convention. if you ever want to bridge two
+# languages, you go through c.
+
+
+# 3. it teaches you how computers actually work
+
+# manual memory, pointers, stack vs heap, struct layout, integer promotion,
+# undefined behavior, what "the compiler" even does. higher-level languages
+# hide these — but they don't go away; they just hide *where the surprises
+# come from*. most "weird" python or js performance behavior makes sense once
+# you've written c.
+
+
+# 4. embedded / kernel / driver work is still c-dominated
+
+# microcontrollers, real-time oses, anything with strict size constraints,
+# anything talking directly to silicon. rust is making inroads but c is still
+# the lingua franca.
+
+
+# 5. reading source code
+
+# a huge fraction of "how does this actually work" answers — for any tool you
+# use daily — live in c source trees. being able to read them is a superpower.
+
+
+# honest counterpoints
+
+# - for *new* systems software in 2026, rust is the safer default. memory
+#   safety wins; the borrow checker is worth the friction.
+# - for *application* work, c is the wrong tool. use go, rust, python, ts —
+#   whatever fits the domain.
+# - c will not get you a job by itself. it's an underlay, not a career.
+
+
+# the take
+
+# learn c to ~k&r fluency (you don't need to be a wizard) precisely because
+# it's 50 years old. the half-life of that knowledge is enormous — it'll still
+# be relevant in 2046. compare that to whatever js framework is currently hot.
+# c is one of the highest-roi things a working programmer can invest a month in.
+#
+# then learn rust right after — they pair beautifully. c teaches you what the
+# problems are; rust teaches you the modern answer.
