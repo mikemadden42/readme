@@ -1,0 +1,115 @@
+# in this ai revolution, if you had time to learn only one technology,
+# concept, or architecture — it's evaluation.
+
+
+# the one-line answer
+
+# learn how to evaluate model outputs.
+#
+# not a framework, not a model, not even "prompting." the single skill with
+# the longest half-life and highest leverage in 2026 is the ability to look at
+# what an ai system produced and rigorously answer "is this actually good?" —
+# and then turn that judgment into something measurable.
+#
+# this goes by a few names — evals, evaluation engineering, ai quality work,
+# llm-as-judge design — but the underlying skill is the same: building
+# feedback loops around stochastic systems.
+
+
+# why this beats every other choice
+
+# 1. models keep changing. eval skill doesn't.
+#    whatever model you learn (gpt-5, claude 4.x, gemini 3, the open-weight
+#    model of the month) will be obsolete in 18 months. the skill of *deciding
+#    whether the new model is better than the old one for your use case* never
+#    decays.
+#
+# 2. everyone downstream of the model needs it.
+#    pm, founder, backend engineer, researcher, lawyer, doctor adopting ai
+#    tools — at some point you need to answer "does this work?" with more
+#    rigor than "looks fine to me." without it you're vibes-driven and don't
+#    know when you're shipping regressions.
+#
+# 3. it's where ai work is currently weakest.
+#    every ai team will tell you their evals are bad. big labs, startups,
+#    internal teams at large companies — eval debt is universal. people who
+#    can build, run, and reason about evals are scarce and valuable right now.
+#
+# 4. it generalizes to agents.
+#    agents are just llm calls in a loop with tools. the bottleneck for making
+#    them reliable is — again — evaluating whether a run succeeded, whether a
+#    subtask was done correctly, whether the agent caught its own error. eval
+#    is the through-line from "single prompt works" to "system works in
+#    production."
+#
+# 5. it's not glamorous, which is why it's neglected.
+#    the hype goes to prompting, fine-tuning, multi-agent architectures, rag
+#    variants. eval is the un-sexy plumbing that determines whether any of
+#    those actually help.
+
+
+# what "learning eval" actually means, concretely
+
+# - writing test cases that exercise *behavior*, not exact strings. pairs of
+#   (input, expected property) not (input, expected output).
+# - building grading rubrics that another llm can apply consistently
+#   (llm-as-judge), and *validating* that judge against human labels. this
+#   second step is where amateurs fail.
+# - knowing when a deterministic check (regex, json schema, code execution)
+#   beats a model-graded check. use the cheap one first.
+# - running evals as a regression suite — every prompt change, every model
+#   version, every system update gets scored against the same set. treat it
+#   like a ci pipeline.
+# - building eval datasets from real user traffic, not synthetic prompts. the
+#   hardest skill is selecting *which* real examples are worth grading.
+# - reasoning about statistical significance with small sample sizes — when is
+#   "model a scored 87, model b scored 89" actually meaningful?
+# - understanding the failure modes of llm judges: position bias, length bias,
+#   verbosity bias, sycophancy, self-preference.
+
+
+# the mental shift
+
+# most people approach llms as "i write a prompt, i read the answer, i decide
+# if it's good." that's artisanal. eval is industrial — you write 100 prompts,
+# score 100 answers automatically, and trust the aggregate. once you can do
+# that, you can:
+#
+# - compare models objectively
+# - refactor prompts without breaking things
+# - ship ai features with the same confidence as any other software
+# - detect drift when a provider silently updates a model
+# - prove roi to a skeptical stakeholder
+
+
+# pair it with one other thing
+
+# the agent loop pattern — the basic "llm + tools + loop until done"
+# architecture. evals tell you whether you're winning; the agent loop is the
+# thing you're going to be evaluating for the next decade.
+
+
+# concrete starting points
+
+# - anthropic's eval cookbook and Inspect (uk aisi's open-source eval framework)
+# - openai's evals repo on github (older but instructive)
+# - hamel husain's blog on evaluation — basically the canonical reading
+# - eugene yan's "evals" post
+# - shreya shankar's papers on llm-as-judge validation
+# - build one yourself: pick a task you actually care about, write 50 graded
+#   examples, then run two different models against it. you'll learn more in
+#   a weekend doing this than from any tutorial.
+
+
+# honest counterargument
+
+# some people will tell you the answer is "learn how to build agents" or
+# "learn rag" or "learn fine-tuning." those are applications. eval is the
+# meta-skill that determines whether any of them work. agents without evals
+# are demos; agents with evals are products.
+
+
+# one line
+
+# the people who win this decade aren't the ones with the cleverest prompts —
+# they're the ones who can tell, systematically, which prompts are clever.
