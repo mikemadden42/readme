@@ -1,0 +1,180 @@
+# where zig fits in the c & rust discussion
+
+
+# the one-line positioning
+
+# - c:    trust the programmer; minimal abstractions; manual everything.
+# - rust: never trust the programmer; the compiler proves memory safety; rich
+#         type system.
+# - zig:  trust the programmer, but give them better tools; no hidden control
+#         flow, no hidden allocations, explicit everything.
+#
+# zig is essentially "c done right in 2025" — not "rust done lighter." that's
+# the key distinction.
+
+
+# what zig actually does differently
+
+# 1. no hidden control flow. no operator overloading, no exceptions, no
+#    destructors, no implicit conversions. if a function call is on the page,
+#    that's the only thing happening. (rust has Drop, Deref, panics — zig has
+#    none.)
+# 2. allocators are explicit. every function that allocates takes an allocator
+#    as a parameter. there's no global malloc you accidentally call. you can
+#    swap in a test allocator that detects leaks, an arena allocator for
+#    short-lived work, a fixed-buffer allocator with no heap at all.
+# 3. `comptime` instead of macros / generics. compile-time code is just zig
+#    code that runs at compile time. generics are functions that take types as
+#    values. no separate macro language, no separate trait system.
+# 4. first-class c interop. @cImport literally parses c headers and gives you
+#    the types directly — no ffi declarations, no bindgen step. zig can compile
+#    c and c++ files; `zig cc` is a drop-in cross-compiler that many projects
+#    (including bun) use as their c toolchain.
+# 5. no memory safety guarantees at compile time. zig has runtime safety checks
+#    in debug builds (bounds, overflow, ub) but no borrow checker.
+#    use-after-free is still possible.
+
+
+# where zig is winning
+
+# - bun (js runtime competing with node) — written in zig, partly because
+#   `zig cc` made cross-compilation trivial.
+# - ghostty (mitchell hashimoto's terminal emulator) — zig.
+# - tigerbeetle (financial database) — zig, leaning on explicit-allocator for
+#   predictable performance.
+# - river, uxn, lots of game-dev and embedded experiments.
+# - as a c/c++ cross-compiler — `zig cc` is used by projects that aren't
+#   otherwise written in zig at all (e.g. uber's go cross-compilation).
+
+
+# where zig loses to rust
+
+# - memory safety. rust gives a compile-time proof; zig gives better tooling
+#   and discipline. for security-critical code (kernels, browsers, parsers
+#   handling untrusted input), rust is the safer pick.
+# - ecosystem. rust has crates.io with ~150k libraries; zig has a few hundred.
+#   the package manager arrived in 2024 and is still maturing.
+# - stability. zig is pre-1.0 (0.14 as of late 2025). the language still
+#   changes between releases. rust has been stable since 2015.
+# - hiring. "rust developer" is a job title; "zig developer" is a hobby
+#   project.
+
+
+# where zig beats rust
+
+# - simplicity. you can learn zig in a weekend. rust takes months to be
+#   comfortable with.
+# - compile times. significantly faster, especially with the new self-hosted
+#   compiler.
+# - iterating on existing c code. @cImport a c header, write new code in zig,
+#   link them together. no rewrite required.
+# - cross-compilation. zig's killer feature. `zig build -Dtarget=...` just
+#   works, from anywhere, with no extra toolchain setup. even rust users
+#   sometimes use `zig cc` as their linker.
+# - embedded. smaller binaries than rust, no runtime, no allocator unless you
+#   ask for one.
+
+
+# the mental model
+
+#                  C            Zig          Rust
+# abstraction     low           low          high
+# safety          manual        manual+      compile-proven
+# ecosystem       enormous      tiny         large
+# learning curve  medium        low          steep
+# who reaches     systems devs  systems devs systems devs who
+# for it          from 1985     who want     want guarantees
+#                               better c
+#
+# zig is the c person's upgrade path.
+# rust is the c person's escape hatch.
+
+
+# realistic outcome
+
+# probably zig replaces neither c nor rust. instead:
+# - rust keeps the security-critical-systems slot it's already winning
+#   (kernels, browsers, crypto, network parsers, cloud infra).
+# - zig carves out a niche where rust feels like overkill: tooling, game
+#   engines, embedded, codec / dsp work, projects that need to interop heavily
+#   with c.
+# - c stays where c already is — and the new generation of "c-style" projects
+#   splits between zig and modern c (c23+).
+
+
+# zig vs c ergonomics — point by point
+
+# build system
+# - zig replaces make / cmake / autotools with build.zig — a regular zig file
+#   that describes your build. just code: variables, conditionals, functions.
+#   no dsl, no separate language, no .in templates, no m4.
+
+# cross-compilation
+# - the killer feature, not exaggerated. on any host:
+#     zig build -Dtarget=aarch64-linux-musl
+#     zig build -Dtarget=x86_64-windows-gnu
+#     zig build -Dtarget=riscv64-linux-gnu
+#     zig build -Dtarget=wasm32-wasi
+#   works out of the box. no toolchain install, no sysroot fiddling, no
+#   CROSS_COMPILE= env vars, no docker. zig bundles libc sources (musl, glibc,
+#   mingw, wasi-libc) and builds them on demand.
+# - this is so good that non-zig projects use `zig cc` as their c/c++
+#   cross-compiler (uber's go cross-compilation, for one).
+
+# macros
+# - zig has none. instead it has comptime:
+#     fn max(comptime T: type, a: T, b: T) T {
+#         return if (a > b) a else b;
+#     }
+# - that's the generics story AND the macro story — one mechanism. compile-time
+#   code is just normal zig code the compiler runs at build time. no #define,
+#   no token pasting, no preprocessor.
+
+# package manager
+# - arrived in 0.11 (2023), matured through 0.14. build.zig.zon is the manifest
+#   (think Cargo.toml), dependencies fetched by url + hash, no central registry
+#   yet (deliberate — they want it to mature first). fine — not as polished as
+#   cargo, but worlds better than "vendor a tarball into third_party/".
+
+
+# bonus ergonomic wins
+
+# - `zig cc` is a working c compiler. use it as a gcc/clang replacement in
+#   existing makefiles today — no zig code involved. great way to dip a toe in.
+# - @cImport directly parses c headers. point at stdio.h or libcurl/curl.h and
+#   you get the types and functions, no ffi bindings, no bindgen.
+# - defer instead of cleanup goto. `defer file.close();` runs at scope exit.
+#   replaces the whole `goto cleanup;` pattern in c.
+# - errors are values, not exceptions. `!T` is "T or error." compiler forces
+#   you to handle them. no silent errno, no exception-tables.
+
+
+# honest tradeoffs
+
+# 1. pre-1.0. 0.14 as of late 2025. language still changes between releases —
+#    usually small, occasionally annoying. 1.0 targeted but not dated.
+# 2. small ecosystem. need a json library? stdlib has one. need a postgres
+#    driver? maybe. be ready to bind to c libraries (easy via @cImport, but
+#    still work).
+# 3. no memory safety guarantees. can still leak, use-after-free, double-free.
+#    zig gives better tools (GeneralPurposeAllocator catches leaks/uaf in debug
+#    builds, runtime bounds-checking, defined integer overflow) but no
+#    compile-time proof.
+# 4. standard library is in flux. good but still being shaped. things move.
+
+
+# getting started
+
+# - https://ziglang.org/learn/overview/ — the official overview
+# - https://zig.guide/ — ziglearn, the de facto tutorial
+# - andrew kelley's talks on youtube (language creator) — "the road to zig 1.0"
+#   gives the philosophy
+# - loris cro's blog — zig core team, writes well about *why* things are
+#   designed the way they are
+
+
+# the takeaway
+
+# start using `zig cc` today even before you write any zig. set CC="zig cc" in
+# a makefile, see how cross-compilation suddenly works. that alone may justify
+# the install.
