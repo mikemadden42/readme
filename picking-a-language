@@ -1,0 +1,167 @@
+# picking a programming language — a use-case-driven framework
+#
+# pulls together the c/rust/zig/go discussion and adds the categories those
+# notes don't cover (web/app, mobile, data/ml, scripting). see also:
+# [[why-learn-c]] [[c-to-rust-rewrite]] [[zig-notes]] [[go-notes]]
+# [[gui-frameworks]]
+
+
+# the meta-rule
+
+# pick the language with the ecosystem that already solved your problem.
+# not the prettiest syntax. not the fastest benchmark. the ecosystem.
+#
+# a language is mostly its libraries, its package manager, its build tools,
+# its deployment story, and the size of its hiring pool. the syntax is the
+# part you stop noticing after a week. the ecosystem is what you live with
+# for years.
+
+
+# the questions to actually ask
+
+# 1. what does the problem look like?
+#    - latency-sensitive system call → c / rust / zig
+#    - networked service → go / rust / typescript / python
+#    - one-off script → bash / python
+#    - data analysis → python / r
+#    - ml training → python
+#    - mobile app → swift / kotlin / react native / flutter
+#    - desktop gui → see [[gui-frameworks]]
+#
+# 2. what does deployment look like?
+#    - single static binary, scp it anywhere → go / rust / zig
+#    - container with runtime → python / node / ruby / java
+#    - bundled into an os install → c (or system language of that os)
+#    - distributed via app store → swift / kotlin
+#
+# 3. what's the existing team / codebase?
+#    - if it's already python, write more python unless there's a real reason
+#      to switch. polyglot codebases are expensive to maintain.
+#    - the "what does the team already know" question usually beats every
+#      technical consideration.
+#
+# 4. what's the hiring market?
+#    - python, javascript, java, go — easy to hire for
+#    - rust, kotlin, swift — moderate
+#    - zig, ocaml, elixir, haskell — niche; you're hiring on cultural fit
+#      more than skill availability
+#
+# 5. what's the library you need?
+#    - "the language that has the library" wins almost every fight.
+#    - need pytorch? python.
+#    - need k8s api bindings? go.
+#    - need a windows com interop? c# or rust with windows crate.
+#    - need llvm bindings? c++ (or rust via inkwell).
+
+
+# by use case (2026)
+
+# systems / kernels / drivers / embedded
+# - c — the substrate. still the default for kernels, libc, firmware.
+# - rust — winning new security-critical work (drivers, browsers, crypto).
+# - zig — c-style ergonomics with a modern build system; pre-1.0.
+# - see [[c-to-rust-rewrite]] [[zig-notes]] for the long form.
+
+# backend services / apis
+# - go — default. boring, productive, fast enough, single binary, cloud-native.
+# - rust — when go's gc pauses or perf ceiling actually matter (rare).
+# - typescript (node / bun / deno) — if the team is already js, just stay.
+# - python (fastapi) — if it's an ml-adjacent service or team is python-first.
+# - java / kotlin — at enterprise scale with existing jvm infra.
+# - elixir — if you want erlang-style fault tolerance and don't mind hiring.
+
+# cli tools
+# - go — fast to ship, single binary, cross-compiles trivially.
+# - rust — for polish, perf, or when correctness matters (ripgrep, fd, bat).
+# - zig — if it's tiny / embedded-adjacent.
+# - python — only if you ship it with uv or pyinstaller; otherwise install
+#   hell. fine for personal scripts.
+# - bash — for <50 lines of glue. past that, rewrite in python or go.
+
+# web frontend
+# - typescript — the only real answer. plain javascript is for codebases that
+#   predate 2018.
+# - frameworks: react still dominates; svelte / solid / qwik are the
+#   challengers; htmx if you want server-rendered with less js.
+# - wasm via rust / go / zig is real for compute-heavy bits but not for
+#   replacing the ui layer.
+
+# mobile
+# - ios native — swift + swiftui. uikit if you need older device support.
+# - android native — kotlin + jetpack compose. java only for legacy.
+# - cross-platform — react native (most mature), flutter (best ui control),
+#   kotlin multiplatform (if you want native ui per platform with shared logic).
+# - never native: do not pick c++ / qt for new mobile work in 2026.
+
+# desktop gui
+# - see [[gui-frameworks]] for the per-os picks.
+# - cross-platform: tauri (rust + web ui), electron (still dominant, still
+#   bloated), flutter desktop, .net maui.
+
+# data science / analytics
+# - python — pandas, polars, numpy, scikit-learn, matplotlib, jupyter.
+#   no real competition.
+# - r — if you're in stats / academia and that's the team norm.
+# - sql — not a "programming language" but the single highest-roi thing on
+#   this list. learn it well regardless of what else you pick.
+# - julia — fast, elegant, niche; pick only if you have a specific reason.
+
+# machine learning / ai
+# - python — the only answer for training. pytorch, jax, transformers,
+#   diffusers. everyone uses it including google.
+# - for ai-application-layer code (calling apis, building agents): see
+#   [[ai-integration-skill]] [[ai-eval-skill]]. python and typescript are
+#   the two real choices; pick whichever your product is in.
+
+# scripting / automation / glue
+# - python — default. batteries-included, runs everywhere, easy enough.
+# - bash — short, throwaway, system-level glue.
+# - go — if you want the script to become a real tool people install.
+# - powershell — windows-native; surprisingly good if you live in that world.
+# - never pick perl for new code.
+
+# game dev
+# - c++ — unreal, custom engines. still the industry standard.
+# - c# — unity. by far the easiest entry path.
+# - gdscript — godot. great for indie / hobbyist; growing fast.
+# - rust — bevy is real but pre-production-ready.
+# - zig — game dev is a vocal niche of the zig community.
+
+
+# the "learn one new language" question
+
+# if you're picking a language to *learn* (not to ship in tomorrow), the
+# value is in the model it teaches you, not the syntax:
+#
+# - c — how computers actually work. memory, layout, ub. see [[why-learn-c]].
+# - rust — ownership, lifetimes, "make illegal states unrepresentable."
+# - go — concurrency as a first-class language feature.
+# - haskell / ocaml — pure functions, type-driven design, hindley-milner.
+#   you'll bring these patterns back to whatever you actually use.
+# - lisp / scheme / clojure — code as data, macros, repl-driven development.
+# - sql — set-based thinking. underrated as a mental model.
+# - prolog — logic programming. fully bends your brain; rare worth.
+#
+# rough order of mainstream payoff: c → rust → go → typescript → python →
+# kotlin. anything beyond that is for taste.
+
+
+# anti-patterns
+
+# - picking a language because hn likes it this month
+# - picking based on "fastest in this benchmark" — you almost certainly don't
+#   need that perf
+# - rewriting a working codebase to switch languages — almost never pays for
+#   itself. add a new service in the new language at a boundary instead.
+# - introducing a second language into a small team / small codebase to "use
+#   the right tool for the job" — the cognitive overhead and tooling tax
+#   usually eats the benefit.
+# - learning a language by reading books for a year without writing anything.
+#   write a small real thing in the first weekend.
+
+
+# the one-liner
+
+# the right language is the one with the library you need, that your team
+# can hire for, that deploys the way your infra wants, in that order. syntax
+# is the last thing on the list.
