@@ -22,6 +22,9 @@
 # - the numpad. could likely live with a 75% / tkl.
 # - tradeoff: most tkl / 75% boards drop dedicated media keys to fn-layer.
 #   only full-size "professional" boards still ship a real media row.
+# - the backlight. don't actually need it. dropping this requirement opens
+#   up the field considerably — most "serious professional" mechanical
+#   boards skip backlight entirely, and availability is much better there.
 
 
 # full-size replacements (matching all four criteria)
@@ -57,6 +60,57 @@
 #     board). hybrid wired/wireless — works fine wired but you're paying for
 #     a wireless module + battery you'll never use.
 #   - the future-proofing pick if you accept the hybrid tax.
+
+
+# full-size, NO BACKLIGHT (best availability tier)
+
+# dropping the backlight requirement opens up the "serious professional"
+# segment, where availability is much better than the white-led niche.
+
+# the dedicated-media-row pick:
+# - das keyboard 4 professional
+#   - cherry mx brown, no backlight, dedicated media row + massive volume
+#     knob, full-size, usb.
+#   - essentially "the g610 minus backlight." in production for 10+ years.
+#   - usually findable on daskeyboard.com direct or amazon.
+#   - best fit if dedicated media keys are non-negotiable.
+
+# accept fn-layer media keys (field opens up considerably):
+# - filco majestouch 2 (full-size)
+#   - the canonical "boring professional" mechanical. cherry mx brown, no
+#     backlight, no media keys (fn+f-keys), pbt keycaps on some variants.
+#   - best availability on this entire list. reliably stocked at
+#     mechanicalkeyboards.com and amazon. 15+ years as the typist default.
+#
+# - filco majestouch 3 (full-size)
+#   - newer usb-c version, same dna, also reliably stocked.
+#
+# - leopold fc900r (non-pd)
+#   - cherry mx brown, no backlight, pbt keycaps standard, no media keys.
+#   - better availability than the white-led pd variant since fewer people
+#     specifically want leds.
+#   - korean build quality — arguably highest on this list.
+#
+# - varmilo va108m (non-backlit)
+#   - cherry mx brown, pbt, very wide selection of themed keycap sets.
+#   - direct from varmilo.com.
+#
+# - ikbc cd108
+#   - cherry mx, pbt, no backlight. cheaper than filco / leopold.
+#   - sometimes available via amazon third-party.
+
+# hot-swap option (give up dedicated media row):
+# - keychron q6 barebones / non-backlit sku
+#   - full-size, hot-swap, dedicated knob (not full media row), no backlight
+#     on the right sku. best long-term flexibility but no dedicated media row.
+
+
+# bonus benefit of going filco / leopold / varmilo: pbt keycaps standard
+
+# the g610 has abs keycaps that slowly develop a glossy shine on the most-
+# used keys (wasd, e, r, t, space, enter) after 1-2 years of daily use.
+# pbt keycaps don't do that — they keep their texture indefinitely. real
+# upgrade that comes for free with the "professional" segment.
 
 
 # tkl replacements (if dropping the numpad)
@@ -113,6 +167,13 @@
 # "premium mechanical" makers ship rgb by default and treat white-led as an
 # afterthought. you have to specifically hunt the white-led sku.
 #
+# availability is real: the strict white-led + no-rgb + cherry mx + media
+# keys combo has been squeezed out by the market split between "rgb gaming"
+# (corsair, razer, logitech) and "enthusiast no-backlight" (custom builds,
+# hot-swap pcbs). das and leopold's white-led skus are often out of stock.
+# dropping the backlight requirement (no-backlight section above) gives
+# significantly better availability.
+#
 # arrow cluster on 75% boards: the loss of arrow-cluster spacing on some
 # 75% boards bothers people more than they expect. try one in a store
 # before committing. tkl is the safer first step away from full-size.
@@ -127,20 +188,33 @@
 
 # the recommendations
 
-# want "my g610 but slightly nicer":
+# want "my g610 but slightly nicer" (white backlight, dedicated media row):
 # → das 6 pro. same ergonomics, same feature set, better materials.
+#   availability caveat: buy from daskeyboard.com direct; amazon listings
+#   are spotty.
+#
+# want dedicated media row, don't need backlight:
+# → das keyboard 4 professional. same feature set as the 6 pro minus the
+#   backlight, has been in production for 10+ years, more reliably stocked.
 #
 # want "best-built full-size mechanical i can buy" (don't mind fn-layer media):
-# → leopold fc900r pd. pbt keycaps + korean build quality. costs about the
-#   same as the das.
+# → leopold fc900r pd (white led) or leopold fc900r (no backlight). pbt
+#   keycaps + korean build quality. the no-backlight variant has better
+#   availability than the pd.
+#
+# want maximum availability + boring professional vibe:
+# → filco majestouch 2 or 3. no backlight, no media row, but reliably in
+#   stock at mechanicalkeyboards.com and amazon. 15+ years as the typist
+#   default for a reason.
 #
 # want future-proofing (swap switches later):
-# → keychron k10 pro white-led. hot-swap is genuinely useful as taste evolves.
-#   accept the hybrid wired/wireless tax, or downgrade to the wired-only
-#   c-series and accept gateron switches instead of cherry.
+# → keychron q6 (hot-swap, full-size, give up media row). or keychron k10 pro
+#   white-led with the hybrid wired/wireless tax.
 #
-# the das 6 pro is the only one with a dedicated media row exactly like the
-# g610. if those buttons are non-negotiable, that narrows it to one.
+# the das 6 pro and das 4 professional are the only ones with a dedicated
+# media row exactly like the g610. if those buttons are non-negotiable,
+# that narrows it to two.
 #
-# wired-only doesn't materially change the top picks: das 6 pro and leopold
-# fc900r pd were already wired-by-default and remain the front-runners.
+# wired-only doesn't materially change the top picks: das, leopold, varmilo,
+# filco are all wired-by-default. keychron is the only brand where you pay
+# a hybrid wired/wireless tax.
