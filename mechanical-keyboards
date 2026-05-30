@@ -1,0 +1,146 @@
+# mechanical keyboard picks
+#
+# current daily driver:
+# - logitech g610 orion (cherry mx brown, white led, dedicated media keys)
+#   bus 003 device 011: id 046d:c338 logitech, inc. gaming keyboard g610
+#
+# discontinued. notes here are for picking a replacement when it dies.
+
+
+# what i actually like about the g610
+
+# - no rgb
+# - minimal backlight — just white
+# - dedicated multimedia controls (mute, play, prev, next, volume roller)
+# - cherry mx brown switches
+# - full-size layout (numpad available even if rarely used)
+# - wired connection (no battery, no bluetooth pairing, no surprises)
+
+
+# what i could give up
+
+# - the numpad. could likely live with a 75% / tkl.
+# - tradeoff: most tkl / 75% boards drop dedicated media keys to fn-layer.
+#   only full-size "professional" boards still ship a real media row.
+
+
+# full-size replacements (matching all four criteria)
+
+# the perfect fit:
+# - das keyboard 6 pro
+#   - cherry mx brown, white led only (no rgb), dedicated media row +
+#     clickable volume knob, aluminum top, usb-c.
+#   - essentially "the g610 made by a company that cares about looking
+#     professional instead of gamer."
+#   - lowest mental adjustment from current setup.
+
+# compromise on one criterion:
+# - das keyboard 4 professional
+#   - drop the backlight; keep everything else.
+#   - best-in-class media keys with the massive volume knob das is known for.
+#   - the "if you don't actually need backlight" pick.
+#
+# - leopold fc900r pd (white led)
+#   - drop dedicated media keys (fn-layer only).
+#   - highest-build-quality keyboard on this list. korean-made, pbt keycaps
+#     that won't shine like abs. "boring professional" aesthetic.
+#   - the long-term-survivor pick.
+#
+# - varmilo va108m (white led)
+#   - drop dedicated media keys (fn-layer).
+#   - widest range of beautiful themed keycap sets, pbt keycaps. same build
+#     philosophy as leopold.
+#
+# - keychron k10 pro (white led variant)
+#   - drop dedicated media keys (volume knob + fn-layer media).
+#   - hot-swappable switches (try different switches without buying a new
+#     board). hybrid wired/wireless — works fine wired but you're paying for
+#     a wireless module + battery you'll never use.
+#   - the future-proofing pick if you accept the hybrid tax.
+
+
+# tkl replacements (if dropping the numpad)
+
+# - leopold fc750r pd (white led)
+#   - tkl, white backlight, cherry mx brown, pbt keycaps, no rgb.
+#   - "adult professional" tkl answer. media on fn layer.
+#
+# - varmilo va87m (white led)
+#   - tkl, white backlight, cherry mx brown, gorgeous pbt keycap themes,
+#     no rgb on white-led variants. media on fn layer.
+#
+# - keychron k8 pro (white led variant)
+#   - tkl, hot-swappable, white backlight, cherry mx option, hybrid
+#     wired/wireless. works fine wired-only.
+#   - most "modern" choice; hot-swap means changing switches later without
+#     re-buying.
+#
+# - keychron c3 pro (white led)
+#   - tkl, WIRED-ONLY, gateron switches (not cherry mx), white backlight,
+#     hot-swap on some variants. much cheaper than the k-series since you're
+#     not paying for the wireless module.
+
+
+# 75% replacements
+
+# - keychron c3 pro (white led)
+#   - wired-only 75% from keychron's wired line. gateron switches by default,
+#     not cherry mx — so the switch feel is different even if "tactile brown."
+#
+# - keychron k2 v2 (white led)
+#   - 75%, white backlight, cherry mx brown option, hybrid wired/wireless.
+#     works fine wired-only.
+#
+# - keychron q2 / v2 (white led — stock varies)
+#   - premium 75%, hot-swap. most q2s ship rgb; white-led variants are
+#     limited.
+#
+# - niz plum 84
+#   - 75%, white backlit, electrocapacitive (topre-style), not cherry mx.
+#     different feel entirely. worth knowing about; probably not the answer.
+
+
+# important tradeoffs
+
+# dedicated media keys disappear at tkl. almost all tkl / 75% boards put
+# media on an fn-layer (fn+f7/f8/f9 etc.) rather than dedicated buttons.
+# the g610's standalone volume roller + media row is one of the things you
+# give up with the smaller form factor. solvable with a small dedicated
+# macropad or a knob like the 8bitdo retro mechanical knob that just does
+# media.
+#
+# white-led-only boards are harder to find than they should be. most
+# "premium mechanical" makers ship rgb by default and treat white-led as an
+# afterthought. you have to specifically hunt the white-led sku.
+#
+# arrow cluster on 75% boards: the loss of arrow-cluster spacing on some
+# 75% boards bothers people more than they expect. try one in a store
+# before committing. tkl is the safer first step away from full-size.
+#
+# wired vs hybrid: das, leopold, varmilo are all wired-by-default — no
+# tax for the wired preference. keychron's k / q series are hybrid
+# wired/wireless (you pay for the wireless module + battery even if you
+# never use them). if wired-only matters, drop to keychron's c-series
+# (wired only, cheaper), or just plug in a k-series and ignore the
+# bluetooth.
+
+
+# the recommendations
+
+# want "my g610 but slightly nicer":
+# → das 6 pro. same ergonomics, same feature set, better materials.
+#
+# want "best-built full-size mechanical i can buy" (don't mind fn-layer media):
+# → leopold fc900r pd. pbt keycaps + korean build quality. costs about the
+#   same as the das.
+#
+# want future-proofing (swap switches later):
+# → keychron k10 pro white-led. hot-swap is genuinely useful as taste evolves.
+#   accept the hybrid wired/wireless tax, or downgrade to the wired-only
+#   c-series and accept gateron switches instead of cherry.
+#
+# the das 6 pro is the only one with a dedicated media row exactly like the
+# g610. if those buttons are non-negotiable, that narrows it to one.
+#
+# wired-only doesn't materially change the top picks: das 6 pro and leopold
+# fc900r pd were already wired-by-default and remain the front-runners.
