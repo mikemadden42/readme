@@ -1,0 +1,43 @@
+# anthropic claude models — current lineup
+#
+# the claude 4.x family. ids are what you pass to the api; claude code lets you
+# toggle with /model. see also: [[ai-integration-skill]] [[ai-eval-skill]]
+# [[claude-code]] [[ollama]]
+
+
+# the three models
+
+# - opus 4.7   — id: claude-opus-4-7
+#   hardest reasoning, deep code, agentic workflows, research-grade tasks.
+#   slowest and most expensive. use when capability matters more than throughput.
+#
+# - sonnet 4.6 — id: claude-sonnet-4-6
+#   general coding, production workloads, balanced cost/quality. sweet spot for
+#   most jobs; only falls short of opus on the genuinely hard stuff.
+#
+# - haiku 4.5  — id: claude-haiku-4-5-20251001
+#   high-throughput classification, simple q&a, latency-sensitive ux. cheapest
+#   and fastest. not the right pick for multi-step reasoning or nuanced code.
+
+
+# how to choose
+
+# - default to sonnet 4.6 for application work — it's the price/performance
+#   baseline.
+# - reach for opus 4.7 when a task is genuinely hard: long-horizon agentic
+#   loops, gnarly debugging, design with real tradeoffs, or anything where a
+#   sonnet failure would cost more than the price delta.
+# - drop to haiku 4.5 when volume, latency, or unit economics dominate —
+#   routing, tagging, short-content summarization, in-the-loop ui assistance.
+
+
+# claude code specifics
+
+# - opus 4.7 supports fast mode (/fast) — same opus model, faster output, no
+#   downgrade to a smaller model. also available on opus 4.6.
+# - switch models with /model inside claude code.
+
+
+# knowledge cutoff
+
+# january 2026 for all three.

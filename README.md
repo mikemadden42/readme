@@ -14,6 +14,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [picking-a-language](picking-a-language) — use-case-driven language selection
 - [ai-eval-skill](ai-eval-skill) — evaluation as the highest-leverage AI skill
 - [ai-integration-skill](ai-integration-skill) — integrating AI into systems vs learning tools
+- [anthropic-models](anthropic-models) — current Claude 4.x lineup and when to pick each
 - [mechanical-keyboards](mechanical-keyboards) — G610 successor picks
 
 ## Packaging walkthroughs
