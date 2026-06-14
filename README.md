@@ -75,6 +75,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [deb](deb) — dpkg/apt usage
 - [pacman](pacman) — Arch/Manjaro package manager primer
 - [apk](apk) — Alpine package manager primer
+- [dnf](dnf) — Fedora/RHEL package manager primer
 - [grub](grub) — bootloader config
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption

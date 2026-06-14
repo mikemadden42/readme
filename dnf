@@ -1,0 +1,320 @@
+# dnf — fedora / rhel package manager primer
+#
+# dnf is the package tool on fedora and rhel-family distros (rhel, alma,
+# rocky, centos stream, amazon linux 2023). on fedora 41+ the `dnf` binary
+# IS dnf5 — a native C++ rewrite of the old python dnf4. flag surface is
+# very similar, but some plugin features moved.
+#
+# command surface is full-english subcommands (like apk, unlike pacman):
+#
+#   install / remove / reinstall    — install actions
+#   upgrade / distro-sync           — upgrade actions
+#   update                          — alias for upgrade (legacy yum compat)
+#   list / info / search / provides — query
+#   repoquery                       — query the repos in detail
+#   repolist                        — list / inspect repos
+#   group                           — package groups (e.g. "Development Tools")
+#   history                         — every transaction, undo / redo / rollback
+#   mark                            — flip explicit ↔ dependency
+#   clean                           — clean cache
+#   builddep                        — install build deps from a .spec / srpm
+#   copr                            — enable a COPR repo (plugin)
+#   system-upgrade                  — major version upgrade (plugin)
+#
+# config lives in /etc/dnf/dnf.conf plus one file per repo under
+# /etc/yum.repos.d/. yes, still yum.repos.d — kept for compatibility.
+
+
+UPDATE / INSTALL / UPGRADE
+--------------------------
+
+# refresh metadata (cheap; dnf auto-refreshes too, this just forces it)
+sudo dnf makecache
+
+# see what would upgrade — does not modify the system
+dnf check-update
+
+# upgrade every installed package (the standard maintenance command)
+sudo dnf upgrade
+
+# upgrade and skip the confirm prompt
+sudo dnf upgrade -y
+
+# upgrade refusing to leave you on an older version when a dep blocks it.
+# default behavior; explicit form is `--best`. its opposite is `--nobest`,
+# useful when an upstream package is briefly broken.
+sudo dnf upgrade --best
+sudo dnf upgrade --nobest
+
+# install one or more packages
+sudo dnf install neovim git
+
+# install from a local .rpm file (deps still resolved from configured repos)
+sudo dnf install ./mypackage-1.0-1.fc44.x86_64.rpm
+
+# install from a URL
+sudo dnf install https://example.com/release.rpm
+
+# reinstall an already-installed package (repair files on disk)
+sudo dnf reinstall neovim
+
+# install build-time dependencies for a source RPM or .spec file
+sudo dnf builddep neovim
+
+
+REMOVE
+------
+
+# remove a package and its now-unused dependencies
+sudo dnf remove neovim
+
+# remove every package that was installed as a dep but nothing now needs.
+# safe — the analog to `apt autoremove`.
+sudo dnf autoremove
+
+# remove a package even if other packages depend on it (dangerous —
+# tends to cascade-remove half the system if you say yes).
+sudo dnf remove neovim --setopt=clean_requirements_on_remove=0
+
+
+QUERY (installed packages)
+--------------------------
+
+# list every installed package
+dnf list installed
+
+# list packages installed that came from outside official repos (handy
+# for "what did I sideload?")
+dnf list extras
+
+# info on a package (installed or available)
+dnf info neovim
+
+# what files did this installed package put on disk?
+rpm -ql neovim
+
+# which installed package owns this file? (rpm answers this, not dnf)
+rpm -qf /usr/bin/nvim
+
+# when was each package installed? (handy for "what changed recently?")
+rpm -qa --last | head -20
+
+# show the package metadata source (which .rpm it came from, repo, etc.)
+dnf repoquery --installed --info neovim
+
+# packages installed explicitly (user-asked) vs as dependencies
+dnf repoquery --userinstalled
+dnf repoquery --autoremove          # would be removed by `autoremove`
+
+
+SEARCH / REPOQUERY (not yet installed)
+--------------------------------------
+
+# search by name + description across enabled repos
+dnf search neovim
+
+# only by name
+dnf search --name neovim
+
+# which package provides this file / capability? (the "command not found"
+# answer — works for files even if the package isn't installed)
+dnf provides /usr/bin/strings
+dnf provides 'libssl.so.3()(64bit)'
+
+# repoquery is the power tool — query the repos with fine-grained filters
+dnf repoquery neovim                  # any version available
+dnf repoquery --available neovim
+dnf repoquery --requires neovim       # what it depends on
+dnf repoquery --whatrequires neovim   # what depends on it
+dnf repoquery --whatprovides /usr/bin/strings
+
+
+CACHE
+-----
+
+# default cache lives under /var/cache/dnf/
+ls /var/cache/dnf/
+
+# clean cached package files but keep the metadata DB
+sudo dnf clean packages
+
+# nuke metadata too — useful when a repo's index is misbehaving
+sudo dnf clean metadata
+sudo dnf clean dbcache
+
+# nuke everything
+sudo dnf clean all
+
+# rebuild the cache (forces fresh fetch)
+sudo dnf makecache
+
+
+REPOSITORIES
+------------
+
+# list every configured repo and whether it's enabled
+dnf repolist
+dnf repolist all                      # including disabled
+dnf repolist -v                       # verbose
+
+# per-repo files
+ls /etc/yum.repos.d/
+
+# enable / disable a repo permanently
+sudo dnf config-manager setopt fedora-cisco-openh264.enabled=1
+sudo dnf config-manager setopt fedora-cisco-openh264.enabled=0
+
+# one-shot enable / disable for a single transaction
+sudo dnf install --enablerepo=updates-testing some-pkg
+sudo dnf upgrade --disablerepo='*' --enablerepo=fedora,updates
+
+
+# rpm fusion — the standard third-party repo for codecs, nvidia driver,
+# steam, etc. NOT enabled by default for licensing reasons.
+sudo dnf install \
+    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+
+# COPR — fedora's user-built repos (analog of arch's AUR, but with
+# prebuilt binaries hosted by fedora infra). curated by individual users,
+# trust accordingly.
+sudo dnf copr enable user/project
+sudo dnf install some-pkg-from-copr
+sudo dnf copr disable user/project
+
+
+GROUPS
+------
+
+# groups bundle many packages under one name. "Development Tools" is the
+# famous one — pulls in gcc, make, autoconf, automake, gdb, etc.
+dnf group list                        # available groups
+dnf group list --installed
+dnf group info "Development Tools"    # what's actually inside
+
+# install / remove a group as a unit
+sudo dnf group install "Development Tools"
+sudo dnf group remove "Development Tools"
+
+# environment groups (bigger bundles — gnome desktop, kde, server, etc.)
+dnf group list --hidden               # show environment groups too
+
+
+HISTORY / UNDO / ROLLBACK
+-------------------------
+
+# every dnf transaction is logged with a numeric ID — and most can be
+# undone. this is one of dnf's best features and the right answer to
+# "an upgrade just broke my system".
+dnf history
+
+# inspect what one transaction did
+dnf history info 42
+dnf history info last
+
+# roll BACK one transaction (undo its changes)
+sudo dnf history undo 42
+sudo dnf history undo last
+
+# roll the system back to the state it was in AFTER transaction N
+sudo dnf history rollback 38
+
+# show the full log file for ad-hoc grepping
+sudo less /var/log/dnf.log
+sudo less /var/log/dnf.rpm.log
+
+
+PINNING / HOLDING / DOWNGRADING
+-------------------------------
+
+# pin a package so `dnf upgrade` skips it. dnf5 has built-in support via
+# excludes — set in /etc/dnf/dnf.conf or per-command:
+sudo dnf upgrade --exclude=kernel*
+# or persistently:
+sudo vi /etc/dnf/dnf.conf
+# add or extend:  exclude=kernel* nvidia-driver
+
+# the versionlock plugin gives finer control — lock to a specific version
+sudo dnf install python3-dnf-plugin-versionlock
+sudo dnf versionlock add neovim
+sudo dnf versionlock list
+sudo dnf versionlock delete neovim
+
+# downgrade to the previous installed version (dnf keeps prior packages
+# in /var/cache/dnf as long as they're not cleaned)
+sudo dnf downgrade neovim
+
+
+SYSTEM UPGRADE (Fedora N → N+1)
+-------------------------------
+
+# major fedora upgrades use the system-upgrade plugin, which reboots into
+# a minimal env to do the transaction safely. supported path; don't just
+# edit the repo URLs and `dnf upgrade`.
+sudo dnf install dnf-plugin-system-upgrade
+sudo dnf upgrade --refresh              # bring system fully current first
+sudo dnf system-upgrade download --releasever=45
+sudo dnf system-upgrade reboot
+
+# clean up after it finishes (cached download data)
+sudo dnf system-upgrade clean
+
+
+NEEDS-RESTARTING
+----------------
+
+# after an upgrade, which running processes are using files that got
+# replaced on disk? (the "should I reboot?" check)
+sudo dnf install dnf-utils              # provides the command
+needs-restarting
+needs-restarting -r                     # just yes/no for "reboot needed"
+needs-restarting -s                     # list services that should restart
+
+
+COMMON DEV TOOLS
+----------------
+
+# the conventional bootstrap on fedora — pulls in gcc, make, autoconf,
+# automake, gdb, and the basic toolchain.
+sudo dnf group install "Development Tools"
+sudo dnf install git
+
+# see exactly what "Development Tools" pulls in
+dnf group info "Development Tools"
+
+# editors / shells
+sudo dnf install neovim vim tmux zsh
+
+# languages and runtimes (install what you use)
+sudo dnf install python3 python3-pip nodejs npm golang rust cargo \
+    clang cmake ninja-build
+
+# debug / inspection
+sudo dnf install gdb lldb strace ltrace valgrind perf
+
+# containers / vms
+sudo dnf install podman buildah skopeo
+sudo dnf install qemu-kvm virt-manager libvirt
+
+# handy CLI
+sudo dnf install ripgrep fd-find bat fzf jq htop wget curl unzip
+
+# notes:
+# - fedora uses podman, not docker, by default. podman speaks the same
+#   CLI surface for most commands (`podman run`, `podman build`).
+# - python on fedora IS python3. system pip is locked by PEP 668 — use
+#   venvs (`python3 -m venv .venv`) or pipx for global CLI tools.
+# - for rust prefer rustup over the `rust`+`cargo` rpms when you need
+#   multiple toolchains:
+sudo dnf install rustup
+rustup-init
+
+
+SEE ALSO
+
+# - [[pacman]]  — arch / manjaro, same idea, different command surface
+# - [[apk]]     — alpine, also full-word subcommands
+# - [[deb]]     — debian / ubuntu (dpkg/apt)
+# - [[brew]]    — same idea on macos
+# - [[winget]]  — same idea on windows
