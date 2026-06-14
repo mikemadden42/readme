@@ -149,6 +149,26 @@ sudo dnf clean all
 sudo dnf makecache
 
 
+DNF.CONF TUNING
+---------------
+
+# the few settings worth flipping on a fresh box. defaults are conservative;
+# these line up better with how most workstations actually run.
+sudo vi /etc/dnf/dnf.conf
+
+#   defaultyes=True               assume yes on prompts — less typing
+#   max_parallel_downloads=10     speed up big transactions (default: 3)
+#   fastestmirror=True            pick the fastest enabled mirror
+#   keepcache=True                keep .rpms in cache after install
+#                                 (lets you downgrade without redownloading)
+#   countme=False                 opt out of the install-count telemetry
+#   skip_if_unavailable=True      one broken repo won't kill every dnf call
+
+# see the full list
+man 5 dnf.conf
+man 5 dnf5.conf                 # fedora 41+
+
+
 REPOSITORIES
 ------------
 
@@ -246,19 +266,76 @@ sudo dnf versionlock delete neovim
 sudo dnf downgrade neovim
 
 
-SYSTEM UPGRADE (Fedora N → N+1)
--------------------------------
+RELEASE CYCLE AND UPGRADES
+--------------------------
 
-# major fedora upgrades use the system-upgrade plugin, which reboots into
-# a minimal env to do the transaction safely. supported path; don't just
-# edit the repo URLs and `dnf upgrade`.
+# fedora is a POINT-RELEASE distro on a fast cadence. new release every
+# ~6 months (april + october). each release is supported through the
+# next two cuts plus a one-month tail — ~13 months. you will upgrade
+# every ~6 months in practice. EOL means no more security updates.
+# schedule: fedoraproject.org/wiki/Releases
+
+# which release is this box on?
+cat /etc/fedora-release
+rpm -E %fedora
+
+# the upgrade itself uses dnf-plugin-system-upgrade, which reboots into
+# a minimal env to run the transaction safely offline. supported path;
+# don't just edit the repo URLs and `dnf upgrade` and hope.
 sudo dnf install dnf-plugin-system-upgrade
-sudo dnf upgrade --refresh              # bring system fully current first
+sudo dnf upgrade --refresh              # bring current release fully current FIRST
 sudo dnf system-upgrade download --releasever=45
 sudo dnf system-upgrade reboot
 
 # clean up after it finishes (cached download data)
 sudo dnf system-upgrade clean
+
+
+# RELEASE-UPGRADE GOTCHAS — things to do before pulling the trigger:
+
+# 1. read the release notes and Common Bugs page before upgrading.
+#    fedoramagazine.org posts the canonical "upgrading from F44 to F45"
+#    guide on release day, and fedoraproject.org/wiki/Common_F45_bugs
+#    collects known issues with workarounds. higher signal than running
+#    blind and hoping.
+
+# 2. don't skip releases. F44 → F45 → F46, not F44 → F46. single-step
+#    is the tested path; multi-step is technically possible
+#    (--releasever=46 with --setopt=upgrade_type=upgrade) but you own
+#    the fallout.
+
+# 3. RPM Fusion needs upgrading alongside fedora — its repo URLs are
+#    version-pinned. AFTER system-upgrade reboot completes, verify the
+#    release packages got pulled forward:
+rpm -q rpmfusion-free-release rpmfusion-nonfree-release
+#    if either still shows the old %fedora, install the new ones manually
+#    before running any other dnf command (see REPOSITORIES section).
+
+# 4. COPR repos can block the upgrade. if the maintainer hasn't built
+#    for the new release yet, dnf refuses. inventory first:
+dnf copr list
+#    options: wait for the build, or disable for the upgrade and
+#    re-enable after:
+sudo dnf copr disable user/project
+#    ...upgrade, reboot, then:
+sudo dnf copr enable user/project
+
+# 5. DNF5 vs DNF4 trips up older tutorials. fedora 41+ ships dnf5; flag
+#    surface is mostly the same but a few plugin behaviors differ. if
+#    a guide is older than late 2024 and something doesn't work, this
+#    is usually why.
+
+# 6. desktop environment majors bump per release. GNOME 47→48 or KDE
+#    Plasma 6.X→6.Y land in a single dnf upgrade. extensions break
+#    against the new gnome shell almost every time — check
+#    extensions.gnome.org for compatibility, or expect to disable a few
+#    for ~a week.
+
+# 7. atomic variants (silverblue, kinoite, sericea, onyx) DO NOT use
+#    dnf for system updates. you'd use rpm-ostree upgrade with image-
+#    based rollbacks. nothing in this primer transfers — if `rpm-ostree
+#    status` works on the box, you're not on workstation/server.
+rpm-ostree status 2>/dev/null && echo "this is an atomic variant — use rpm-ostree, not dnf"
 
 
 NEEDS-RESTARTING
