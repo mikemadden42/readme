@@ -74,6 +74,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [ubuntu](ubuntu), [centos](centos), [freebsd](freebsd) — distro-specific notes
 - [deb](deb) — dpkg/apt usage
 - [pacman](pacman) — Arch/Manjaro package manager primer
+- [apk](apk) — Alpine package manager primer
 - [grub](grub) — bootloader config
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption

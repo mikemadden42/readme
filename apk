@@ -1,0 +1,310 @@
+# apk — alpine linux package manager primer
+#
+# apk is alpine's package tool. structurally simpler than pacman/apt: most
+# operations are full english verbs rather than letter flags.
+#
+#   add       install (and pull deps)
+#   del       uninstall
+#   update    refresh the index from the repositories
+#   upgrade   upgrade installed packages
+#   info      query installed packages
+#   search    query the index for not-yet-installed packages
+#   fix       reinstall to repair a broken install
+#   cache     manage the package cache
+#   policy    show which repo + version would satisfy a name
+#   audit     check installed files against the manifest
+#   version   list packages with available newer versions
+#
+# config lives in /etc/apk/. the three files that matter:
+#
+#   /etc/apk/repositories   — mirror URLs, one per line, optional @tag pin
+#   /etc/apk/world          — your explicit-install list (one pkg per line)
+#   /etc/apk/arch           — target architecture
+#
+# alpine specifics worth knowing before you start:
+# - libc is musl, not glibc. binaries built for glibc systems (e.g. most
+#   AppImages, vscode tarballs, npm packages with prebuilt natives) will
+#   often need the gcompat shim or won't run.
+# - userland is busybox, not GNU coreutils. install `coreutils`, `findutils`,
+#   `grep` etc. if you want GNU behavior.
+# - init is openrc by default. service management is `rc-service` / `rc-update`,
+#   not systemctl.
+# - alpine ships doas instead of sudo. install sudo separately if you want it.
+
+
+UPDATE / INSTALL / UPGRADE
+--------------------------
+
+# refresh the package index (cheap; the index is small)
+sudo apk update
+
+# upgrade every installed package
+sudo apk upgrade
+
+# refresh index AND upgrade in one shot (-U is shorthand for `update` first)
+sudo apk -U upgrade
+
+# simulate an upgrade — show what would change, do nothing
+sudo apk upgrade --simulate
+
+# install one or more packages
+sudo apk add neovim git
+
+# install without prompting (apk doesn't really prompt; --no-interactive
+# matters mostly inside scripts)
+sudo apk add --no-interactive neovim
+
+# install from a specific repo (see REPOSITORIES below for the @tag syntax)
+sudo apk add docker@community
+
+# add a package without recording it in /etc/apk/world.
+# without --virtual you can also use -t to group several into one named
+# "virtual" — useful for "install build deps, build, remove them all".
+sudo apk add --no-cache curl
+
+# install a .apk file from disk
+sudo apk add --allow-untrusted ./mypkg-1.0-r0.apk
+
+
+REMOVE
+------
+
+# remove a package. by default apk also removes deps that nothing else needs.
+sudo apk del neovim
+
+# show what would be removed without doing it
+sudo apk del --simulate neovim
+
+# force-remove ignoring deps (dangerous — same idea as `pacman -Rdd`)
+sudo apk del --no-deps neovim
+
+
+QUERY (installed packages)
+--------------------------
+
+# list every installed package, one per line
+apk info
+
+# count installed packages
+apk info | wc -l
+
+# is X installed?
+apk info -e neovim && echo yes || echo no
+
+# everything apk knows about an installed package
+apk info -a neovim
+
+# files installed by a package
+apk info -L neovim
+
+# which package owns this file? (alpine equivalent of `pacman -Qo` /
+# `dpkg -S`). takes a path on the live filesystem.
+apk info -W /usr/bin/nvim
+
+# what depends on this package?
+apk info -r neovim
+
+# what does this package depend on?
+apk info -R neovim
+
+# install date and size
+apk info -s neovim
+
+# the world file is the source of truth for "what did I explicitly install".
+# editing it by hand and running `apk add` (no args) is a legit workflow.
+cat /etc/apk/world
+
+
+SEARCH (not yet installed)
+--------------------------
+
+# search the index by name + description
+apk search neovim
+
+# verbose results with descriptions
+apk search -v neovim
+
+# exact-name match
+apk search -e neovim
+
+# which version / repository would `apk add` pick? answers "is it in main,
+# community, or testing? what version?" without installing anything.
+apk policy neovim
+
+# list packages where a newer version is available
+apk version -l '<'
+
+
+CACHE
+-----
+
+# alpine doesn't cache by default. enable persistent caching by pointing
+# /etc/apk/cache at a real directory:
+sudo mkdir -p /var/cache/apk
+sudo ln -s /var/cache/apk /etc/apk/cache
+
+# from there, the cache commands are usable:
+sudo apk cache clean           # remove cached files for installed pkgs
+sudo apk cache download        # pre-populate cache for current world
+sudo apk cache -v sync         # show what's in the cache
+
+# inside docker images, `apk add --no-cache` is the standard idiom — it
+# updates the index, installs, and skips writing the cache. that's why
+# you'll see it in nearly every alpine-based Dockerfile.
+
+
+REPOSITORIES AND BRANCHES
+-------------------------
+
+# alpine repos:
+#   main       — supported, stable
+#   community  — community-supported, larger surface
+#   testing    — edge-only; for packages still being evaluated
+#
+# branches:
+#   v3.21 / v3.22 / ...  — point releases (stable)
+#   edge                 — rolling, what new packages land in first
+#
+# typical /etc/apk/repositories:
+#   https://dl-cdn.alpinelinux.org/alpine/v3.22/main
+#   https://dl-cdn.alpinelinux.org/alpine/v3.22/community
+#
+# look at it:
+cat /etc/apk/repositories
+
+# add the community repo (the most common "I'm missing packages" fix)
+echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/community" | \
+    sudo tee -a /etc/apk/repositories
+sudo apk update
+
+# pin a repo with @tag so you can opt into individual packages from it
+# without making it the default search. add to /etc/apk/repositories:
+#   @edge      https://dl-cdn.alpinelinux.org/alpine/edge/main
+#   @edgecomm  https://dl-cdn.alpinelinux.org/alpine/edge/community
+#   @testing   https://dl-cdn.alpinelinux.org/alpine/edge/testing
+# then install with the suffix:
+sudo apk update
+sudo apk add some-bleeding-thing@edgecomm
+
+# check setup-apkrepos for an interactive mirror picker
+sudo setup-apkrepos
+
+
+VIRTUAL PACKAGES (BUILD-DEP PATTERN)
+------------------------------------
+
+# group several real packages under one name so you can remove them as a
+# unit later. the canonical use case is "install build deps, build a thing,
+# then drop the build deps" — extremely common in Dockerfiles.
+sudo apk add --virtual .build-deps gcc musl-dev make linux-headers
+make
+sudo apk del .build-deps
+
+# the leading dot is convention, not required — distinguishes "this is a
+# scratch grouping" from a real package name.
+
+
+PINNING / HOLDING A PACKAGE BACK
+--------------------------------
+
+# alpine doesn't have a `hold` command. options:
+#
+# 1. comment out the repo that ships the version you don't want
+# 2. pin a specific version directly in /etc/apk/world:
+#       echo 'neovim=0.10.0-r0' | sudo tee -a /etc/apk/world
+#       sudo apk add
+#    or one-shot at install:
+sudo apk add 'neovim=0.10.0-r0'
+
+# revert by removing the version constraint from /etc/apk/world.
+
+
+VERIFICATION / AUDIT
+--------------------
+
+# audit checks every installed file against the package manifest. flags
+# files that were modified after install (config drift, tampering, etc.).
+sudo apk audit
+
+# audit only system files (skip /etc config drift, which is expected)
+sudo apk audit --system
+
+# fix a broken install — reinstall a package without removing it first.
+# answer to "I accidentally rm'd a binary" / "a file got corrupted".
+sudo apk fix neovim
+
+# verify the package index signatures are valid
+apk update --check-signatures
+
+
+CONTAINER / DOCKER USAGE
+------------------------
+
+# the canonical "install only at build time, no cache layer" pattern
+RUN apk add --no-cache curl ca-certificates
+
+# the build-deps pattern (compile something, then drop the toolchain)
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev make \
+ && make \
+ && apk del .build-deps
+
+# pin to a specific alpine release in your base image to avoid surprise
+# upgrades when 3.X+1 ships:
+#   FROM alpine:3.22
+
+
+BUILDING A PACKAGE (BRIEF)
+--------------------------
+
+# alpine's build system is `abuild`, driven by APKBUILD files (analogous
+# to arch's PKGBUILD). full guide is at wiki.alpinelinux.org. the gist:
+sudo apk add alpine-sdk
+sudo addgroup $USER abuild              # add yourself to the build group
+# one-time keygen for signing your own packages
+abuild-keygen -a -i
+# in a directory with an APKBUILD:
+abuild -r
+
+
+COMMON DEV TOOLS
+----------------
+
+# alpine's base install is intentionally tiny — most dev tooling is opt-in.
+# the conventional bootstrap:
+sudo apk add --no-cache build-base git
+
+# build-base is a meta-package that pulls gcc, g++, make, libc-dev, etc.
+# musl-dev is included via libc-dev — you generally don't need it explicitly.
+
+# GNU userland (so scripts written against GNU coreutils work)
+sudo apk add --no-cache coreutils findutils grep sed gawk
+
+# editors / shells
+sudo apk add --no-cache neovim vim tmux bash
+
+# languages
+sudo apk add --no-cache python3 py3-pip nodejs npm go rust cargo clang cmake
+
+# debug / inspection
+sudo apk add --no-cache gdb strace
+
+# handy CLI
+sudo apk add --no-cache ripgrep fd bat fzf jq htop wget curl
+
+# notes:
+# - python on alpine is python3; the bare `python` package was removed
+#   long ago. use `python3` explicitly or alias it.
+# - PEP 668 also applies on alpine — use venvs, don't pip-install globally.
+# - musl matters for any prebuilt binary you bring in from outside. for
+#   the worst offenders (vscode-server, some npm modules) install
+#   `gcompat` to shim glibc symbols. it's not a magic fix; recompile if
+#   you can.
+sudo apk add --no-cache gcompat
+
+
+SEE ALSO
+
+# - [[pacman]]  — arch / manjaro, similar mental model
+# - [[deb]]     — debian / ubuntu (dpkg/apt)
+# - [[brew]]    — same idea on macos
+# - [[winget]]  — same idea on windows
