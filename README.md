@@ -76,6 +76,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [pacman](pacman) — Arch/Manjaro package manager primer
 - [apk](apk) — Alpine package manager primer
 - [dnf](dnf) — Fedora/RHEL package manager primer
+- [zypper](zypper) — openSUSE package manager primer
 - [grub](grub) — bootloader config
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption

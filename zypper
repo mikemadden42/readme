@@ -1,0 +1,368 @@
+# zypper — opensuse package manager primer
+#
+# zypper is opensuse's package tool (also used on suse linux enterprise).
+# rpm under the hood, like dnf, but with a different command surface and
+# a few suse-specific concepts.
+#
+# command surface mixes full-english subcommands with short aliases. you'll
+# see both in the wild; either form works.
+#
+#   in   install         rm   remove           up   update (bounded)
+#   dup  dist-upgrade    ref  refresh          se   search
+#   if   info            wp   what-provides    ps   processes (after-upgrade)
+#   lr   list repos      ar   add repo         mr   modify repo
+#   rr   remove repo     al   add lock         rl   remove lock     ll   list locks
+#   lp   list-patches    patch                  pchk patch-check
+#
+# the two suse-specific concepts to internalize early:
+#
+# - PATTERNS — like dnf groups: named bundles of packages.
+#     `devel_basis` is the famous one (gcc, make, etc.).
+# - PATCHES — security / bugfix collections that map onto specific bugs
+#     or CVEs. `zypper patch` installs only patches, not random updates.
+#
+# config: /etc/zypp/zypp.conf and one file per repo in /etc/zypp/repos.d/.
+#
+# tumbleweed vs leap:
+# - tumbleweed (rolling): `zypper dup` IS the daily update command.
+#   `zypper up` is wrong on tumbleweed — it can't cross release boundaries
+#   it doesn't know are there.
+# - leap (point release): `zypper up` for daily; `zypper dup --releasever=N.N`
+#   for the major-version upgrade.
+
+
+REFRESH / INSTALL / UPGRADE
+---------------------------
+
+# refresh metadata for all enabled repos
+sudo zypper refresh
+sudo zypper ref
+
+# upgrade installed packages WITHOUT crossing version / repo boundaries.
+# right command on Leap; wrong command on Tumbleweed.
+sudo zypper update
+sudo zypper up
+
+# distribution upgrade — full solver pass, can change vendors, swap
+# packages, accept arch transitions. right command on Tumbleweed daily,
+# and the way to bump Leap to a new minor release.
+sudo zypper dup
+
+# non-interactive (scripts, dockerfiles)
+sudo zypper --non-interactive update
+sudo zypper -n up
+
+# show what would update without doing it
+zypper lu                              # list-updates
+zypper list-patches                    # only the security/bugfix patches
+
+# install one or more packages
+sudo zypper install neovim git
+sudo zypper in neovim git
+
+# install but skip "recommended" weak deps (smaller install, fewer surprises)
+sudo zypper install --no-recommends neovim
+
+# install from a local .rpm file (deps still resolved from repos)
+sudo zypper install ./mypackage-1.0-1.x86_64.rpm
+
+# install from a specific repo when the same pkg lives in several
+sudo zypper install --from packman ffmpeg
+
+# allow zypper to swap a package's vendor — needed the first time you
+# pull a codec build from packman over the openSUSE original.
+sudo zypper install --allow-vendor-change vlc
+
+# install just security/bugfix patches
+sudo zypper patch
+sudo zypper patch --category security
+
+
+REMOVE
+------
+
+# remove a package. by default zypper does NOT auto-remove orphaned deps —
+# this differs from dnf / pacman -Rs / apk del. add --clean-deps if you
+# want apt-autoremove-style behavior.
+sudo zypper remove neovim
+sudo zypper rm neovim
+sudo zypper rm --clean-deps neovim
+
+# show what would be removed
+sudo zypper rm --dry-run neovim
+
+# clean orphaned packages (the explicit "autoremove" sweep)
+zypper packages --orphaned
+sudo zypper remove $(zypper packages --orphaned | awk -F'|' '/^i/{print $3}')
+
+
+QUERY (installed packages)
+--------------------------
+
+# list every installed package
+zypper search --installed-only
+zypper se -i
+
+# count installed packages
+rpm -qa | wc -l
+
+# what's already installed for this name?
+zypper info neovim
+
+# files installed by a package (rpm answers; zypper doesn't have a
+# direct equivalent)
+rpm -ql neovim
+
+# which installed package owns this file?
+rpm -qf /usr/bin/nvim
+
+# what depends on this package?
+zypper info --requires neovim
+rpm -q --whatrequires neovim
+
+# what does this package depend on?
+zypper info --recommends --requires --suggests neovim
+
+# install date / size
+rpm -qa --last | head -20
+rpm -qi neovim
+
+
+SEARCH (not yet installed)
+--------------------------
+
+# search by name + summary, both repos and installed
+zypper search neovim
+zypper se neovim
+
+# only available (not installed)
+zypper se -u neovim
+zypper search --uninstalled-only neovim
+
+# search by capability — answers "which package provides this file or lib?"
+zypper what-provides /usr/bin/strings
+zypper wp 'libssl.so.3()(64bit)'
+
+# verbose search with version + repo of each match
+zypper se -v neovim
+
+# search patterns (suse package groups)
+zypper se -t pattern
+zypper se -t pattern devel
+
+# what's actually in a pattern?
+zypper info -t pattern devel_basis
+
+
+CACHE
+-----
+
+# package cache lives at /var/cache/zypp/packages/
+ls /var/cache/zypp/packages/
+
+# clean package files (keeps metadata)
+sudo zypper clean
+
+# nuke everything — packages + metadata + raw cache
+sudo zypper clean --all
+
+# clean metadata only (use when a repo's index is misbehaving)
+sudo zypper clean --metadata
+
+# force a fresh metadata refresh after cleaning
+sudo zypper ref -f
+
+
+REPOSITORIES
+------------
+
+# list every configured repo
+zypper lr
+zypper lr -d                           # with URIs, priority, GPG info
+zypper lr -p                           # sorted by priority
+
+# per-repo files
+ls /etc/zypp/repos.d/
+
+# add a repo. the second arg is the alias zypper will use to refer to it.
+sudo zypper ar -f http://download.opensuse.org/repositories/foo/foo
+sudo zypper ar https://example.com/some-repo.repo
+
+# disable / enable a repo
+sudo zypper mr -d repo-alias
+sudo zypper mr -e repo-alias
+
+# change repo priority. lower number = higher priority. default is 99.
+# this is how you keep packman's ffmpeg from being overridden by an oss
+# update — set packman lower (higher priority) than the default repos.
+sudo zypper mr -p 90 packman
+
+# refresh just one repo
+sudo zypper ref repo-alias
+
+# remove a repo
+sudo zypper rr repo-alias
+
+
+# packman — the third-party codecs / multimedia repo (rpm fusion analog).
+# add and switch to its versions of multimedia packages:
+sudo zypper ar -cfp 90 https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/ packman
+sudo zypper ref
+sudo zypper dup --from packman --allow-vendor-change
+
+# OBS (Open Build Service) — opensuse's user / community build infra.
+# closer in spirit to fedora's COPR than to arch's AUR — prebuilt binaries.
+# search projects at https://software.opensuse.org/
+sudo zypper ar https://download.opensuse.org/repositories/some:project/openSUSE_Tumbleweed/some:project.repo
+sudo zypper ref
+sudo zypper in some-package
+
+
+PATTERNS (groups) AND PATCHES
+-----------------------------
+
+# patterns are named bundles — closest analog to dnf groups. install a
+# whole pattern in one shot.
+zypper search --type pattern
+sudo zypper install --type pattern devel_basis
+
+# what does the pattern actually pull in?
+zypper info -t pattern devel_basis
+
+# patches are security and bugfix collections (one patch ~ one bug or
+# CVE), distinct from arbitrary version updates.
+zypper list-patches
+zypper list-patches --category security
+zypper list-patches --severity critical
+
+# install all pending patches
+sudo zypper patch
+sudo zypper patch --category security
+sudo zypper patch --cve CVE-2024-12345
+
+# scan: is the system fully patched?
+zypper patch-check
+
+
+LOCKING / PINNING / DOWNGRADING
+-------------------------------
+
+# lock a package — it won't update, install, or remove until unlocked.
+# this is the dnf-versionlock / pacman-IgnorePkg analog.
+sudo zypper addlock neovim
+sudo zypper al neovim
+
+# list locks
+zypper locks
+zypper ll
+
+# remove a lock
+sudo zypper removelock neovim
+sudo zypper rl neovim
+
+# locks live in /etc/zypp/locks
+cat /etc/zypp/locks
+
+# downgrade — zypper has no dedicated `downgrade` subcommand. either
+# install a specific version explicitly (if still in a repo or in the
+# cache) or install the .rpm file directly:
+sudo zypper in 'neovim<0.10.0'                     # specific version-range
+sudo zypper in --oldpackage ./neovim-0.9.5-1.x86_64.rpm
+
+
+SNAPSHOTS AND ROLLBACK (SNAPPER)
+--------------------------------
+
+# opensuse defaults to btrfs on /, with snapper auto-creating a "pre" and
+# "post" snapshot around every zypper transaction. this is one of the
+# best parts of running opensuse — failed update? roll back.
+
+# list snapshots (most recent at the bottom)
+sudo snapper list
+
+# what changed between two snapshots?
+sudo snapper status 42..43
+sudo snapper diff 42..43 /etc/somefile
+
+# undo the last zypper transaction by rolling back to its "pre" snapshot.
+# safe and reversible.
+sudo snapper rollback                  # rolls back to the default-selected snapshot
+sudo snapper rollback 42               # roll back to a specific snapshot
+sudo reboot
+
+# undo a transaction the targeted way — without changing the default root
+sudo snapper undochange 42..43
+
+# clean up snapshot accumulation if disk gets tight
+sudo snapper cleanup number
+sudo snapper cleanup timeline
+
+# zypper's own "after upgrade, what's still using stale files?" tool —
+# functionally the same as dnf needs-restarting.
+sudo zypper ps -s
+
+
+DISTRIBUTION UPGRADE
+--------------------
+
+# tumbleweed (rolling): there's nothing to do but `dup`.
+sudo zypper ref
+sudo zypper dup
+
+# leap N → N+1 (point release upgrade). edit the repos to point to the
+# new release THEN dup. snapper has your back if it goes wrong.
+sudo zypper --releasever=15.7 ref
+sudo zypper --releasever=15.7 dup --allow-vendor-change
+
+# alternative for leap upgrades — `opensuse-migration-tool` (newer) drives
+# the same dup flow with safer defaults.
+sudo zypper in opensuse-migration-tool
+sudo opensuse-migration-tool
+
+
+COMMON DEV TOOLS
+----------------
+
+# the conventional bootstrap on opensuse — devel_basis pulls in gcc,
+# make, autoconf, automake, binutils, glibc-devel, etc.
+sudo zypper install --type pattern devel_basis
+sudo zypper install git
+
+# see what the pattern actually pulls in
+zypper info -t pattern devel_basis
+
+# editors / shells
+sudo zypper install neovim vim tmux zsh
+
+# languages and runtimes
+sudo zypper install python3 python3-pip nodejs npm go rust cargo \
+    clang cmake ninja
+
+# debug / inspection
+sudo zypper install gdb lldb strace ltrace valgrind perf
+
+# containers / vms
+sudo zypper install podman buildah skopeo
+sudo zypper install qemu-kvm virt-manager libvirt
+
+# handy CLI
+sudo zypper install ripgrep fd bat fzf jq htop wget curl unzip
+
+# notes:
+# - python on opensuse is python3. system pip is PEP-668-locked — use
+#   venvs (`python3 -m venv .venv`) or pipx for global CLI tools.
+# - opensuse, like fedora, leans podman over docker by default.
+# - for rust prefer rustup (it's in the official repos) over the bare
+#   `rust`+`cargo` rpms when you need multiple toolchains:
+sudo zypper install rustup
+rustup default stable
+
+
+SEE ALSO
+
+# - [[dnf]]     — fedora / rhel; also rpm-based, different command surface
+# - [[pacman]]  — arch / manjaro
+# - [[apk]]     — alpine, also full-word subcommands
+# - [[deb]]     — debian / ubuntu (dpkg/apt)
+# - [[brew]]    — same idea on macos
+# - [[winget]]  — same idea on windows
