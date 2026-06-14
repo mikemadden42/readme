@@ -33,6 +33,13 @@ sudo pacman -Syu
 # force-refresh the database even if it looks current (mirror weirdness)
 sudo pacman -Syyu
 
+# see what's PENDING without touching the system. checkupdates ships in
+# pacman-contrib and syncs a side copy of the DB — it's the safe answer
+# to "what would update?". do NOT just run `pacman -Sy && pacman -Qu`:
+# that resyncs the real DB and primes a partial-upgrade trap.
+sudo pacman -S pacman-contrib          # one-time
+checkupdates
+
 # install one or more packages
 sudo pacman -S firefox neovim
 
@@ -125,6 +132,12 @@ pacman -Fl firefox
 sudo pacman -Fy            # refresh the files DB
 pacman -F /usr/bin/strings
 
+# pkgfile is the same idea with its own DB — faster, and what arch's
+# command-not-found integration uses. pick one; don't run both side-by-side.
+sudo pacman -S pkgfile
+sudo pkgfile -u                        # populate / refresh the DB
+pkgfile strings
+
 
 CACHE
 -----
@@ -142,6 +155,35 @@ sudo pacman -Scc
 sudo pacman -S pacman-contrib
 paccache -rk2                          # keep 2 most recent of each
 paccache -ruk0                         # purge cache for uninstalled pkgs
+
+
+INSPECTING WITH EXPAC
+---------------------
+
+# expac is the formatted-query tool — pacman -Q with custom output columns.
+# ships in the official repos. answers most "what's eating my disk / what
+# changed recently" questions in one line.
+sudo pacman -S expac
+
+# largest installed packages (sizes in MiB, biggest first)
+expac -H M '%m\t%n' | sort -hr | head -20
+
+# every installed package with install date, oldest → newest.
+# the tail is what you most recently installed.
+expac --timefmt='%F %T' '%l\t%n' | sort | tail -20
+
+# packages installed in the last 7 days
+expac --timefmt='%F' '%l\t%n' | \
+    awk -v cutoff="$(date -d '7 days ago' +%F)" '$1 >= cutoff' | sort
+
+# every explicit install with version + install date — handy for migration
+expac --timefmt='%F' '%l\t%n %v' $(pacman -Qeq) | sort
+
+# pacman.log is the source of truth for "what changed and when"
+grep -E ' (installed|upgraded|removed) ' /var/log/pacman.log | tail -30
+
+# the upgrade history of one package
+grep ' firefox ' /var/log/pacman.log | grep upgraded
 
 
 PACMAN.CONF / MIRRORS
@@ -230,6 +272,23 @@ sudo vi /etc/pacman.conf
 # then -Syu will skip those, prompting if there's an update available.
 
 
+DOWNGRADING A PACKAGE
+---------------------
+
+# pacman keeps old versions in /var/cache/pacman/pkg/ until something
+# cleans the cache. install an older one with -U:
+ls /var/cache/pacman/pkg/ | grep firefox
+sudo pacman -U /var/cache/pacman/pkg/firefox-130.0-1-x86_64.pkg.tar.zst
+
+# then pin so the next -Syu doesn't yank it back:
+#   IgnorePkg = firefox          in /etc/pacman.conf
+
+# if the version you want isn't in your local cache, the `downgrade` AUR
+# helper pulls it from the arch linux archive (archive.archlinux.org):
+yay -S downgrade
+sudo downgrade firefox
+
+
 KEYRING / SIGNATURE TROUBLE
 ---------------------------
 
@@ -244,6 +303,28 @@ sudo pacman-key --init
 sudo pacman-key --populate archlinux   # or: manjaro
 
 
+RECOVERY
+--------
+
+# pacman holds a lock at /var/lib/pacman/db.lck while a transaction runs.
+# kill pacman (Ctrl+C, power loss, OOM) and the lock stays — every future
+# invocation refuses to start: "could not lock database". confirm nothing
+# is running first, then remove it.
+pgrep -a pacman                        # MUST be empty before next line
+sudo rm /var/lib/pacman/db.lck
+
+# if pacman ITSELF is broken (binary or its libs got hosed mid-upgrade),
+# the static rescue build runs without depending on the live system.
+sudo pacman -S pacman-static
+sudo pacman-static -Syu
+
+# unbootable system? boot a live arch / manjaro USB, mount the install,
+# and arch-chroot in. pacman then operates on the broken root.
+sudo mount /dev/nvme0n1p2 /mnt         # adjust device
+sudo arch-chroot /mnt
+# inside the chroot: pacman -Syu, fix grub, regenerate initramfs, etc.
+
+
 WHAT TO CHECK AFTER A BIG UPGRADE
 ---------------------------------
 
@@ -256,6 +337,43 @@ sudo find /etc -name '*.pacnew' -o -name '*.pacsave'
 # what just got upgraded? pacman's log is the truth.
 tail -50 /var/log/pacman.log
 grep -E 'upgraded|installed|removed' /var/log/pacman.log | tail -30
+
+
+PACMAN HOOKS
+------------
+
+# hooks run scripts at well-defined points around every pacman transaction
+# — useful for "rebuild initramfs after a kernel update", "rerun grub-mkconfig
+# after a kernel update", "rebuild font cache when a font package lands".
+# they also double as a stealthy root-persistence vector since the script
+# runs as root with every transaction.
+
+# system hooks (package-managed): /usr/share/libalpm/hooks/
+# admin hooks (yours, override or extend): /etc/pacman.d/hooks/
+ls /usr/share/libalpm/hooks/
+ls /etc/pacman.d/hooks/ 2>/dev/null
+
+# minimal admin hook — run a script after any package install or upgrade
+sudo tee /etc/pacman.d/hooks/99-notify.hook >/dev/null <<'EOF'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Notifying on every package change
+When = PostTransaction
+Exec = /usr/local/bin/my-notify
+EOF
+
+# pacman runs hooks deterministically by filename order. the 99- prefix
+# convention puts admin hooks after the package-shipped ones.
+
+# audit: dump every hook that will run on the next transaction
+for h in /usr/share/libalpm/hooks/*.hook /etc/pacman.d/hooks/*.hook; do
+    [ -f "$h" ] && echo "=== $h ===" && cat "$h"
+done
 
 
 COMMON DEV TOOLS
