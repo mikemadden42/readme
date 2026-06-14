@@ -1,0 +1,308 @@
+# pacman — arch / manjaro package manager primer
+#
+# pacman is one tool with single-letter operation flags. think of it as a state
+# machine driven by a top-level mode:
+#
+#   -S   sync     (install / upgrade from a remote repo)
+#   -R   remove   (uninstall)
+#   -Q   query    (ask about already-installed packages)
+#   -U   upgrade  (install a local .pkg.tar.zst file)
+#   -D   database (mark packages as explicit/dependency, etc.)
+#   -F   files    (search the file-list databases)
+#   -T   test     (dependency checks)
+#
+# flags after the mode further specify behavior. e.g. -Ss searches the sync
+# repos, -Qs searches installed. once you internalize the mode letters the
+# rest reads naturally.
+#
+# pacman speaks to /etc/pacman.conf and /etc/pacman.d/mirrorlist. it does
+# NOT talk to the AUR — that's what yay/paru are for (below).
+
+
+SYNC / INSTALL / UPGRADE
+------------------------
+
+# refresh the package database (does not install anything)
+sudo pacman -Sy
+
+# upgrade EVERY package on the system (the standard maintenance command).
+# always pair -Syu, never -Sy alone before installing — partial upgrades
+# break arch installs in ways that are painful to recover from.
+sudo pacman -Syu
+
+# force-refresh the database even if it looks current (mirror weirdness)
+sudo pacman -Syyu
+
+# install one or more packages
+sudo pacman -S firefox neovim
+
+# install without prompting
+sudo pacman -S --noconfirm firefox
+
+# install but only download, don't actually install
+sudo pacman -Sw firefox
+
+# reinstall a package (useful for repairing corrupted files)
+sudo pacman -S firefox
+
+# install a local .pkg.tar.zst file (built by makepkg or downloaded)
+sudo pacman -U ./mypackage-1.0-1-x86_64.pkg.tar.zst
+
+
+REMOVE
+------
+
+# remove a package, leave its deps and its config files behind
+sudo pacman -R firefox
+
+# remove a package AND its no-longer-needed dependencies (the usual one)
+sudo pacman -Rs firefox
+
+# also wipe config files (-n = nosave)
+sudo pacman -Rns firefox
+
+# remove even if other packages depend on it (dangerous — breaks deps)
+sudo pacman -Rdd firefox
+
+
+QUERY (ask about installed packages)
+------------------------------------
+
+# list every installed package
+pacman -Q
+
+# count installed packages
+pacman -Q | wc -l
+
+# list only explicitly-installed packages (not pulled in as deps).
+# this is your "what did I actually ask for" list — great for migration.
+pacman -Qe
+
+# list packages installed AS dependencies (would auto-remove with -Rs)
+pacman -Qd
+
+# list orphans: installed as dep but nothing depends on them now.
+# safe to remove with: sudo pacman -Rns $(pacman -Qdtq)
+pacman -Qdt
+
+# info on an installed package (size, deps, install date, etc.)
+pacman -Qi firefox
+
+# list every file the package installed
+pacman -Ql firefox
+
+# show only the files marked as config files
+pacman -Qii firefox | grep -i 'backup files' -A100
+
+# which package owns this file? (arch equivalent of dpkg -S / rpm -qf)
+pacman -Qo /usr/bin/firefox
+
+# search installed packages by name+description
+pacman -Qs python
+
+# check installed package integrity (catches tampering, accidental deletion)
+pacman -Qk firefox        # quick check
+pacman -Qkk firefox       # full check (hashes, permissions, etc.)
+
+# list packages NOT in any official repo (AUR, local builds, removed pkgs)
+pacman -Qm
+
+
+SEARCH SYNC REPOS (not yet installed)
+-------------------------------------
+
+# search for a package by name+description across enabled repos
+pacman -Ss firefox
+
+# info about a package in the repos (before installing)
+pacman -Si firefox
+
+# list every file a not-yet-installed package would put on disk.
+# requires the files database — populate first with: sudo pacman -Fy
+pacman -Fl firefox
+
+# which package provides this file? (e.g. you ran a missing command)
+sudo pacman -Fy            # refresh the files DB
+pacman -F /usr/bin/strings
+
+
+CACHE
+-----
+
+# package cache lives at /var/cache/pacman/pkg/
+ls /var/cache/pacman/pkg/
+
+# remove cached versions of installed packages (keeps current versions)
+sudo pacman -Sc
+
+# nuke the entire cache (free space; you lose downgrade rollbacks)
+sudo pacman -Scc
+
+# better: use paccache to keep the last N versions
+sudo pacman -S pacman-contrib
+paccache -rk2                          # keep 2 most recent of each
+paccache -ruk0                         # purge cache for uninstalled pkgs
+
+
+PACMAN.CONF / MIRRORS
+---------------------
+
+# main config
+sudo vi /etc/pacman.conf
+
+# enable the multilib repo (32-bit support — steam, wine)
+# uncomment [multilib] and the Include line under it, then:
+sudo pacman -Syu
+
+# mirror list
+sudo vi /etc/pacman.d/mirrorlist
+
+# pick the fastest mirrors automatically
+sudo pacman -S reflector
+sudo reflector --country US --age 12 --sort rate --save /etc/pacman.d/mirrorlist
+
+
+THE AUR (Arch User Repository)
+------------------------------
+
+# the AUR is community-maintained build recipes, not binaries. pacman does
+# NOT talk to it directly — you need a helper or you build by hand with
+# makepkg. don't run AUR helpers as root.
+
+# install an AUR helper (one-time, from source)
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/yay.git
+cd yay && makepkg -si
+
+# yay (or paru) drives both pacman and the AUR with similar flags
+yay -S google-chrome                   # install from AUR
+yay -Syu                               # upgrade pacman repos AND AUR pkgs
+yay -Ss spotify                        # search both repos and AUR
+yay -Yc                                # clean orphaned AUR build files
+
+# paru is a popular yay alternative (same flag surface), written in rust
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/paru.git
+cd paru && makepkg -si
+
+
+MANJARO SPECIFICS
+-----------------
+
+# manjaro IS arch underneath — pacman works exactly as above. differences:
+#
+# 1. manjaro ships its own holding repos. packages land in unstable first,
+#    move to testing, then to stable on a delay (typically 1–2 weeks).
+#    this is why `pacman -Syu` on a manjaro box can lag pure arch.
+#
+# 2. manjaro ships pamac as the front-end. it's a wrapper around pacman +
+#    the AUR (you opt into AUR support in pamac's preferences).
+
+# pamac CLI — flag surface differs from pacman, more verbose / apt-like
+pamac update                           # = pacman -Syu
+pamac install firefox                  # = pacman -S firefox
+pamac remove firefox                   # = pacman -Rns firefox
+pamac search firefox                   # searches repos + AUR if enabled
+pamac info firefox
+pamac list --installed
+pamac list --orphans
+
+# enable AUR support in pamac (off by default)
+sudo vi /etc/pamac.conf                # uncomment EnableAUR
+sudo systemctl enable --now pamac-daemon
+
+# switch manjaro branches (stable → testing → unstable). more recent
+# packages, more breakage. usually a bad idea on a daily driver.
+sudo pacman-mirrors --api --set-branch testing
+sudo pacman -Syyu
+
+# manjaro's mirror picker (analogue of reflector on pure arch)
+sudo pacman-mirrors --fasttrack 5 && sudo pacman -Syyu
+
+
+PINNING / HOLDING A PACKAGE BACK
+--------------------------------
+
+# pacman has no real "apt-mark hold" equivalent — instead you blacklist
+# the package in pacman.conf:
+sudo vi /etc/pacman.conf
+# add or extend: IgnorePkg = linux linux-headers nvidia
+# then -Syu will skip those, prompting if there's an update available.
+
+
+KEYRING / SIGNATURE TROUBLE
+---------------------------
+
+# if -Syu fails with "invalid or corrupted package (PGP signature)" after a
+# long time without updating, the keyring is stale:
+sudo pacman -Sy archlinux-keyring      # arch
+sudo pacman -Sy manjaro-keyring        # manjaro
+sudo pacman -Syu
+
+# nuclear option — refresh and repopulate from scratch:
+sudo pacman-key --init
+sudo pacman-key --populate archlinux   # or: manjaro
+
+
+WHAT TO CHECK AFTER A BIG UPGRADE
+---------------------------------
+
+# .pacnew / .pacsave files appear when pacman won't overwrite your edited
+# configs. you need to merge them by hand or you'll keep running stale config.
+sudo pacman -S pacman-contrib
+sudo pacdiff                           # interactive 3-way diff merger
+sudo find /etc -name '*.pacnew' -o -name '*.pacsave'
+
+# what just got upgraded? pacman's log is the truth.
+tail -50 /var/log/pacman.log
+grep -E 'upgraded|installed|removed' /var/log/pacman.log | tail -30
+
+
+COMMON DEV TOOLS
+----------------
+
+# the conventional bootstrap on a fresh arch / manjaro box. base-devel is a
+# package GROUP (not a single package) — it pulls in gcc, make, autoconf,
+# automake, pkgconf, patch, binutils, fakeroot, sudo, and the toolchain bits
+# makepkg (and therefore every AUR helper) needs. --needed skips anything
+# already installed, which matters because pacman otherwise reinstalls every
+# member of the group.
+sudo pacman -S --needed base-devel git
+
+# see what's actually in a group before installing
+pacman -Sg base-devel
+
+# you can install a single member of a group too
+sudo pacman -S gcc
+
+# editors / shells
+sudo pacman -S --needed neovim vim tmux zsh
+
+# languages and runtimes — install only what you use
+sudo pacman -S --needed python python-pip nodejs npm go rust clang cmake ninja
+
+# debug / inspection
+sudo pacman -S --needed gdb lldb strace ltrace valgrind
+
+# containers / vms
+sudo pacman -S --needed docker docker-compose qemu-full
+
+# handy CLI
+sudo pacman -S --needed ripgrep fd bat fzf jq htop wget curl unzip
+
+# notes:
+# - python on arch IS python 3 — no python2 in the repos.
+# - PEP 668 means system pip is locked down. use venvs:
+#       python -m venv .venv && source .venv/bin/activate
+# - for rust, prefer rustup (pacman -S rustup; rustup default stable) over
+#   the bare `rust` package if you need multiple toolchains.
+# - IDEs and proprietary tools (vscode, jetbrains, chrome) usually live in
+#   the AUR: `yay -S visual-studio-code-bin` once you have a helper set up.
+
+
+SEE ALSO
+
+# - [[deb]]     — same idea on debian/ubuntu (dpkg/apt)
+# - [[brew]]    — same idea on macos
+# - [[winget]]  — same idea on windows
+# - [[ubuntu]]  — distro-specific notes

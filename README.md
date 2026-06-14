@@ -73,6 +73,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [linux_info](linux_info) — system info commands
 - [ubuntu](ubuntu), [centos](centos), [freebsd](freebsd) — distro-specific notes
 - [deb](deb) — dpkg/apt usage
+- [pacman](pacman) — Arch/Manjaro package manager primer
 - [grub](grub) — bootloader config
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption
