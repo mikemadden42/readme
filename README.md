@@ -78,6 +78,8 @@ See [TODO.md](TODO.md) for known stale content.
 - [apk](apk) — Alpine package manager primer
 - [dnf](dnf) — Fedora/RHEL package manager primer
 - [zypper](zypper) — openSUSE package manager primer
+- [rpm](rpm) — low-level rpm tool primer (queries, verify, signatures)
+- [snap](snap) — Canonical snap usage primer
 - [grub](grub) — bootloader config
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption

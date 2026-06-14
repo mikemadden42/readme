@@ -1,0 +1,280 @@
+# snap — canonical's universal package format primer
+#
+# snap is a confined, self-contained package format managed by the snapd
+# daemon. each snap is a squashfs image mounted under /snap, with the
+# runtime ("base"), the app, and its declared sandbox permissions
+# (interfaces) bundled together. installable on any distro that ships
+# snapd, but it IS pre-installed and tightly integrated on ubuntu.
+#
+# mental model worth knowing up front:
+#
+# - snapd auto-refreshes installed snaps in the background, several times
+#   a day by default. you can defer or hold updates, but you can't fully
+#   disable them — this is by design.
+# - apps come from "channels": stable / candidate / beta / edge, optionally
+#   prefixed by a track (e.g. `1.0/stable`, `latest/edge`). pick at install
+#   time with --channel, switch later with `snap refresh`.
+# - apps run inside a sandbox; what they can touch is governed by
+#   "interfaces" (plugs on the app side, slots on the system side).
+#   `snap connect` / `disconnect` toggles individual permissions.
+# - confinement modes: strict (sandboxed, the default), classic (no
+#   sandbox, used for IDEs and CLI tools that need broad filesystem
+#   access — requires --classic at install).
+# - revisions: every install or refresh produces a new revision number.
+#   `snap revert` rolls back to the previous one, locally, instantly.
+#
+# command surface:
+#
+#   install / remove / refresh        — install actions
+#   list                              — installed snaps
+#   info                              — details about one snap
+#   find / search                     — search the store
+#   revert                            — roll back to previous revision
+#   refresh --hold / --unhold         — pause / resume auto-refresh
+#   connect / disconnect / connections / interface — sandbox controls
+#   services / start / stop / restart / logs       — managed services
+#   changes / change / abort                       — transaction history
+#   ack                               — install signed assertion (offline)
+#   download / install --dangerous    — sideload .snap files
+#
+# config and state live in /var/lib/snapd/ — you generally don't edit
+# this directly. user data lives at ~/snap/<name>/.
+
+
+INSTALL / REMOVE / REFRESH
+--------------------------
+
+# search the store
+snap find vlc
+snap find --narrow video               # only show "verified"/recommended
+
+# install latest stable
+sudo snap install vlc
+
+# install from a specific channel — useful for IDEs and dev tools where
+# stable lags upstream
+sudo snap install code --classic
+sudo snap install go --channel=latest/stable --classic
+
+# install in classic confinement (no sandbox). required for editors,
+# compilers, anything that needs broad filesystem access. only some
+# snaps are allowed to use classic; snap will tell you which.
+sudo snap install --classic code
+
+# install a sideloaded .snap file (no store, no signature check)
+sudo snap install --dangerous ./some-pkg_1.0_amd64.snap
+
+# remove a snap. by default keeps a snapshot of user data for 31 days
+# under /var/lib/snapd/snapshots/ — restore with `snap restore`.
+sudo snap remove vlc
+
+# remove without keeping a snapshot
+sudo snap remove --purge vlc
+
+# refresh (= update) all snaps that have a newer revision in their channel
+sudo snap refresh
+
+# refresh just one snap, optionally switching channels at the same time
+sudo snap refresh code
+sudo snap refresh code --channel=insiders/stable
+
+# see what WOULD refresh, without doing it
+sudo snap refresh --list
+
+
+QUERY
+-----
+
+# list installed snaps
+snap list
+
+# include disabled / previous revisions still on disk (for revert)
+snap list --all
+
+# details on one snap: channels, current revision, connections, contact, etc.
+snap info code
+
+# what's actually installed where? snaps are mounted squashfs images,
+# so they show up as loop devices and bind mounts.
+mount | grep '^/dev/loop'
+ls /snap/                              # one directory per installed snap
+ls /snap/code/current/                 # current revision's filesystem
+
+# user data lives under ~/snap/<snap>/
+ls ~/snap/
+
+
+CHANNELS AND REVISIONS
+----------------------
+
+# channels are name/risk pairs (e.g. `latest/stable`, `1.0/edge`). risk
+# levels in increasing order of breakage:  stable < candidate < beta < edge.
+# pick the lowest tier that has the features you need.
+
+# what channels does this snap publish?
+snap info code
+
+# switch channels (pulls the new channel's current revision)
+sudo snap refresh code --channel=latest/stable
+sudo snap refresh code --channel=insiders/stable
+
+# install a specific revision (rare, but useful for pinning to a known-
+# good build until upstream fixes a regression)
+sudo snap install code --revision=140
+
+# every install / refresh writes a new revision under /snap/<name>/
+# numbered. /snap/<name>/current points at the active one. rolling back
+# is just relinking — instant.
+ls /snap/code/                          # numbered revision dirs + current
+sudo snap revert code                   # back to previous revision
+sudo snap revert code --revision=140    # back to a specific revision
+
+
+HOLDING / CONTROLLING AUTO-REFRESH
+----------------------------------
+
+# snapd refreshes installed snaps automatically on a schedule (default
+# ~4x/day). you can defer, not permanently disable. the canonical
+# request for "leave my install alone" is `snap refresh --hold`.
+
+# hold all auto-refresh until you explicitly release (per-machine,
+# applies to every snap)
+sudo snap refresh --hold
+
+# release the hold
+sudo snap refresh --unhold
+
+# hold just one snap (snap-only hold; default duration 90 days max)
+sudo snap refresh --hold code
+sudo snap refresh --hold=24h code       # hold for a specific window
+
+# show current holds
+snap refresh --hold=forever --list      # no-op + list
+
+# change the daily refresh window (when, not whether, refreshes can run).
+# useful on developer / production boxes that can't tolerate "snap is
+# refreshing while I'm in the middle of something".
+sudo snap set system refresh.timer=02:00-04:00
+sudo snap set system refresh.timer=fri,22:00-sat,02:00
+
+# meter the connection (snap will defer if the network is metered).
+# rarely used outside laptops on tethered connections.
+sudo snap set system refresh.metered=hold
+
+
+INTERFACES (SANDBOX PERMISSIONS)
+--------------------------------
+
+# every snap declares what permissions it WANTS (plugs); the system
+# offers permissions (slots). a "connection" pairs a plug to a slot.
+# many sensible plugs auto-connect; others must be enabled manually.
+
+# what's currently connected for this snap?
+snap connections code
+snap connections                        # everything system-wide
+
+# what does this interface mean / what does it expose?
+snap interface camera
+snap interface home
+
+# enable / disable a specific permission
+sudo snap connect code:audio-playback
+sudo snap disconnect code:camera
+
+# typical examples that bite people:
+# - browser snaps not picking up keyring → check the password-manager-service plug
+# - cli tool can't see ~/.ssh → home and personal-files plugs aren't connected
+# - editor can't open files outside $HOME → install with --classic instead
+
+
+SERVICES
+--------
+
+# some snaps install background services (managed by snapd, not systemd
+# directly though the latter wraps it). list them:
+snap services
+
+# start / stop / restart / enable / disable like systemd
+sudo snap start lxd
+sudo snap stop lxd
+sudo snap restart lxd
+sudo snap start --enable lxd
+sudo snap stop --disable lxd
+
+# tail the journal output of a snap service
+sudo snap logs -f lxd
+
+
+ROLLBACK / TRANSACTION HISTORY
+------------------------------
+
+# every snapd transaction is logged with an ID, including the auto
+# background refreshes. this is the source of truth for "what changed
+# overnight?"
+snap changes
+
+# details about one transaction
+snap change 42
+
+# abort an in-flight transaction (uncommon)
+sudo snap abort 42
+
+# the most common recovery: roll back a snap to its previous revision.
+# both are local, instant, and don't need network.
+sudo snap revert code                   # previous revision
+sudo snap revert code --revision=140    # specific revision
+
+# snap is also why /var/lib/snapd/snapshots/ exists — when you `remove`
+# a snap, your user data is kept here for 31 days. restore with:
+sudo snap saved                         # list saved snapshots
+sudo snap restore <id>                  # bring user data back
+
+
+UBUNTU-SPECIFIC GOTCHAS
+-----------------------
+
+# snap is preinstalled on ubuntu desktop and a couple of high-profile
+# apps ship as snaps even when you run `apt install firefox` (the apt
+# package is a transitional shim that pulls in the snap). things worth
+# knowing:
+#
+# 1. firefox-snap startup is slower than the deb (squashfs decompress +
+#    sandbox setup on first launch each boot). subsequent launches are
+#    much faster as the kernel page cache warms.
+#
+# 2. firefox-snap doesn't see ~/.mozilla/firefox/ from a previous deb
+#    install directly. profiles are at ~/snap/firefox/common/.mozilla/.
+#    importing is a profile-copy operation.
+#
+# 3. firefox-snap is sandboxed — file pickers can't traverse arbitrary
+#    paths. workaround: connect more home/removable-media plugs, or
+#    drop to the deb (below).
+#
+# 4. the firefox-deb route is supported via the mozilla apt repo. you
+#    have to PIN to push it above the canonical-shipped snap shim:
+
+# install mozilla's repo key + sources file
+sudo install -d -m 0755 /etc/apt/keyrings
+wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg \
+    -O- | sudo tee /etc/apt/keyrings/packages.mozilla.org.asc >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
+    | sudo tee /etc/apt/sources.list.d/mozilla.list >/dev/null
+
+# pin mozilla's firefox above the snap-shim deb
+sudo tee /etc/apt/preferences.d/mozilla >/dev/null <<'EOF'
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1000
+EOF
+
+# remove snap firefox, install deb firefox
+sudo snap remove --purge firefox
+sudo apt update
+sudo apt install firefox
+
+
+SEE ALSO
+
+# - [[snap-packaging]] — building a snap (snapcraft, build tracks)
+# - [[apt]]            — debian/ubuntu, the deb side of the picture
+# - [[appimage-packaging]] — building an AppImage

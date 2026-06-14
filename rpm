@@ -1,0 +1,246 @@
+# rpm — the low-level rpm tool (fedora / rhel / opensuse / ...)
+#
+# rpm is the package database itself on rpm-family distros. one level
+# below dnf and zypper, the same way dpkg sits below apt. dnf calls rpm
+# under the hood for the actual install/remove/query work.
+#
+# what rpm DOES: install / remove / inspect individual .rpm files, query
+# the local package database.
+# what rpm DOES NOT: talk to repositories. no dependency resolution from
+# remote sources. no "search the internet for this package".
+#
+# rule of thumb: use dnf or zypper for everything repo-driven; reach for
+# rpm directly when you need offline .rpm install, fine-grained queries,
+# or integrity verification.
+#
+# command surface — rpm uses single-letter operation modes (like pacman):
+#
+#   -i   install        a local .rpm file (no upgrade)
+#   -U   upgrade        a local .rpm file (install if absent)
+#   -F   freshen        upgrade only if an older version is already installed
+#   -e   erase          a package (by NAME, not by file)
+#   -q   query          the local package DB
+#   -V   verify         installed files against the package manifest
+#   -K   check          signature on a .rpm file
+#
+# common flags that combine with the modes:
+#
+#   -v   verbose        progress, file lists
+#   -h   hash marks     progress bar made of # characters
+#   --test              dry-run
+#   --nodeps            ignore dep failures (DANGEROUS, last-resort)
+#   --force             reinstall even if same version is installed
+#   --queryformat / --qf '<format>'  custom output (extremely powerful)
+#
+# the rpm database lives at /var/lib/rpm/. if it gets corrupted (rare —
+# usually a power-loss-mid-transaction story), `rpm --rebuilddb` fixes it.
+
+
+INSTALL / UPGRADE / ERASE LOCAL .rpm FILES
+------------------------------------------
+
+# install a local .rpm. fails if a version is already installed (use -U
+# for that). fails if any dep is missing (rpm doesn't know about repos).
+sudo rpm -ivh ./somepkg-1.0-1.fc44.x86_64.rpm
+
+# install OR upgrade — the everyday "I downloaded a .rpm" command.
+# strictly preferred over -i for most use cases.
+sudo rpm -Uvh ./somepkg-1.0-1.fc44.x86_64.rpm
+
+# upgrade ONLY if an older version is already installed; do nothing
+# otherwise. useful for batch-applying a directory of .rpms only to
+# things you already have.
+sudo rpm -Fvh *.rpm
+
+# dry-run: show what would happen, change nothing on disk
+sudo rpm -Uvh --test ./somepkg-1.0-1.fc44.x86_64.rpm
+
+# remove (by name, not file)
+sudo rpm -e somepkg
+
+# remove ignoring deps. nuclear option — usually breaks something.
+sudo rpm -e --nodeps somepkg
+
+# reinstall a package using a .rpm you have on disk (the rpm equivalent
+# of `dnf reinstall`, for when dnf can't reach a repo)
+sudo rpm -Uvh --force ./somepkg-1.0-1.fc44.x86_64.rpm
+
+# install ignoring missing scriptlet dependencies (e.g. a postinstall
+# that wants a tool not yet on the system). rarely the right answer.
+sudo rpm -ivh --noscripts ./somepkg.rpm
+
+
+QUERY (-q) — THE MOST USEFUL MODE
+---------------------------------
+
+# is X installed?
+rpm -q neovim                          # name + version if installed; error otherwise
+rpm -q --quiet neovim && echo yes || echo no
+
+# list every installed package (name only)
+rpm -qa
+rpm -qa | wc -l
+
+# list every installed package with version
+rpm -qa --queryformat '%{NAME}-%{VERSION}-%{RELEASE}\n' | sort
+
+# detailed metadata about one installed package — vendor, source,
+# install date, signature, etc.
+rpm -qi neovim
+
+# what files did this package put on disk?
+rpm -ql neovim
+
+# only the config files (rpm marks these specially so they survive upgrade)
+rpm -qc neovim
+
+# only the docs (man pages, /usr/share/doc/, etc.)
+rpm -qd neovim
+
+# what does this package depend on?
+rpm -qR neovim                         # required capabilities, not pkg names directly
+
+# what capabilities does this package PROVIDE?
+rpm -q --provides neovim
+
+# what installed package owns this file? (the rpm equivalent of dpkg -S
+# / pacman -Qo / apk info -W)
+rpm -qf /usr/bin/nvim
+
+# what's the install date of every installed package, sorted newest first?
+rpm -qa --last | head -20
+
+# what changed (in the upstream source) for this package?
+rpm -q --changelog neovim | head -50
+
+# repeat any -q operation against a .rpm file ON DISK instead of an
+# installed package, by adding -p:
+rpm -qpl ./somepkg-1.0-1.fc44.x86_64.rpm        # files inside the .rpm
+rpm -qpi ./somepkg-1.0-1.fc44.x86_64.rpm        # metadata
+rpm -qpR ./somepkg-1.0-1.fc44.x86_64.rpm        # deps it requires
+rpm -qp --scripts ./somepkg-1.0-1.fc44.x86_64.rpm  # preinst/postinst etc.
+
+# query by capability — "which package provides this lib/file?". the
+# offline equivalent of `dnf provides`, but only against installed pkgs.
+rpm -q --whatprovides 'libssl.so.3()(64bit)'
+
+# what depends on this installed package?
+rpm -q --whatrequires neovim
+
+
+VERIFY (-V) — FILE INTEGRITY CHECK
+----------------------------------
+
+# verify every installed file of a package against the rpm manifest.
+# output: each modified file with a flag-string showing what changed.
+# silence = everything matches. this is rpm's tampering / drift detector.
+rpm -V neovim
+
+# verify EVERY installed package on the system. slow (gigabytes of
+# checksum work) but extremely useful for "did something modify files
+# it shouldn't have?".
+sudo rpm -Va
+
+# the flag-string columns (left to right):
+#   S   file Size differs
+#   M   file Mode differs (perms / type)
+#   5   MD5 checksum differs (content changed)
+#   D   Device major/minor differs
+#   L   readLink target differs
+#   U   User ownership differs
+#   G   Group ownership differs
+#   T   modification Time differs
+#   P   caPabilities differ
+# trailing letter:
+#   c   config file       d   documentation
+#   g   ghost (not really owned)   l   license     r   readme
+#
+# common harmless output: changes to /etc/* config files (admin edits).
+# alarming output: '5' on /usr/bin/* — a binary content changed without
+# a corresponding rpm transaction.
+
+
+CUSTOM QUERY FORMATS (--queryformat / --qf)
+-------------------------------------------
+
+# every query can return ARBITRARY formatted text via --queryformat (or
+# --qf). this is rpm's best-kept feature and how you build reports.
+
+# packages and their install size, biggest first
+rpm -qa --qf '%{SIZE}\t%{NAME}\n' | sort -nr | head -20
+
+# packages with install date, oldest → newest
+rpm -qa --qf '%{INSTALLTIME:date}\t%{NAME}\n' | sort
+
+# every package not signed by the vendor (audit signal)
+rpm -qa --qf '%{NAME}\t%{SIGPGP:pgpsig}\n' | grep -v 'Fedora\|Red Hat\|openSUSE'
+
+# every package along with its vendor (catch third-party rpms)
+rpm -qa --qf '%{VENDOR}\t%{NAME}\n' | sort -u
+
+# packages and their license — useful for compliance work
+rpm -qa --qf '%{LICENSE}\t%{NAME}\n' | sort
+
+# packages installed FROM a particular yum/dnf repo
+# (rpm doesn't store the repo name, but it does store the vendor and
+# distribution. for repo-level tracking use `dnf repoquery --installed`
+# instead — that's the right tool for the job.)
+
+
+SIGNATURES
+----------
+
+# check the signature on a .rpm file before installing. fails if the
+# signing key isn't imported into the rpm keyring.
+rpm -K ./somepkg-1.0-1.fc44.x86_64.rpm
+rpm --checksig ./somepkg-1.0-1.fc44.x86_64.rpm
+
+# list imported keys
+rpm -qa gpg-pubkey
+rpm -qi gpg-pubkey-<hash>              # details of one key
+
+# import a key from disk or URL
+sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-44-primary
+sudo rpm --import https://example.com/RPM-GPG-KEY-example
+
+# remove a key
+sudo rpm -e gpg-pubkey-<hash>
+
+
+EXTRACTING WITHOUT INSTALLING
+-----------------------------
+
+# rpm2cpio + cpio: dump the contents of a .rpm into the current directory
+# without registering it in the rpm DB. useful for inspecting a package's
+# files, recovering a single binary, or building a container layer.
+rpm2cpio ./somepkg-1.0-1.fc44.x86_64.rpm | cpio -idmv
+
+# more compact with bsdtar (works against the cpio stream directly)
+rpm2cpio ./somepkg-1.0-1.fc44.x86_64.rpm | bsdtar -xf -
+
+# extract just one file, leaving the rest:
+rpm2cpio ./somepkg-1.0-1.fc44.x86_64.rpm | cpio -idmv ./usr/bin/somebin
+
+
+RPM DATABASE
+------------
+
+# the rpm DB lives at /var/lib/rpm/
+ls /var/lib/rpm/
+
+# rebuild the DB. needed only if the DB gets corrupted (typically after
+# a power loss during a transaction). safe to run; it doesn't touch
+# installed files, only the index.
+sudo rpm --rebuilddb
+
+# the rpm DB is the source of truth that dnf / zypper consult. if you
+# install something with `rpm -i`, dnf / zypper see it. if you remove
+# with `rpm -e`, same.
+
+
+SEE ALSO
+
+# - [[dnf]]            — fedora / rhel; the modern repo-aware front-end
+# - [[zypper]]         — opensuse; another front-end over rpm
+# - [[rpm-packaging]]  — building .rpm files with .spec and rpmbuild
+# - [[deb]]            — dpkg + apt-get; the equivalent low-level tool family
