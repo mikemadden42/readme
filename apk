@@ -190,6 +190,84 @@ sudo apk add some-bleeding-thing@edgecomm
 sudo setup-apkrepos
 
 
+RELEASES AND UPGRADES
+---------------------
+
+# alpine is NOT rolling by default. it's a point-release distro (every
+# ~6 months, ~2 years of support per release) with an opt-in rolling
+# branch called edge.
+
+# which model is this box on? if the URLs in /etc/apk/repositories point
+# at v3.21 / v3.22 / etc., you're on a point release. if they point at
+# edge, you're rolling.
+cat /etc/apk/repositories
+cat /etc/alpine-release                # exact version
+
+# alpine release schedule and EOL dates: alpinelinux.org/releases/
+
+
+# POINT RELEASE — the common case
+#
+# 1. plan to upgrade before EOL. once your v3.X falls off the supported
+#    list there are no more security updates for it.
+#
+# 2. don't skip releases. go 3.20 → 3.21 → 3.22, not 3.20 → 3.22.
+#    skipping isn't supported and the migration paths assume single-step.
+#
+# 3. the upgrade itself is a deliberate transaction, not a quiet
+#    `apk upgrade`:
+sudo sed -i 's/v3\.21/v3.22/g' /etc/apk/repositories
+sudo apk update
+sudo apk upgrade --available           # the -a / --available is REQUIRED
+sudo sync && sudo reboot
+#
+# 4. --available matters on cross-release upgrades. it tells apk to treat
+#    the new repo's versions as authoritative even when they're lower
+#    (some packages get rebased). without it the solver may refuse to
+#    move backwards across the boundary.
+
+
+# EDGE — if you've opted in
+#
+# 1. `apk -U upgrade -a` IS the daily command. -a (--available) is not
+#    optional on edge — edge moves both forward and sometimes backward
+#    (packages rebased, replaced, dropped) and plain upgrade won't
+#    process the downgrades.
+sudo apk -U upgrade -a
+#
+# 2. watch the issue tracker before big updates — there's no per-push
+#    "stable update thread" like manjaro has. signals are:
+#    - gitlab.alpinelinux.org/alpine/aports issues
+#    - the alpine-aports mailing list / IRC (#alpine-devel)
+#
+# 3. the `testing` repo is edge-only. it carries packages that haven't
+#    been vetted into community yet. enable via @testing tag and add
+#    individual packages — never make testing the default.
+#
+# 4. musl / busybox / openrc move in lockstep with edge. when one of
+#    them bumps major version, things downstream can briefly break.
+#    rare, but jarring; have a way to roll the world file back.
+
+
+# BOTH MODES
+
+# /etc/apk/world is your declarative install list. commit it to a
+# dotfiles repo — provisioning a fresh alpine box becomes "copy world,
+# run apk add".
+cp /etc/apk/world ~/dotfiles/alpine-world
+
+# musl-vs-glibc binary compatibility is the same headache on both
+# branches. prebuilt binaries from outside alpine often need gcompat.
+
+# no snapper / timeshift culture on alpine. on btrfs you can wire it up
+# manually, but the ecosystem expectation is "redeploy" not "roll back".
+
+# in containers, pin to a point release — `FROM alpine:3.22`, NOT
+# `alpine:latest` (which floats to the newest point release) and NEVER
+# `alpine:edge` for production builds. surprise major bumps mid-CI is
+# the classic alpine docker footgun.
+
+
 VIRTUAL PACKAGES (BUILD-DEP PATTERN)
 ------------------------------------
 
