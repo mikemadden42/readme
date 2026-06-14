@@ -1,0 +1,463 @@
+# apt — debian / ubuntu package manager primer
+#
+# debian's package world has three tools you'll touch directly — plus one
+# optional fourth that's worth knowing about:
+#
+#   apt      — the modern user-facing front-end. interactive, colored,
+#              progress bars, sensible defaults. use this at the prompt.
+#   apt-get  — the older lower-level tool. stable interface, scripts and
+#              dockerfiles still use it. behavior is more "do exactly what
+#              i say" than apt's.
+#   dpkg     — the package database itself. one level below apt: install /
+#              list / inspect individual .deb files, no repo awareness.
+#   aptitude — older TUI + CLI front-end. optional but worth installing for
+#              its dependency-resolver explainer (`aptitude why`) and its
+#              expressive search patterns. see APTITUDE section below.
+#
+# rule of thumb: use `apt` interactively, `apt-get` (plus DEBIAN_FRONTEND=
+# noninteractive) in scripts and dockerfiles, `dpkg` for low-level queries
+# and offline .deb installs, `aptitude` when something is wedged.
+#
+# command surface (apt; apt-get is mostly the same verb set):
+#
+#   update             refresh the package index (does NOT install anything)
+#   upgrade            upgrade installed packages, no removals
+#   full-upgrade       upgrade installed packages, allow removals to satisfy deps
+#   install / reinstall / remove / purge
+#   autoremove         drop packages installed as deps that nothing now needs
+#   search             search package names + descriptions
+#   show               package details
+#   list               --installed / --upgradable / --manual-installed
+#   policy             which version / repo / priority would win for this name
+#   source             fetch the source package
+#   build-dep          install build-time deps of a source package
+#   edit-sources       open the sources file in $EDITOR (apt only)
+#
+# config lives in /etc/apt/. the files that matter:
+#   /etc/apt/sources.list          — legacy single file with repo URLs
+#   /etc/apt/sources.list.d/*.list — modern per-repo files (one-liner format)
+#   /etc/apt/sources.list.d/*.sources — newer deb822 format (preferred)
+#   /etc/apt/preferences.d/        — pinning and priority overrides
+#   /etc/apt/keyrings/             — repo signing keys (replaces apt-key)
+
+
+UPDATE / INSTALL / UPGRADE
+--------------------------
+
+# refresh the index from configured repos. ALWAYS run this before install
+# or upgrade in scripts — apt does not auto-refresh.
+sudo apt update
+
+# upgrade every installed package; will NOT remove anything to satisfy
+# new dep constraints. safer for daily maintenance.
+sudo apt upgrade
+
+# upgrade and allow removals when a dep transition needs them.
+# this is the right command around a major version push or any time
+# `upgrade` complains about kept-back packages.
+sudo apt full-upgrade
+sudo apt-get dist-upgrade           # same operation, older spelling
+
+# non-interactive (scripts / dockerfiles)
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
+sudo DEBIAN_FRONTEND=noninteractive apt-get -y install foo
+
+# install one or more packages
+sudo apt install neovim git
+
+# install without pulling in the "recommends" weak deps (smaller installs,
+# common in servers / containers). also -suggests for the even-weaker tier.
+sudo apt install --no-install-recommends neovim
+sudo apt install --no-install-recommends --no-install-suggests neovim
+
+# reinstall an already-installed package (repair files on disk)
+sudo apt reinstall neovim
+
+# install a local .deb file. modern apt does this directly — deps still
+# resolved from configured repos. note the `./` — apt treats bare names
+# as package names, paths as file installs.
+sudo apt install ./mypackage_1.0_amd64.deb
+
+# the older flow (still works, sometimes needed when apt's flow fails):
+sudo dpkg -i ./mypackage_1.0_amd64.deb
+sudo apt-get -f install                # fix missing deps
+
+# install build-time deps for a source package
+sudo apt build-dep neovim
+
+
+REMOVE / PURGE / AUTOREMOVE
+---------------------------
+
+# remove a package, leave its config files behind
+sudo apt remove neovim
+
+# remove AND wipe config files (the `purge` analog of `dpkg -P`)
+sudo apt purge neovim
+
+# autoremove every package installed as a dep that nothing now needs.
+# safe; the analog of `pacman -Qdt` cleanup or `dnf autoremove`.
+sudo apt autoremove
+
+# autoremove purges config too (drops orphaned config files of removed deps)
+sudo apt autoremove --purge
+
+# remove with `dpkg` directly (skips apt's solver; useful for offline boxes)
+sudo dpkg -r neovim                    # remove
+sudo dpkg -P neovim                    # purge
+
+
+QUERY (installed packages)
+--------------------------
+
+# list every installed package
+dpkg -l
+apt list --installed
+
+# list packages YOU explicitly installed (not pulled in as deps)
+apt-mark showmanual
+
+# list packages installed as dependencies
+apt-mark showauto
+
+# count installed packages
+dpkg -l | grep -c '^ii'
+
+# info about an installed (or available) package
+apt show neovim
+
+# all files installed by a package
+dpkg -L neovim
+
+# which installed package owns this file? (the apt analog of `pacman -Qo`
+# / `rpm -qf`). takes a path on the live filesystem.
+dpkg -S /usr/bin/nvim
+
+# which package would provide this file if it isn't installed yet?
+# requires apt-file (separate package).
+sudo apt install apt-file
+sudo apt-file update
+apt-file search /usr/bin/strings
+apt-file list neovim                   # files in a not-yet-installed package
+
+# package metadata source — useful for "is this from main, universe, or a
+# third-party repo, and which version is the candidate?"
+apt policy neovim
+
+# what depends on this package?
+apt-cache rdepends neovim
+
+# what does this package depend on?
+apt-cache depends neovim
+
+# config files of a package (what dpkg considers conffiles for diff/preserve)
+dpkg-query -W -f='${Conffiles}\n' neovim
+
+
+SEARCH (not yet installed)
+--------------------------
+
+# search by name + description across enabled repos
+apt search neovim
+
+# only by name
+apt search --names-only neovim
+
+# show available versions across repos (handy when multiple repos carry it)
+apt-cache madison neovim
+
+# list packages where a newer version is available
+apt list --upgradable
+
+
+CACHE
+-----
+
+# package cache lives at /var/cache/apt/archives/
+ls /var/cache/apt/archives/
+
+# remove cached .deb files for packages no longer in the repos
+sudo apt autoclean
+
+# nuke the entire .deb cache (frees space, loses downgrade rollback ability)
+sudo apt clean
+
+
+SOURCES AND REPOSITORIES
+------------------------
+
+# list the active sources
+cat /etc/apt/sources.list
+ls /etc/apt/sources.list.d/
+
+# the modern preferred format is deb822 (one .sources file per repo). it
+# replaces the cryptic one-liner with named fields:
+sudo vi /etc/apt/sources.list.d/example.sources
+#   Types: deb
+#   URIs: https://example.com/debian
+#   Suites: bookworm
+#   Components: main
+#   Signed-By: /etc/apt/keyrings/example.gpg
+
+# old one-liner format (still supported, you'll see it in older docs):
+#   deb [signed-by=/etc/apt/keyrings/example.gpg] https://example.com/debian bookworm main
+
+# debian and ubuntu both organize repos by component:
+#   debian:  main contrib non-free non-free-firmware
+#   ubuntu:  main universe restricted multiverse
+# main is the freely-licensed core; the others are opt-in tiers with
+# different licensing / support promises.
+
+# add a third-party repo the MODERN way — use /etc/apt/keyrings/, NOT
+# `apt-key` (deprecated since debian 11 / ubuntu 22.04).
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://example.com/key.gpg | \
+    sudo gpg --dearmor -o /etc/apt/keyrings/example.gpg
+sudo chmod a+r /etc/apt/keyrings/example.gpg
+# then write a .sources file as shown above and:
+sudo apt update
+
+
+PPAS (UBUNTU)
+-------------
+
+# personal package archives — ubuntu's third-party repo system, served
+# from launchpad.net. one-command add (handles the key + sources file).
+sudo apt install software-properties-common      # if missing
+sudo add-apt-repository ppa:user/projectname
+sudo apt update
+sudo apt install some-pkg-from-ppa
+
+# remove a PPA (just disables it; existing installed packages stay)
+sudo add-apt-repository --remove ppa:user/projectname
+
+# downgrade EVERYTHING from a PPA back to ubuntu-archive versions and
+# disable the PPA in one shot
+sudo apt install ppa-purge
+sudo ppa-purge ppa:user/projectname
+
+# inspect what's currently coming from a PPA
+grep -r '^deb' /etc/apt/sources.list.d/
+
+
+PINNING / HOLDING / DOWNGRADING
+-------------------------------
+
+# hold a package — apt update / upgrade will skip it. the dnf-versionlock
+# / pacman-IgnorePkg analog.
+sudo apt-mark hold neovim
+
+# list holds
+apt-mark showhold
+
+# release the hold
+sudo apt-mark unhold neovim
+
+# fine-grained pinning lives in /etc/apt/preferences.d/. pin one package
+# to one repo, raise/lower a repo's priority globally, etc.
+sudo vi /etc/apt/preferences.d/neovim
+#   Package: neovim
+#   Pin: release o=Ubuntu,a=jammy-backports
+#   Pin-Priority: 1001
+
+# check what apt would actually pick for a name (and why)
+apt policy neovim
+
+# downgrade by asking for a specific version explicitly. version must
+# still be available in some configured repo:
+apt-cache madison neovim
+sudo apt install neovim=0.7.2-7
+
+# install from a specific suite (when both jammy and jammy-backports
+# carry it and you want backports)
+sudo apt install -t jammy-backports neovim
+
+
+HISTORY / LOGS
+--------------
+
+# apt logs every action — what was installed/removed/upgraded and when.
+# this is the source of truth for "what changed yesterday?".
+less /var/log/apt/history.log
+zless /var/log/apt/history.log.1.gz
+
+# command output (stdout/stderr) for each transaction
+less /var/log/apt/term.log
+
+# dpkg's lower-level log — every package state change
+less /var/log/dpkg.log
+
+# what changed in the last week?
+grep -hE '^(Start-Date|Commandline|Install|Upgrade|Remove)' \
+    /var/log/apt/history.log | head -50
+
+
+DISTRIBUTION UPGRADES
+---------------------
+
+# UBUNTU — use do-release-upgrade. it's the supported path; handles
+# sources rewriting, third-party repo disable, sanity checks, and the
+# release-specific quirks. don't just edit sources.list and apt upgrade.
+sudo apt update && sudo apt full-upgrade            # current release fully current first
+sudo apt install update-manager-core
+sudo do-release-upgrade                              # to next LTS by default
+sudo do-release-upgrade -d                           # to next dev release (interim or pre-release)
+# if running over ssh, use a screen / tmux session — the upgrader explicitly
+# warns about losing the connection mid-flight.
+
+# DEBIAN — manual, by editing sources to the next codename then upgrading.
+# the suite codenames (in order): bullseye → bookworm → trixie → forky → ...
+sudo sed -i 's/bookworm/trixie/g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list
+sudo apt update
+sudo apt upgrade                                     # smaller, no removals
+sudo apt full-upgrade                                # the rest
+sudo apt --purge autoremove
+sudo reboot
+
+# always read the release notes first — debian.org/releases/ has a per-
+# codename upgrade guide with the known footguns.
+
+
+UNATTENDED-UPGRADES
+-------------------
+
+# debian / ubuntu's built-in mechanism for automatic security updates.
+# good idea on servers; on workstations think about it — automatic
+# upgrades while you're mid-work can break things.
+sudo apt install unattended-upgrades apt-listchanges
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+
+# config
+sudo vi /etc/apt/apt.conf.d/50unattended-upgrades   # what to upgrade
+sudo vi /etc/apt/apt.conf.d/20auto-upgrades         # cadence
+
+# inspect what unattended-upgrades would do, no changes:
+sudo unattended-upgrades --dry-run --debug
+
+
+APTITUDE
+--------
+
+# aptitude is a TUI + CLI front-end that predates the modern `apt`
+# command. strictly optional — but two of its features are unmatched:
+# the dependency-resolver EXPLAINS its choices and offers alternatives
+# when a conflict can't be auto-resolved, and the search-pattern
+# language expresses things the apt CLI can't. it's the right tool when
+# something is wedged.
+#
+# on debian 12+ and recent ubuntu it isn't installed by default.
+sudo apt install aptitude
+
+# CLI surface (same shape as apt-get; mostly drop-in)
+sudo aptitude update
+sudo aptitude safe-upgrade             # default — NEVER removes packages
+sudo aptitude full-upgrade             # = apt full-upgrade / apt-get dist-upgrade
+sudo aptitude install neovim
+sudo aptitude remove neovim
+sudo aptitude purge neovim
+aptitude search neovim
+aptitude show neovim
+sudo aptitude autoclean
+sudo aptitude clean
+
+# the killer CLI feature — "why is X installed?" / "why can't I install Y?".
+# walks the dep chain and prints the actual reasoning, instead of just
+# refusing with an opaque error.
+aptitude why firefox libnss3
+aptitude why-not libssl1.1
+
+# powerful search patterns — the practical reason to keep aptitude around
+# even if you mostly use apt:
+aptitude search '~i'                   # all installed
+aptitude search '~i ~M'                # installed automatically (orphan candidates)
+aptitude search '?installed?obsolete'  # installed but no longer in any repo
+aptitude search '?broken'              # broken / partially configured
+aptitude search '?garbage'             # auto-installed and nothing depends on them
+aptitude search '~i!~Odebian'          # installed and NOT from debian (third-party)
+aptitude search '?priority(important) ?installed'
+
+# mark a package as automatically-installed (so autoremove will sweep it
+# when its last reverse-dep goes away). useful when a package was
+# installed by hand but is really only there as a dep of something else.
+sudo aptitude markauto pkg
+sudo aptitude unmarkauto pkg
+
+# hold/unhold work the same way as apt-mark
+sudo aptitude hold pkg
+sudo aptitude unhold pkg
+
+
+# TUI MODE — the part people actually reach for when something is wedged.
+# launch with no command:
+sudo aptitude
+
+# TUI navigation cheatsheet:
+#   q          quit (or back out of the current view)
+#   u          update package lists
+#   +  -       mark for install / remove
+#   _          mark for purge
+#   =          hold
+#   :          forbid this version (won't even pick it as a candidate)
+#   g          go: review pending actions, then apply them
+#   /  \       search forward / backward
+#   .  ,       cycle through alternative solver resolutions
+
+# when a dependency conflict can't auto-resolve, aptitude drops to an
+# interactive "broken packages" screen showing N candidate resolutions
+# (`,` and `.` cycle between them). you pick one, hit `g`, and apply.
+# this is the reason to install aptitude on a development box even if
+# you never use it day-to-day.
+
+
+COMMON DEV TOOLS
+----------------
+
+# the conventional bootstrap. build-essential is the meta-package that
+# pulls in gcc, g++, make, libc6-dev, and the bits any source tarball
+# expects to find.
+sudo apt install build-essential git
+
+# editors / shells
+sudo apt install neovim vim tmux zsh
+
+# languages and runtimes — install only what you use
+sudo apt install python3 python3-pip python3-venv nodejs npm \
+    golang-go rustc cargo clang cmake ninja-build
+
+# debug / inspection
+sudo apt install gdb lldb strace ltrace valgrind linux-tools-generic
+
+# containers / vms
+sudo apt install podman                              # debian / recent ubuntu
+sudo apt install docker.io                           # ubuntu-shipped docker
+sudo apt install qemu-system-x86 virt-manager libvirt-daemon-system
+
+# handy CLI
+sudo apt install ripgrep fd-find bat fzf jq htop wget curl unzip
+# note: on debian/ubuntu, `fd` ships as `fdfind`, `bat` as `batcat`, to
+# avoid name conflicts with other tools. alias them or symlink if it
+# bothers you.
+
+# notes:
+# - python on debian/ubuntu IS python3. `python` is no longer installed
+#   by default since ubuntu 20.04 / debian 11. use python3 explicitly.
+# - PEP 668 means system pip is locked down — use venvs (`python3 -m venv`)
+#   or pipx (`apt install pipx`) for global CLI tools.
+# - for rust on ubuntu, prefer rustup over the ubuntu-shipped rustc when
+#   you need an up-to-date toolchain — the apt rustc lags upstream.
+#       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# - snap is preinstalled and integrated on ubuntu; some packages (firefox,
+#   chromium, lxd) install as snaps even when you `apt install` them. you
+#   can opt out of snap and back into deb but it's deliberate work.
+
+
+SEE ALSO
+
+# - [[deb]]     — dpkg + apt-get quick reference (older style)
+# - [[dnf]]     — fedora / rhel
+# - [[zypper]]  — opensuse
+# - [[pacman]]  — arch / manjaro
+# - [[apk]]     — alpine
+# - [[brew]]    — same idea on macos
+# - [[winget]]  — same idea on windows

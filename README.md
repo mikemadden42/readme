@@ -72,7 +72,8 @@ See [TODO.md](TODO.md) for known stale content.
 
 - [linux_info](linux_info) — system info commands
 - [ubuntu](ubuntu), [centos](centos), [freebsd](freebsd) — distro-specific notes
-- [deb](deb) — dpkg/apt usage
+- [deb](deb) — dpkg/apt quick reference
+- [apt](apt) — Debian/Ubuntu package manager primer
 - [pacman](pacman) — Arch/Manjaro package manager primer
 - [apk](apk) — Alpine package manager primer
 - [dnf](dnf) — Fedora/RHEL package manager primer
