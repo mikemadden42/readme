@@ -231,12 +231,12 @@ cd paru && makepkg -si
 MANJARO SPECIFICS
 -----------------
 
-# manjaro IS arch underneath — pacman works exactly as above. differences:
+# manjaro IS arch underneath — pacman works exactly as above. the two
+# things that make it different in practice:
 #
-# 1. manjaro ships its own holding repos. packages land in unstable first,
-#    move to testing, then to stable on a delay (typically 1–2 weeks).
-#    this is why `pacman -Syu` on a manjaro box can lag pure arch.
-#
+# 1. manjaro is STAGED ROLLING. packages land in unstable first, soak in
+#    testing for ~1 week, then promote to stable. on stable you're running
+#    ~2 weeks behind pure arch in batched dumps, not a continuous trickle.
 # 2. manjaro ships pamac as the front-end. it's a wrapper around pacman +
 #    the AUR (you opt into AUR support in pamac's preferences).
 
@@ -254,12 +254,53 @@ sudo vi /etc/pamac.conf                # uncomment EnableAUR
 sudo systemctl enable --now pamac-daemon
 
 # switch manjaro branches (stable → testing → unstable). more recent
-# packages, more breakage. usually a bad idea on a daily driver.
+# packages, more breakage. one-way in practice — downgrading branches
+# is not really supported. usually a bad idea on a daily driver.
 sudo pacman-mirrors --api --set-branch testing
 sudo pacman -Syyu
 
-# manjaro's mirror picker (analogue of reflector on pure arch)
+# manjaro's mirror picker (analog of reflector on pure arch)
 sudo pacman-mirrors --fasttrack 5 && sudo pacman -Syyu
+
+
+# rolling-release gotchas (manjaro stable in particular). the staged-
+# rolling model bites in specific ways that pure arch users don't see:
+
+# 1. read the stable-update thread before -Syu. forum.manjaro.org has a
+#    sticky per push — canonical "what just landed, what's broken, what
+#    to merge". maintainers post hotfixes there for the first 24–72h.
+
+# 2. don't go too long between updates. partial-upgrade risk and stale-
+#    keyring breakage both compound. if you've been off for months:
+sudo pacman -Sy archlinux-keyring manjaro-keyring
+sudo pacman -Syu
+
+# 3. AUR PKGBUILDs target current arch, NOT manjaro stable. an AUR
+#    package that bumped to need glibc 2.42 will fail to build on a
+#    stable still carrying 2.41. options: wait, switch to a -bin
+#    variant, or move that one machine to testing branch.
+
+# 4. big stable pushes drop piles of .pacnew files. always merge after:
+sudo pacman -S pacman-contrib          # one-time
+sudo pacdiff
+
+# 5. snapshot BEFORE big updates. manjaro doesn't auto-snapper like
+#    opensuse (see [[zypper]]). timeshift is the standard option —
+#    rsync on ext4, snapshots on btrfs. the -autosnap hook runs it
+#    automatically before every -Syu.
+sudo pacman -S timeshift timeshift-autosnap
+
+# 6. keep the previous kernel installed as a fallback. mhwd-kernel lets
+#    you run several side-by-side. after a kernel bump, leave the prior
+#    one in place for a week — if the new one regresses graphics or
+#    wifi, boot it from grub's "Advanced options" menu.
+mhwd-kernel -li                        # list installed kernels
+mhwd-kernel -l                         # list available kernels
+sudo mhwd-kernel -i linux612           # install a kernel by name
+
+# 7. have a TTY rescue plan. plasma / gnome / sddm updates occasionally
+#    break the graphical login on a stable push — Ctrl+Alt+F2 drops to
+#    TTY where you can pacman -Syu the hotfix, or roll back via timeshift.
 
 
 PINNING / HOLDING A PACKAGE BACK
