@@ -302,6 +302,31 @@ sudo apk add --no-cache ripgrep fd bat fzf jq htop wget curl
 sudo apk add --no-cache gcompat
 
 
+SHUTDOWN / REBOOT
+-----------------
+
+# the GNU/sysvinit `shutdown` binary isn't installed by default — alpine's
+# busybox/openrc userland uses single-purpose commands instead. these run
+# openrc's shutdown sequence (services stopped in order, filesystems
+# unmounted cleanly).
+sudo poweroff             # graceful power off (the usual one)
+sudo reboot               # graceful restart
+sudo halt -p              # halt and cut power (same effect as poweroff)
+sudo halt                 # halt without cutting power
+
+# want `shutdown -h now` / `shutdown +5` / `shutdown -r 23:00` / wall
+# broadcast? the busybox applet exists but isn't always linked. the
+# openrc package provides it at /sbin/shutdown.
+sudo apk add openrc
+which shutdown
+sudo shutdown -h now
+sudo shutdown -r +5
+
+# inside a container there's nothing to shut down — `poweroff` will fail
+# (no init managing the system). exit the shell, or `docker stop` from
+# outside.
+
+
 SEE ALSO
 
 # - [[pacman]]  — arch / manjaro, similar mental model
