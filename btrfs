@@ -280,6 +280,85 @@ sudo snapper -c root rollback 42
 # to grub so you can boot directly into a pre-update snapshot.
 
 
+MANJARO + TIMESHIFT INTEGRATION
+-------------------------------
+
+# manjaro standardises on timeshift (not snapper) for btrfs snapshots,
+# wired into pacman through a separate hook package. the integration
+# story is similar in shape to opensuse but uses different tools.
+
+# 1. CALAMARES SUBVOLUME LAYOUT (chosen automatically when you pick
+#    btrfs at install time):
+#        @         → /
+#        @home     → /home
+#        @cache    → /var/cache
+#        @log      → /var/log
+#    each is mounted compress=zstd,noatime,space_cache=v2 in fstab.
+#    @cache and @log are split out so noisy / large dirs don't bloat
+#    root snapshots.
+
+# 2. TIMESHIFT — preinstalled. backed by `btrfs subvolume snapshot`,
+#    not rsync, when the underlying fs is btrfs.
+timeshift --list
+timeshift --create --comments "before update" --tags D
+timeshift --restore --snapshot '2026-06-14_08-30-01'
+
+# IMPORTANT: timeshift snapshots @ (root) only by default. @home is
+# EXCLUDED unless you explicitly tick it. rationale: rolling back
+# system packages shouldn't undo your work. timeshift is NOT a
+# full backup tool — use borg/restic/rsync for /home.
+
+# 3. AUTO-SNAPSHOTS ON PACMAN — the glue is timeshift-autosnap-manjaro:
+sudo pacman -S timeshift-autosnap-manjaro
+# installs a pacman hook that fires `timeshift --create` before every
+# transaction. config at /etc/timeshift-autosnap-manjaro.conf
+# (rotation count, skip-on-aur, etc).
+
+# the snapper-equivalent (snap-pac, snapper-gui) is in the AUR for
+# folks who prefer snapper's pre/post pairing, but timeshift is the
+# supported path.
+
+# 4. BOOTABLE SNAPSHOTS IN GRUB:
+sudo pacman -S grub-btrfs
+sudo systemctl enable --now grub-btrfsd
+# grub-btrfsd watches timeshift's snapshot dir; when a new snapshot
+# appears it regenerates /boot/grub/grub.cfg with a "Manjaro Linux
+# Snapshots" submenu. booting one gives you a read-only mount of
+# that snapshot — from inside, run `timeshift --restore` to promote.
+
+# 5. SNAPSHOT STORAGE PATH (snapshots are not mounted by default;
+#    timeshift mounts the backing fs when it needs them):
+ls /run/timeshift/backup/timeshift-btrfs/snapshots/
+
+# 6. MANJARO-SPECIFIC GOTCHAS:
+#
+# - kernel/DKMS after rollback: rolling back across a kernel update
+#   restores /usr/lib/modules/<oldver>/ but NOT DKMS-built modules
+#   for that kernel. reboot into the rolled-back kernel and:
+sudo dkms autoinstall
+#
+# - AUR + staged-rolling glibc: an AUR pkg built against current
+#   glibc, then a timeshift rollback to an older glibc on stable
+#   branch, will segfault. fix is `sudo pacman -Syu` after rollback
+#   so the AUR rebuild path is on the current branch's glibc.
+#   (this is the staged-rolling story from [[pacman]] MANJARO
+#   SPECIFICS, sharper when snapshots are in the mix.)
+#
+# - AUR cache desync after rollback: /var/cache/pacman/pkg/ lives
+#   on @cache (excluded from snapshots), so the cache doesn't
+#   roll back with the pacman DB. `pacman -Syyu` resolves it.
+#
+# - /swapfile on btrfs needs `chattr +C` + nodatacow + no
+#   compression. calamares handles this if you pick "Swap (with
+#   Hibernate)" — a hand-rolled swapfile won't work without it.
+
+# 7. VERIFY THE WIRING:
+sudo btrfs subvolume list /                       # @ / @home / @cache / @log
+timeshift --list-devices                          # confirms btrfs backend
+ls /usr/share/libalpm/hooks/ | grep -i timeshift  # the pacman hook
+systemctl status grub-btrfsd                      # snapshot-to-grub watcher
+
+
 COMMON GOTCHAS
 --------------
 
