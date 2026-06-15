@@ -1,0 +1,345 @@
+# btrfs — copy-on-write filesystem primer
+#
+# btrfs (B-tree filesystem, "butter fs" or "better fs" depending who you
+# ask) is a copy-on-write filesystem with first-class support for
+# snapshots, subvolumes, transparent compression, checksums, and
+# multi-device pools. it's the only mainline-linux fs that bundles
+# volume management AND filesystem in one layer — zfs's closest cousin
+# in tree.
+#
+# DISTROS THAT USE BTRFS BY DEFAULT (root filesystem)
+#
+# - openSUSE Tumbleweed   — root on btrfs + snapper auto-snapshots
+#                           on every zypper transaction. the canonical
+#                           "btrfs done right" reference setup.
+# - openSUSE Leap         — same as Tumbleweed.
+# - SUSE Linux Enterprise — root on btrfs + snapper, /home often xfs.
+# - Fedora Workstation    — root on btrfs since Fedora 33 (2020).
+#                           no auto-snapshots out of the box.
+# - Fedora Silverblue/Kinoite — btrfs + rpm-ostree on top.
+# - Garuda Linux          — btrfs + snapper + grub-btrfs by default
+#                           (the "arch + auto-snapshots" sell).
+# - Synology DSM          — btrfs is the recommended fs on Plus/XS NAS
+#                           units; powers snapshot replication.
+# - Spiral Linux, Siduction, several other niche debian respins.
+#
+# distros where btrfs is OFFERED but not default: arch (manual partition
+# step), ubuntu (server installer offers it, desktop defaults to ext4
+# — canonical has historically kept distance from btrfs), debian
+# (installer option, ext4 default), nixos (option, ext4 default).
+#
+# mental model worth knowing up front:
+#
+# - SUBVOLUME — an independently-mountable named tree inside the fs.
+#   roughly "a directory you can snapshot and mount separately". the
+#   top-level fs is itself subvolume id 5.
+# - SNAPSHOT — a writable (or read-only) copy of a subvolume that
+#   shares blocks via copy-on-write. taking one is O(1) and uses
+#   ~zero space until something diverges.
+# - PROFILE — how data and metadata are laid out across devices:
+#   single / dup / raid0 / raid1 / raid10 / raid1c3 / raid1c4 / raid5
+#   / raid6. raid5/6 are still considered unstable for metadata — use
+#   raid1/raid10 for metadata even on a raid5 data pool.
+# - CHECKSUMS — every data and metadata block is checksummed. silent
+#   corruption is DETECTED on read; with a raid1+ profile it's
+#   automatically REPAIRED from the good copy.
+# - COMPRESSION — transparent, per-mount or per-file. zstd is the
+#   modern default; older systems used lzo.
+# - SCRUB — read-everything-and-verify operation. cron / systemd
+#   timer this monthly on any production filesystem.
+#
+# command surface — almost everything is `btrfs <group> <verb>`:
+#
+#   btrfs subvolume       — create / delete / list / snapshot / set-default
+#   btrfs filesystem      — show / df / usage / resize / defragment / sync
+#   btrfs device          — add / remove / replace / scan / stats
+#   btrfs balance         — rewrite blocks (rebalance, convert profiles)
+#   btrfs scrub           — start / status / cancel / resume
+#   btrfs send / receive  — incremental snapshot streaming
+#   btrfs property        — get/set per-subvolume properties (ro, compression)
+#   btrfs quota / qgroup  — quota groups (off by default; expensive)
+#   btrfs check           — offline fsck. UNMOUNTED ONLY. read-only by default.
+#   btrfs rescue          — recovery tools for broken fs
+
+
+CREATING / MOUNTING
+-------------------
+
+# make a new btrfs filesystem on a single device
+sudo mkfs.btrfs /dev/sdX
+
+# multi-device fs in one call: raid1 for metadata + data
+sudo mkfs.btrfs -d raid1 -m raid1 /dev/sda /dev/sdb
+
+# label it (handy for fstab / boot)
+sudo mkfs.btrfs -L mydata /dev/sdX
+
+# mount with the sensible everyday options:
+#   compress=zstd:3     — transparent zstd compression (level 1-15)
+#   noatime             — don't update file atime on read
+#   space_cache=v2      — modern free-space cache
+sudo mount -o compress=zstd:3,noatime,space_cache=v2 /dev/sdX /mnt/data
+
+# mount a specific subvolume by name
+sudo mount -o subvol=@home /dev/sdX /home
+
+# mount a specific subvolume by id (the only way that survives renames)
+sudo mount -o subvolid=257 /dev/sdX /home
+
+
+SUBVOLUMES
+----------
+
+# show every subvolume on a mounted fs
+sudo btrfs subvolume list /mnt/data
+sudo btrfs subvolume list -t /                 # tabular
+sudo btrfs subvolume list -p -q -u /           # with parent / uuid info
+
+# create a new subvolume (must be inside an existing btrfs)
+sudo btrfs subvolume create /mnt/data/projects
+
+# delete a subvolume (NOT `rm -rf` — that deletes contents only)
+sudo btrfs subvolume delete /mnt/data/projects
+
+# show the default subvolume (mounted when no subvol= option is given)
+sudo btrfs subvolume get-default /mnt/data
+sudo btrfs subvolume set-default 257 /mnt/data
+
+# show details about one subvolume
+sudo btrfs subvolume show /mnt/data/projects
+
+
+SNAPSHOTS
+---------
+
+# snapshot a subvolume. instant, almost-zero space.
+sudo btrfs subvolume snapshot /mnt/data/projects \
+    /mnt/data/.snapshots/projects-2026-06-14
+
+# READ-ONLY snapshot — the right kind for backups and send/receive
+sudo btrfs subvolume snapshot -r /mnt/data/projects \
+    /mnt/data/.snapshots/projects-2026-06-14
+
+# read-only snapshots can be promoted to writable later
+sudo btrfs property set /mnt/data/.snapshots/projects-2026-06-14 ro false
+
+# delete a snapshot — exactly the same command as deleting a subvolume
+sudo btrfs subvolume delete /mnt/data/.snapshots/projects-2026-06-14
+
+# common pattern: rollback by swapping default subvolume to a snapshot
+# (root fs rollback works this way on opensuse via snapper).
+sudo btrfs subvolume set-default <snapshot-id> /
+
+
+FREE SPACE — `df` LIES, USE btrfs filesystem usage
+--------------------------------------------------
+
+# `df -h` on a btrfs is misleading: it doesn't account for the
+# allocation-vs-use distinction or for raid overhead. always cross-check:
+sudo btrfs filesystem usage /
+sudo btrfs filesystem df /                      # by block group type
+
+# show device-level allocation
+sudo btrfs filesystem show /
+sudo btrfs filesystem show --mounted
+
+# the "no space left on device" trap: btrfs can ENOSPC on metadata
+# while data still looks free. fix is a balance (see below) or
+# allocating one more chunk of metadata.
+
+
+BALANCE — REBALANCE / RESHAPE / DEFRAG
+--------------------------------------
+
+# balance rewrites blocks across devices. used for: reclaiming
+# half-empty chunks, changing raid profile, adding/removing a device.
+# can take HOURS on a big fs. start with filters to bound the work.
+
+# light balance — only reclaim chunks <50% full (cheap, fast)
+sudo btrfs balance start -dusage=50 -musage=50 /
+
+# convert from single to raid1 (after adding the 2nd device)
+sudo btrfs balance start -dconvert=raid1 -mconvert=raid1 /mnt/data
+
+# check progress
+sudo btrfs balance status /
+sudo btrfs balance pause /
+sudo btrfs balance resume /
+sudo btrfs balance cancel /
+
+# defragment a file or directory (CoW means random writes fragment
+# heavily — defrag helps especially for VM images and databases).
+# WARNING: defrag breaks reflinks/snapshots — defragged extents are
+# copied, so the snapshot stops sharing storage with the live file.
+sudo btrfs filesystem defragment -r -czstd /var/lib/mysql
+
+
+COMPRESSION
+-----------
+
+# enable for the whole mount via mount option
+mount -o remount,compress=zstd:3 /mnt/data
+
+# enable as a per-subvolume default (sticks across mounts)
+sudo btrfs property set /mnt/data/projects compression zstd
+
+# force-compress files already on disk
+sudo btrfs filesystem defragment -r -czstd /mnt/data/projects
+
+# disable compression for one path (e.g. databases that compress
+# their own data, where double-compression wastes CPU)
+sudo chattr +C /mnt/data/postgres                # no-CoW + no compression
+sudo btrfs property set /mnt/data/postgres compression none
+
+
+SCRUB — CHECKSUM VERIFICATION
+-----------------------------
+
+# read every block and verify its checksum. on a multi-device raid
+# profile, silently REPAIRS damaged copies from the good mirror.
+# do this MONTHLY on production data. timer-driven cron is fine.
+sudo btrfs scrub start /
+sudo btrfs scrub status /
+sudo btrfs scrub cancel /
+sudo btrfs scrub resume /
+
+# error counters per device (uncorrectable read/write/flush errors —
+# accumulate over time; any nonzero number deserves investigation).
+sudo btrfs device stats /
+
+
+DEVICES — ADD / REMOVE / REPLACE
+--------------------------------
+
+# add a new device to a live fs
+sudo btrfs device add /dev/sdc /mnt/data
+sudo btrfs balance start -dconvert=raid1 -mconvert=raid1 /mnt/data
+
+# remove a device — btrfs first migrates its data off, then detaches
+sudo btrfs device remove /dev/sdb /mnt/data
+
+# replace a failing device IN PLACE (faster + safer than add+remove)
+sudo btrfs replace start /dev/sdb /dev/sdd /mnt/data
+sudo btrfs replace status /mnt/data
+
+# scan all block devices for btrfs (needed if mounting by UUID
+# pre-systemd-detect, or after a hotplug)
+sudo btrfs device scan
+
+
+SEND / RECEIVE — INCREMENTAL BACKUPS
+------------------------------------
+
+# `btrfs send` streams a read-only snapshot's differences over a pipe.
+# `btrfs receive` reconstructs it on the other side. zero parsing of
+# files involved — it's filesystem-level. fast, exact, and
+# incrementals are O(changes), not O(filesystem-size).
+
+# initial full send to another btrfs fs (mounted at /backup/)
+sudo btrfs subvolume snapshot -r /home /home/.snap/2026-06-14
+sudo btrfs send /home/.snap/2026-06-14 | sudo btrfs receive /backup/
+
+# incremental against the previous snapshot (-p = parent)
+sudo btrfs subvolume snapshot -r /home /home/.snap/2026-06-15
+sudo btrfs send -p /home/.snap/2026-06-14 /home/.snap/2026-06-15 \
+    | sudo btrfs receive /backup/
+
+# over ssh
+sudo btrfs send -p /home/.snap/2026-06-14 /home/.snap/2026-06-15 \
+    | ssh backup-host sudo btrfs receive /backup/
+
+
+SNAPPER (the openSUSE / SUSE auto-snapshot tool)
+------------------------------------------------
+
+# on opensuse this is preinstalled and wired into zypper, taking pre-
+# and post-snapshots around every transaction. on other distros you
+# install it:
+sudo apt install snapper                          # debian / ubuntu
+sudo dnf install snapper                          # fedora
+sudo pacman -S snapper                            # arch / manjaro
+sudo zypper install snapper                       # opensuse (usually preinstalled)
+
+# create a config for a subvolume (creates /etc/snapper/configs/<name>)
+sudo snapper -c root create-config /
+
+# list snapshots
+sudo snapper -c root list
+
+# take a manual snapshot
+sudo snapper -c root create --description "before-mariadb-upgrade"
+
+# diff between two snapshots
+sudo snapper -c root status 42..43
+sudo snapper -c root diff 42..43
+
+# rollback to a snapshot (subvolume swap + reboot)
+sudo snapper -c root rollback 42
+
+# on opensuse, grub2-snapper-plugin adds "Bootable snapshots" submenu
+# to grub so you can boot directly into a pre-update snapshot.
+
+
+COMMON GOTCHAS
+--------------
+
+# 1. databases and VM images fragment heavily under CoW. mark them
+#    nodatacow with `chattr +C` BEFORE writing data, on an empty
+#    directory. chattr +C on an existing file does nothing for
+#    already-written extents.
+sudo mkdir /var/lib/mysql
+sudo chattr +C /var/lib/mysql
+# now restore / initdb
+
+# 2. raid5 and raid6 are NOT production-ready for metadata. always
+#    use `-m raid1` or `-m raid1c3` for metadata even on raid5 data.
+
+# 3. `btrfs check --repair` is a LAST RESORT. it can make things
+#    worse. always try `btrfs scrub` and `btrfs rescue zero-log`
+#    first, and clone the device with ddrescue before any --repair.
+
+# 4. `df` reports allocation, not files. an "almost full" btrfs may
+#    have lots of half-empty chunks; a balance with `-dusage=50` is
+#    often the fix. conversely an "empty looking" btrfs may already
+#    be metadata-full and refuse writes.
+
+# 5. quota groups (qgroup) are powerful but expensive — they slow
+#    balance and delete significantly. keep them off unless you
+#    need them.
+
+# 6. don't snapshot $HOME if it contains a live VM image or a
+#    busy db unless those paths are marked nodatacow — the
+#    snapshot will pin growing-but-no-longer-shared blocks and
+#    blow up your disk usage.
+
+# 7. trim / discard on SSDs: use `fstrim` periodically (or the
+#    fstrim.timer) rather than mount option `discard` — async
+#    trim has historically had btrfs-specific quirks.
+
+
+RECOVERY
+--------
+
+# UNMOUNTED check (btrfs check is offline-only). default is read-only:
+sudo btrfs check /dev/sdX                         # safe; analyses only
+sudo btrfs check --readonly /dev/sdX              # explicit
+
+# rescue tools (try these before any --repair)
+sudo btrfs rescue zero-log /dev/sdX               # clears stale log
+sudo btrfs rescue super-recover /dev/sdX          # repairs superblock from backups
+sudo btrfs rescue chunk-recover /dev/sdX          # rebuild chunk tree
+
+# mount a damaged fs read-only with backup superblock + recovery
+sudo mount -o ro,rescue=all /dev/sdX /mnt/rescue
+
+# list backup superblocks
+sudo btrfs inspect-internal dump-super -fa /dev/sdX
+
+
+SEE ALSO
+
+# - [[zypper]]   — opensuse's package manager; snapper integration lives here
+# - [[dnf]]      — fedora; root is btrfs but no auto-snapshots ship by default
+# - [[pacman]]   — arch / manjaro; manjaro has timeshift-autosnap (separate tool)
+# - [[luks]]     — disk encryption underneath btrfs
+# - [[disk-speed]] — benchmarking

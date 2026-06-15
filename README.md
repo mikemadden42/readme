@@ -80,6 +80,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [zypper](zypper) — openSUSE package manager primer
 - [rpm](rpm) — low-level rpm tool primer (queries, verify, signatures)
 - [snap](snap) — Canonical snap usage primer
+- [btrfs](btrfs) — copy-on-write filesystem primer (subvolumes, snapshots, snapper)
 - [grub](grub) — bootloader config
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption
