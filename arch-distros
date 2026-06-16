@@ -1,0 +1,424 @@
+# arch-distros — survey of the arch linux family
+#
+# "arch-based" is a family, not a single distro. what they share:
+#
+#   - pacman as the package manager (see [[pacman]])
+#   - the AUR as the community build-recipe repo (see [[pacman]] AUR section)
+#   - .pkg.tar.zst binary package format
+#   - rolling release (with one big exception — SteamOS does point releases)
+#   - the arch wiki as de-facto canonical documentation
+#
+# what they DON'T share:
+#
+#   - installer (arch ships archinstall; most derivatives ship calamares)
+#   - init system (artix offers openrc/runit/s6/dinit; everyone else is systemd)
+#   - default desktop, kernel, default filesystem, theming, repo policy,
+#     how aggressively they patch packages, how AUR-friendly they are.
+#
+# this file is a tour, not a benchmark. picking one is mostly about how much
+# setup you want to do yourself and how close to upstream you want to live.
+
+
+WHERE EACH ONE SITS — ONE-LINE PITCHES
+--------------------------------------
+
+# Arch Linux       — the upstream. minimal base, you assemble the rest.
+# Manjaro          — arch with a 2-week safety buffer + calamares installer.
+# EndeavourOS      — thin friendly layer over pure arch, vanilla repos.
+# Garuda           — performance/gaming-focused, btrfs+snapper out of box.
+# CachyOS          — performance-tuned packages (x86-64-v3/v4), BORE sched.
+# Artix            — arch without systemd (openrc / runit / s6 / dinit).
+# SteamOS 3        — valve's immutable arch for the Steam Deck.
+# RebornOS         — calamares-driven, lots of DEs to pick at install.
+# ArcoLinux        — educational ladder from "easy" to "build it yourself".
+# BlendOS          — immutable, container-based ("distroless arch").
+
+
+ARCH LINUX — the upstream
+-------------------------
+
+# what it is: minimal rolling-release distro. you get a base system and the
+# pacman repos; everything else is a deliberate choice. the install is a
+# scripted but explicit walk: partition, mkfs, pacstrap, fstab, chroot,
+# bootloader, network, user. no GUI installer historically (archinstall is
+# the official scripted helper now, but the wiki install is still the
+# expected default knowledge).
+
+# release model: TRUE rolling. packages land on stable as soon as the
+# maintainer pushes them. no "branches" — there's just current.
+
+# installer: archinstall (TUI, optional). vanilla install is wiki-driven.
+sudo archinstall                       # menu-driven, profiles supported
+
+# package count: ~14k in core/extra (formerly core/extra/community — those
+# were merged in 2023). AUR adds ~90k user recipes on top.
+
+# kernel: linux (vanilla, latest stable). also packaged: linux-lts,
+# linux-zen, linux-hardened. switch with `pacman -S linux-lts` + regenerate
+# initramfs + update bootloader (see [[grub]]).
+
+# target audience: people who want to know exactly what's installed and
+# why, and who treat "read the wiki" as a feature.
+
+# strengths:
+#   - smallest attack surface by default
+#   - newest userspace anywhere short of Tumbleweed
+#   - the arch wiki is the best linux documentation in existence
+#   - AUR access is first-class
+# trade-offs:
+#   - you OWN the install. no calamares fallback if something breaks.
+#   - rolling-release maintenance is a permanent low-grade chore. read
+#     archlinux.org/news before any -Syu that's been >2 weeks since the
+#     last one — manual-intervention notices live there.
+
+
+MANJARO — staged-rolling, mainstream
+------------------------------------
+
+# what it is: arch with a 2-week soak buffer. packages flow unstable →
+# testing → stable. you're on stable by default and running roughly two
+# weeks behind pure arch in batched dumps.
+
+# release model: STAGED ROLLING. three branches (stable, testing,
+# unstable). you can change with pacman-mirrors (see [[pacman]] MANJARO
+# SPECIFICS). branch downgrades are not really supported.
+
+# installer: calamares. KDE, GNOME, XFCE are the official flagship spins;
+# community spins cover most other DEs. partitioning offers btrfs with the
+# @ / @home / @cache / @log subvolume layout (see [[btrfs]] MANJARO +
+# TIMESHIFT INTEGRATION).
+
+# package management: pacman + pamac front-end (GUI and CLI). pamac talks
+# to manjaro's repos AND optionally the AUR (off by default — toggle
+# EnableAUR in /etc/pamac.conf).
+
+# the "manjaro repos" matter: manjaro does NOT use arch's repos directly.
+# this is why AUR breakage can hit manjaro stable harder than pure arch —
+# an AUR PKGBUILD targets current arch, which may be a glibc bump ahead of
+# manjaro stable.
+
+# kernel: manjaro ships mhwd-kernel, a side-by-side kernel manager. install
+# multiple kernels, boot whichever:
+mhwd-kernel -li                        # list installed
+mhwd-kernel -l                         # list available
+sudo mhwd-kernel -i linux612
+
+# target audience: newcomers to arch who want a working desktop in 20
+# minutes and don't want to assemble it themselves. people running
+# bleeding-edge for daily work but with a small breakage buffer.
+
+# strengths:
+#   - calamares + sane defaults + flagship DEs
+#   - hardware detection (mhwd) handles proprietary nvidia drivers cleanly
+#   - 2-week buffer catches some upstream regressions
+#   - btrfs + timeshift-autosnap snapshots before every -Syu
+# trade-offs:
+#   - manjaro's own repos add a second layer of "could be the bug"
+#   - AUR + staged-rolling friction (glibc-skew etc, see [[pacman]])
+#   - manjaro has had cert/keyring/SSL incidents in the past — the
+#     team has a reputation for occasional sloppy ops. for production
+#     servers this is a reason to pick pure arch instead.
+#   - DDOSing aur.archlinux.org accidentally (twice, 2020-2021) — fixed,
+#     but reputational damage stuck.
+
+
+ENDEAVOUROS — the EndeavourOS sweet spot
+----------------------------------------
+
+# what it is: spiritual successor to antergos (which folded in 2019). a
+# thin friendly layer over PURE arch — endeavour adds a calamares installer
+# and a welcome app, then gets out of the way. you end up on arch's actual
+# repos, not a forked copy.
+
+# release model: TRUE rolling (because the repos are arch's, with one tiny
+# endeavour-specific repo for the welcome app and themes).
+
+# installer: calamares. online install lets you pick the DE; offline
+# install is XFCE only. supports btrfs / luks / lvm / encryption out of
+# box. nvidia non-free option in the installer.
+
+# package management: pacman straight; yay is preinstalled for AUR.
+
+# target audience: people who want "arch but I didn't want to hand-write
+# fstab today". the most-recommended derivative on r/archlinux these days.
+
+# strengths:
+#   - effectively pure arch — `cat /etc/pacman.conf` proves it
+#   - very small endeavour-only footprint (welcome app, themes)
+#   - active and friendly community forum + wiki
+#   - calamares installer with all the bits people forget (microcode,
+#     timeshift, nvidia drivers, swap-with-hibernate)
+# trade-offs:
+#   - you still own the rolling-release maintenance burden (read
+#     archlinux.org/news before big -Syu)
+#   - no auto-snapshots out of the box (you opt into timeshift)
+#   - no staged-rolling buffer — endeavour IS pure arch's timeline
+
+
+GARUDA — gaming/performance focused, opinionated
+------------------------------------------------
+
+# what it is: arch + zen kernel + btrfs+snapper + chaotic-aur + a heavily
+# themed KDE (the "Dragonized" edition). targets gamers and people who want
+# everything plugged in by default.
+
+# release model: rolling. uses arch repos + chaotic-aur (a binary mirror of
+# popular AUR packages, prebuilt). chaotic-aur means less makepkg waiting
+# for popular AUR stuff.
+
+# installer: calamares. btrfs is the strongly-pushed default and the
+# snapshot tooling assumes it.
+
+# kernel: linux-zen by default. zen is a vanilla kernel with desktop-
+# responsiveness patches (BFQ scheduler, MuQSS-style tweaks, lower default
+# latencies). small wins for interactivity, occasional regressions for
+# servers — don't run garuda on a server.
+
+# package management: pacman + pamac + chaotic-aur. snap is intentionally
+# absent (see [[snap]] for the Canonical politics).
+
+# notable extras out of the box:
+#   - btrfs with auto-snapshots via snapper + grub-btrfs (see [[btrfs]])
+#   - garuda-gamer meta-package (steam, lutris, gamemode, mangohud,
+#     proton-ge, wine-staging, etc.)
+#   - garuda-assistant: GUI maintenance frontend
+#   - garuda-boot-options: GUI for kernel args
+#   - fish as the default shell (with bash-style fallbacks)
+
+# target audience: gamers, performance-curious users, people who want a
+# loaded desktop on day one and don't mind heavy theming.
+
+# strengths:
+#   - "I want to game on linux" → fewer config hours than anywhere else
+#   - snapper + grub-btrfs are pre-wired (rare in the arch family)
+#   - chaotic-aur means popular AUR pkgs are prebuilt
+# trade-offs:
+#   - heavy. dragonized KDE is ~3GB of theming. minimal editions exist.
+#   - opinionated defaults — fish, zen, btrfs — fight you if you don't want them
+#   - chaotic-aur adds a third-party binary repo to your trust surface
+
+
+CACHYOS — performance-tuned, x86-64-v3/v4
+-----------------------------------------
+
+# what it is: arch derivative with custom-compiled packages targeting
+# modern CPU baselines (x86-64-v3 and v4), the BORE / sched-ext schedulers,
+# and a curated set of performance defaults.
+
+# release model: rolling. uses cachyos's own binary repos (the perf-
+# rebuilt packages) layered over arch's.
+
+# the v3/v4 angle: x86-64-v3 = haswell+ (2013+, AVX2, BMI2, FMA);
+# x86-64-v4 = AVX-512 (icelake-server, sapphire rapids, zen 4+). cachy's
+# installer detects your CPU and configures /etc/pacman.conf to pull from
+# the highest tier your hardware supports. real-world wins are
+# benchmark-noisy but consistent at the 1-5% level on compute-heavy code
+# (compilers, ffmpeg, blender). gaming wins mostly come from the
+# scheduler, not the binaries.
+
+# kernel: cachyos-cachy (sched-ext + BORE + assorted patches) by default;
+# linux-cachyos, linux-cachyos-lts, linux-cachyos-rt are also packaged.
+# multiple kernel managers (cachyos-kernel-manager) for switching.
+
+# installer: calamares. asks about FS (btrfs default), DE, kernel,
+# scheduler, shell. unusually opinionated installer for an arch derivative.
+
+# target audience: enthusiasts who care about benchmarks, gamers chasing
+# 1% lows, anyone with a recent CPU who wants the binaries that match it.
+
+# strengths:
+#   - measurable perf wins for the rare benchmark that's CPU-bound
+#   - bleeding-edge scheduler experimentation, often before mainline
+#   - active 2024-2026 momentum, gaining mind-share
+# trade-offs:
+#   - cachy's repos are another trust surface
+#   - sched-ext is still maturing; "perf-tuned" sometimes means
+#     "unstable for my workload"
+#   - newer project — smaller community than manjaro/endeavour
+
+
+ARTIX — arch without systemd
+----------------------------
+
+# what it is: arch with the systemd dependency stripped out. ships your
+# choice of init system at install time: OpenRC, runit, s6, or dinit.
+
+# release model: rolling. artix has its own repos (forks of arch's pkgs
+# with systemd deps stripped). you can additionally enable arch's repos
+# but it's not on by default and creates breakage potential.
+
+# installer: a TUI (artix-installer) + a calamares spin. less polished
+# than manjaro/endeavour but functional.
+
+# package management: pacman, plus init-system-specific service-mgmt:
+sudo rc-service nginx start            # OpenRC
+sudo sv up nginx                       # runit
+s6-rc -u change nginx                  # s6
+dinitctl start nginx                   # dinit
+
+# target audience: people who actively object to systemd (anti-monoculture
+# philosophy, prefer simpler init scripts, embedded use cases). small
+# group but vocal.
+
+# strengths:
+#   - the only mainstream rolling-release option without systemd
+#   - four init systems to choose from at install
+# trade-offs:
+#   - significant package compatibility friction — a chunk of the arch
+#     ecosystem assumes systemd (timers, journald, logind, networkd, .service)
+#   - smaller community, slower bug-fix turnaround
+#   - "we don't like systemd" is occasionally an ideological stance more
+#     than a technical one. be honest with yourself about why.
+
+
+STEAMOS 3 — valve's immutable arch for Steam Deck
+-------------------------------------------------
+
+# what it is: arch-based, immutable (read-only root), A/B partition scheme,
+# KDE Plasma in desktop mode + a gamescope/steam-overlay session in gaming
+# mode. ships on the Steam Deck and ROG Ally X.
+
+# release model: POINT RELEASES, not rolling. valve curates updates and
+# pushes them as system images. the A/B scheme means a failed update
+# rolls back automatically.
+
+# package management: pacman is present but blocked on the immutable
+# root. flatpak is the supported way to install applications. there's an
+# escape hatch (`steamos-readonly disable`) but anything you install that
+# way gets blown away by the next system update.
+
+# what it tells you about arch: immutable arch is possible, and works.
+# valve effectively productionized the model that BlendOS / Vanilla OS
+# / Fedora Silverblue have been exploring.
+
+# target audience: Steam Deck owners. "general purpose desktop SteamOS"
+# is not really a goal — the desktop mode is functional but designed as
+# an escape hatch from gaming mode, not a daily driver.
+
+# strengths:
+#   - "it just works" for the target hardware
+#   - A/B + immutable = unbrickable under normal use
+#   - gamescope is genuinely excellent
+# trade-offs:
+#   - pacman is mostly read-only — flatpak everything
+#   - not really a desktop distro despite the KDE session
+
+
+HONORABLE MENTIONS
+------------------
+
+# RebornOS         — calamares installer with ~15 DE options at install
+#                    time. arch repos directly + a small reborn repo.
+#                    quieter than endeavour but similar in spirit.
+#
+# ArcoLinux        — a teaching project. ships in three tiers: ArcoLinuxL
+#                    (full), ArcoLinuxD (do-it-yourself with helper scripts),
+#                    ArcoLinuxB (build your own). the founder's youtube
+#                    series is part of the value prop.
+#
+# BlendOS          — immutable, container-based. "distroless" arch — apps
+#                    run in containers, base is read-only, atomic updates.
+#                    interesting experiment, niche audience. compare with
+#                    fedora silverblue / vanillaOS.
+#
+# Anarchy / RebornOS / ArchBang / Archcraft / Mabox — long tail of
+# "arch + pretty defaults" remixes. mostly pick-by-screenshot; the
+# underlying system is the same arch.
+
+
+HOW TO PICK — a practical decision tree
+---------------------------------------
+
+# "I want to learn how linux is glued together":
+#     → Arch Linux. do the wiki install at least once. it's a rite of
+#       passage but also a genuine learning experience.
+#
+# "I want pure arch but don't want to hand-write fstab":
+#     → EndeavourOS. closest you can get to vanilla arch with a GUI installer.
+#
+# "I want bleeding-edge but with a small safety buffer":
+#     → Manjaro. accept the 2-week staged-rolling trade-off and the AUR
+#       skew issues. read forum stable-update threads before -Syu.
+#
+# "I want to game and I don't want to configure proton/lutris/mangohud":
+#     → Garuda (gaming edition) or CachyOS. garuda is more loaded;
+#       cachy is more performance-tuned.
+#
+# "I have a modern CPU and benchmarks matter to me":
+#     → CachyOS. v3/v4 binaries are real, sched-ext is interesting.
+#
+# "I don't want systemd":
+#     → Artix. pick an init system at install. expect ecosystem friction.
+#
+# "I bought a Steam Deck":
+#     → SteamOS 3. don't replace it unless you have a specific reason.
+#
+# "I'm running a server":
+#     → Arch Linux, NOT a derivative. the derivatives are all
+#       desktop-oriented. for servers, also seriously consider Debian
+#       stable or Rocky/Alma — rolling release on a server you can't
+#       reach physically is a stressful life choice.
+
+
+COMMON MISCONCEPTIONS
+---------------------
+
+# 1. "manjaro is just arch with a delay" — not quite. manjaro maintains
+#    its own repo with its own packaging decisions. it's arch-flavored,
+#    not arch-with-a-buffer.
+#
+# 2. "endeavour is arch with a different name" — closer but still wrong.
+#    endeavour has its own (small) repo for the welcome app and themes.
+#    the bulk of your packages do come from arch's actual repos.
+#
+# 3. "the AUR is part of arch" — no, it's user-submitted build recipes
+#    hosted by the arch project but unreviewed and unsupported. helpers
+#    like yay/paru drive it. every derivative inherits AUR access, but
+#    AUR breakage is on you, not on the derivative.
+#
+# 4. "rolling release = always broken" — managed rolling (manjaro stable,
+#    endeavour with discipline) is fine for desktops. unmanaged ("I'll
+#    -Syu when I feel like it") is where the pain comes from. read
+#    [[pacman]] MANJARO SPECIFICS for the maintenance loop.
+#
+# 5. "arch is for elitists" — outdated meme. the wiki is gold, the
+#    package surface is huge, and archinstall makes a working system
+#    in ten minutes. the difficulty is maintenance discipline, not
+#    install ceremony.
+#
+# 6. "X is faster than Y because benchmarks" — most arch-family perf
+#    differences are scheduler/kernel choice and userland defaults,
+#    not binary tuning. installing linux-zen on vanilla arch gets you
+#    most of what garuda's perf reputation is built on.
+
+
+COMPARING WITH OTHER FAMILIES
+-----------------------------
+
+# debian family (see [[apt]], [[deb]]):
+#   - point release, conservative, big package count, slow.
+#   - LTS-friendly, server-friendly. ubuntu adds snaps (see [[snap]]).
+#
+# fedora / RHEL family (see [[dnf]], [[rpm]]):
+#   - 6-month cadence, modern userspace, copr for community packages.
+#   - silverblue for the immutable model.
+#
+# openSUSE family (see [[zypper]], [[btrfs]]):
+#   - Tumbleweed = QA'd rolling (the closest non-arch rolling release).
+#   - root-on-btrfs + auto-snapper is the gold-standard reference setup.
+#   - usually the next-best rolling-release answer if arch doesn't fit.
+#
+# alpine (see [[apk]]):
+#   - musl + busybox + openrc, tiny base. container/embedded focus, not
+#     a desktop distro.
+
+
+SEE ALSO
+
+# - [[pacman]]  — package manager + AUR + Manjaro-specific gotchas
+# - [[btrfs]]   — filesystem + the Manjaro/Timeshift integration
+# - [[snap]]    — Canonical snap (notably absent from most arch distros)
+# - [[grub]]    — bootloader, including booting into snapshots
+# - [[dnf]]     — fedora cadence for comparison
+# - [[apt]]     — debian/ubuntu cadence for comparison
+# - [[zypper]]  — openSUSE Tumbleweed is the QA'd rolling alternative
