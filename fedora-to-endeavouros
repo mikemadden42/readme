@@ -159,6 +159,7 @@ CALAMARES GOTCHAS — the easy-to-miss installer choices
 #    the filesystem dropdown — small "Encrypt system" checkbox below
 #    the layout choice. easy to accidentally enable, easier to miss if
 #    you wanted it. the passphrase prompt comes up only if it's ticked.
+#    see "LUKS + BTRFS" section below for the full-kit recipe.
 #
 # 6. NVIDIA LIVE-USB BOOT OPTION HAS TO BE PICKED *BEFORE* THE INSTALLER.
 #    on the GRUB boot menu of the live USB there's a second entry like
@@ -213,6 +214,98 @@ sudo timedatectl set-timezone America/Los_Angeles
 #     a separate /home PARTITION is mostly an old-habit thing now;
 #     btrfs subvolumes get you the same isolation without the
 #     pre-allocated-size trap.
+
+
+LUKS + BTRFS — THE FULL-KIT STACK
+---------------------------------
+
+# common question: "can I pick encryption with either ext4 OR btrfs?"
+# yes. LUKS is filesystem-agnostic. the layer stack is:
+#
+#     partition  →  LUKS container  →  filesystem (ext4 or btrfs)
+#
+# LUKS encrypts the BLOCK DEVICE; the filesystem lives on top of the
+# unlocked mapper device and doesn't care that it's encrypted. fedora's
+# default Workstation install for years has been btrfs-on-LUKS, with
+# subvolumes inside the encrypted container — so if you're coming from
+# fedora 44 you already had this stack; endeavour gives you the same
+# shape, just with pacman instead of dnf on top.
+
+# THE FULL-KIT RECIPE (recommended on a fresh install):
+#     Erase disk
+#     File System: btrfs
+#     Encrypt system: CHECKED        (with a strong passphrase)
+#     Swap: Swap (with Hibernate)
+
+# what this gets you:
+#   - LUKS2 container on the root partition, unlocked at boot
+#   - btrfs inside, with @ and @home subvolumes (calamares creates these)
+#   - encrypted swap partition (not file) — sized for hibernate
+#   - hibernate image lands inside encrypted swap (safe at rest)
+#   - timeshift snapshots work on the inner btrfs — encryption is
+#     transparent from the snapshot tool's perspective
+#   - mount options: compress=zstd,noatime,space_cache=v2
+
+# what you'll see at boot:
+#   1. GRUB menu (or systemd-boot)
+#   2. LUKS passphrase prompt (initramfs)
+#   3. normal boot once unlocked
+
+# critical things to know going in:
+
+# 1. PASSPHRASE LOSS = DATA LOSS. there is no recovery, no master key,
+#    no "I forgot my password" link. LUKS lets you enroll multiple key
+#    slots (up to 8); add a backup key on day one:
+sudo cryptsetup luksAddKey /dev/nvme0n1p2          # adjust device
+#    write the backup somewhere physical (paper, safe). most users
+#    don't realize they wanted this until they've already locked out.
+
+# 2. PERFORMANCE IS A NON-ISSUE on any CPU with AES-NI (intel 2010+,
+#    AMD 2011+). LUKS uses hardware AES automatically. expect <1%
+#    overhead in real workloads.
+
+# 3. TPM2 AUTO-UNLOCK (passphrase prompt only on recovery; normal
+#    boots unlock silently from the TPM) is available post-install
+#    via systemd-cryptenroll. requires UEFI + TPM2 + measured boot.
+#    one-time setup:
+sudo systemd-cryptenroll --tpm2-device=auto \
+    --tpm2-pcrs=0+2+7+12 /dev/nvme0n1p2
+#    pcr 7 binds to secure boot state; pcr 0 to firmware; 2 to ext
+#    code; 12 to kernel cmdline. changing any of those (firmware
+#    update, kernel arg change, secure boot toggle) re-prompts for
+#    passphrase. that's a feature, not a bug — defends against
+#    evil-maid replacing your bootloader.
+
+# 4. /BOOT VISIBILITY. on the endeavour default (GRUB), /boot lives
+#    OUTSIDE the LUKS container so GRUB can read the kernel and
+#    initramfs unencrypted. that means /boot contents are visible to
+#    anyone with physical access — kernel version, initramfs, GRUB
+#    config. not a leak of YOUR data, but a fingerprint of the system.
+#    GRUB CAN decrypt LUKS directly to put /boot inside the container;
+#    calamares doesn't set that up by default, and it adds boot-time
+#    passphrase prompts (one for GRUB, one for initramfs). usually
+#    not worth it.
+
+# 5. HIBERNATE + ENCRYPTED SWAP. the hibernate image is what's in RAM
+#    serialized to swap. with encrypted swap, the hibernate image is
+#    safe at rest. with UNENCRYPTED swap, hibernating from an
+#    encrypted root is a giant data leak — every secret in RAM
+#    (LUKS keys included!) lands on unencrypted disk. calamares
+#    handles this when both checkboxes are set; verify after install:
+sudo blkid | grep -i swap                          # should show TYPE="crypto_LUKS"
+sudo cat /etc/crypttab                             # should list the swap entry
+
+# 6. BACKUP THE LUKS HEADER. if the first sectors of your disk get
+#    corrupted (bad write, controller failure) and the LUKS header
+#    is gone, the data is unrecoverable even with the correct
+#    passphrase. back it up immediately after install:
+sudo cryptsetup luksHeaderBackup /dev/nvme0n1p2 \
+    --header-backup-file ~/luks-header-$(hostname).img
+#    move that file to external storage. ~16 MiB; restore later via
+#    `cryptsetup luksHeaderRestore` if needed.
+
+# see [[luks]] for the lower-level cryptsetup primitives, and
+# [[btrfs]] for what's going on inside the unlocked container.
 
 
 PACKAGE MANAGER MAPPING — dnf → pacman
