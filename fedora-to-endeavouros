@@ -123,6 +123,98 @@ sudo timeshift --create --comments "post-install baseline" --tags D
 # INTEGRATION — the same hook works on endeavour.
 
 
+CALAMARES GOTCHAS — the easy-to-miss installer choices
+------------------------------------------------------
+
+# the filesystem dropdown (covered above) is the most-missed one. the
+# rest, ranked roughly by how often they bite:
+#
+# 1. OFFLINE INSTALL IS XFCE ONLY. picking "offline" because it's faster
+#    locks you into XFCE — there's no DE picker on the offline path. if
+#    you want KDE / GNOME / Cinnamon / Budgie / anything else, you MUST
+#    pick the ONLINE install.
+#
+# 2. DE SELECTION IS MULTI-SELECT (CHECKBOXES, NOT RADIO BUTTONS). you
+#    can accidentally tick KDE + GNOME + XFCE and end up with three
+#    login session options, three menu launchers' worth of duplicated
+#    apps, and a 6 GB install. pick ONE unless you specifically want
+#    a side-by-side. inversely: ticking nothing is valid (gives you a
+#    bare WM like i3/bspwm/Qtile if those are also offered), but
+#    surprises people who thought it meant "use the default".
+#
+# 3. "NO DESKTOP" OPTION EXISTS. literal terminal-only boot. people
+#    click it thinking it means "default desktop". if you want a GUI,
+#    don't pick this one.
+#
+# 4. BOOTLOADER: systemd-boot vs GRUB.
+#    - GRUB is the default on most spins. KEEP IT if you want bootable
+#      snapshots — `grub-btrfs` plugs into GRUB only; systemd-boot has
+#      no equivalent for booting into a btrfs snapshot.
+#    - systemd-boot is smaller / faster but UEFI-only. if your system
+#      is legacy BIOS, systemd-boot won't even appear as an option.
+#    - if you're dual-booting Windows, GRUB handles the os-prober
+#      detection automatically.
+#
+# 5. LUKS ENCRYPTION CHECKBOX. it lives on the SAME partition screen as
+#    the filesystem dropdown — small "Encrypt system" checkbox below
+#    the layout choice. easy to accidentally enable, easier to miss if
+#    you wanted it. the passphrase prompt comes up only if it's ticked.
+#
+# 6. NVIDIA LIVE-USB BOOT OPTION HAS TO BE PICKED *BEFORE* THE INSTALLER.
+#    on the GRUB boot menu of the live USB there's a second entry like
+#    "Start EndeavourOS with proprietary nvidia drivers". the installer
+#    does NOT expose this — by the time calamares is open you've already
+#    chosen. miss it on a hybrid laptop with a discrete nvidia GPU and
+#    the live env is glitchy or won't reach the desktop. (you can still
+#    install nvidia drivers post-install via the welcome app; the live
+#    USB choice only affects the live environment itself.)
+#
+# 7. HOSTNAME DEFAULTS TO "endeavouros". set it to something
+#    identifying ("$USER-laptop", "tower", whatever). two endeavouros
+#    boxes on the same LAN with the same hostname is a small mess.
+#
+# 8. KEYBOARD LAYOUT VARIANT. auto-detect picks the base layout (US,
+#    GB, DE, ...) but not the variant. US-International, US-Dvorak,
+#    GB-extended, DE-neo etc. users should explicitly select the
+#    variant from the dropdown — the test field at the bottom of the
+#    screen is where you confirm `@`, `<>`, `~`, accented chars all
+#    produce what you expect.
+#
+# 9. "AUTOMATICALLY LOG IN" CHECKBOX. convenience option on the user
+#    setup screen. uncheck this on a laptop you carry out of the
+#    house — a stolen powered-off laptop with auto-login is a stolen
+#    laptop the thief can log in to.
+#
+# 10. PACKAGE BUNDLES SCREEN (online install). shows optional bundles
+#     like firewall, printing (CUPS), accessibility, fonts, accessibility
+#     tools, common laptop helpers. DEFAULTS ARE REASONABLE BUT READ
+#     THEM ONCE. adding printer support or extra font sets later is
+#     annoying compared to one checkbox now.
+#
+# 11. ERASE DISK vs REPLACE PARTITION vs MANUAL.
+#     - "Erase disk" wipes the WHOLE selected disk. confirm the disk
+#       picker at the top of the screen — if you have two SSDs plugged
+#       in, picking the wrong one is data loss.
+#     - "Replace partition" silently wipes whichever partition you
+#       click on in the layout view. dual-booters: triple-check.
+#     - "Manual" gives you full control + responsibility. for UEFI
+#       systems you need an EFI System Partition (~512 MB, FAT32,
+#       mounted at /boot or /boot/efi). missing it = unbootable.
+#
+# 12. TIMEZONE AUTO-DETECT USES IP GEOLOCATION. wrong if you're on a
+#     VPN during install. fix from the map / dropdown on the timezone
+#     screen, or post-install:
+sudo timedatectl set-timezone America/Los_Angeles
+#
+# 13. SEPARATE /HOME PARTITION? if you want one, you have to use Manual
+#     partitioning. "Erase disk" puts everything on one big partition
+#     (or one btrfs with subvolumes, if you picked btrfs — which is
+#     actually fine, since @home is its own snapshottable subvolume).
+#     a separate /home PARTITION is mostly an old-habit thing now;
+#     btrfs subvolumes get you the same isolation without the
+#     pre-allocated-size trap.
+
+
 PACKAGE MANAGER MAPPING — dnf → pacman
 --------------------------------------
 
