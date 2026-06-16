@@ -81,12 +81,31 @@ INSTALL ENDEAVOUROS
 #    - ONLINE install (lets you pick DE; offline is XFCE only).
 #    - DESKTOP: pick what you had on fedora. KDE Plasma if you came from
 #      Fedora KDE Spin; GNOME if from Workstation.
-#    - FILESYSTEM: btrfs is strongly recommended. you'll want snapshots
-#      for the rolling-release safety net. see [[btrfs]] for the why.
+#    - FILESYSTEM: btrfs is strongly recommended for the snapshot story
+#      (rolling-release safety net; see [[btrfs]] for the why).
+#
+#      *** GOTCHA: the filesystem dropdown is EASY TO MISS. ***
+#      It is not its own screen. On the "Partitions" step, after you
+#      pick "Erase disk", a small "File System" dropdown appears RIGHT
+#      UNDER the radio button, defaulted to ext4. Change it to btrfs
+#      THERE. There is no separate "choose filesystem" page. Most
+#      people scan past it because the radio buttons grab the eye and
+#      end up on ext4 by accident.
+#
+#      If you only notice after install: timeshift still works on ext4
+#      (rsync mode), just slower and without bootable snapshots from
+#      GRUB. While the install is still fresh, a reinstall is 15
+#      minutes well spent. Do NOT try btrfs-convert on the live root —
+#      it won't give you the @ / @home subvolume layout calamares
+#      sets up, and timeshift-autosnap won't wire up cleanly.
+#
 #    - BOOTLOADER: systemd-boot if you're on plain EFI; grub if you
 #      want bootable-snapshot integration (see [[btrfs]] + grub-btrfs).
 #    - SWAP: pick "Swap (with Hibernate)" if you want a working
 #      hibernate, or no-swap + zram (more common on modern systems).
+#      On btrfs, this option creates a swap PARTITION (not a swapfile),
+#      which sidesteps the chattr +C / nodatacow / no-compression dance
+#      a hand-rolled btrfs swapfile needs (see [[btrfs]] GOTCHAS).
 #    - PACKAGES: trim the desktop bundle, don't add yet. install
 #      explicitly post-boot so you build a clean explicit-installed list.
 
