@@ -73,6 +73,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [linux_info](linux_info) — system info commands
 - [ubuntu](ubuntu), [centos](centos), [freebsd](freebsd) — distro-specific notes
 - [arch-distros](arch-distros) — survey of the Arch Linux family (Manjaro, EndeavourOS, Garuda, CachyOS, Artix, SteamOS)
+- [fedora-to-endeavouros](fedora-to-endeavouros) — migration primer: dnf↔pacman mapping, package name diffs, day-one checklist
 - [deb](deb) — dpkg/apt quick reference
 - [apt](apt) — Debian/Ubuntu package manager primer
 - [pacman](pacman) — Arch/Manjaro package manager primer

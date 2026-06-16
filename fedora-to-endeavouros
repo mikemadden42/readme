@@ -1,0 +1,456 @@
+# fedora-to-endeavouros — migration primer
+#
+# moving from Fedora 44 to EndeavourOS. both are systemd-based, glibc-based,
+# Wayland-by-default desktop linuxes. most of your muscle memory transfers
+# directly. the real differences are:
+#
+#   1. PACKAGE MANAGER: dnf → pacman (see [[pacman]])
+#   2. PACKAGE FORMAT:  rpm → pkg.tar.zst (see [[rpm]] vs pacman)
+#   3. RELEASE MODEL:   point release (6mo) → true rolling
+#   4. AUR:             new concept. user-submitted build recipes.
+#   5. SELINUX:         enforcing by default → AppArmor optional, neither typical
+#   6. FIREWALL:        firewalld → no firewall on by default (see [[ufw]])
+#   7. CONFIG MERGE:    .rpmnew → .pacnew (different tool, same idea)
+#   8. NEWS DISCIPLINE: nothing required → READ archlinux.org/news before -Syu
+#
+# this file walks the migration in order: capture state → install endeavour →
+# port packages → restore configs → day-one setup → maintenance loop.
+
+
+PRE-MIGRATION: CAPTURE YOUR FEDORA 44 STATE
+-------------------------------------------
+
+# do this BEFORE you touch the installer. without it, you'll spend a week
+# remembering what you had installed and why.
+
+# 1. snapshot the list of explicitly-installed packages (not deps).
+#    this is the migration list.
+dnf repoquery --userinstalled --queryformat '%{name}\n' \
+    | sort -u > ~/fedora-userinstalled.txt
+
+# 2. capture EVERY rpm currently installed (for cross-reference, not import)
+rpm -qa --qf '%{NAME}\n' | sort -u > ~/fedora-all-rpms.txt
+
+# 3. capture enabled repos + COPRs (you'll need analogous AUR pkgs)
+dnf repolist enabled > ~/fedora-repos.txt
+dnf copr list > ~/fedora-coprs.txt 2>/dev/null
+
+# 4. capture flatpaks (these port directly — flatpak is cross-distro)
+flatpak list --columns=application > ~/fedora-flatpaks.txt
+
+# 5. capture enabled systemd units (your services / timers / sockets)
+systemctl list-unit-files --state=enabled --no-pager > ~/fedora-enabled-units.txt
+systemctl --user list-unit-files --state=enabled --no-pager \
+    > ~/fedora-enabled-user-units.txt
+
+# 6. dotfiles + ~/.config + ~/.local/share. if these aren't in git already,
+#    now is when you regret it. minimum viable backup:
+tar czf ~/fedora-dotfiles.tar.gz \
+    --exclude='.cache' --exclude='.mozilla/firefox/*/Cache*' \
+    -C ~ .bashrc .zshrc .profile .config .local .ssh .gnupg
+
+# 7. browser profiles, password stores, gpg keys, ssh keys.
+#    do not skip the GPG/SSH backup. losing these is the worst-case path.
+cp -a ~/.gnupg ~/migration-backup/
+cp -a ~/.ssh ~/migration-backup/
+
+# 8. /etc — only the files YOU edited. easy filter: anything mtime-newer
+#    than the package install. or just tar all of /etc and grep later.
+sudo tar czf ~/fedora-etc.tar.gz -C / etc
+
+# 9. /var/lib for services you run (postgres, mysql, docker volumes,
+#    podman containers, etc). format-specific dumps are safer than
+#    file-level copies:
+sudo -u postgres pg_dumpall > ~/postgres-dump.sql
+docker save -o ~/docker-images.tar $(docker images -q)
+
+# stash all of this somewhere NOT on the disk you're about to wipe.
+# external SSD, second internal drive, or rsync to another machine.
+
+
+INSTALL ENDEAVOUROS
+-------------------
+
+# 1. grab the ISO from endeavouros.com (Galileo Neo or current release).
+#    `dd` it to a USB (see [[dd]]).
+
+# 2. boot the live USB. you get a small XFCE live env with a launcher
+#    for the Calamares installer.
+
+# 3. installer choices that matter:
+#    - ONLINE install (lets you pick DE; offline is XFCE only).
+#    - DESKTOP: pick what you had on fedora. KDE Plasma if you came from
+#      Fedora KDE Spin; GNOME if from Workstation.
+#    - FILESYSTEM: btrfs is strongly recommended. you'll want snapshots
+#      for the rolling-release safety net. see [[btrfs]] for the why.
+#    - BOOTLOADER: systemd-boot if you're on plain EFI; grub if you
+#      want bootable-snapshot integration (see [[btrfs]] + grub-btrfs).
+#    - SWAP: pick "Swap (with Hibernate)" if you want a working
+#      hibernate, or no-swap + zram (more common on modern systems).
+#    - PACKAGES: trim the desktop bundle, don't add yet. install
+#      explicitly post-boot so you build a clean explicit-installed list.
+
+# 4. post-install, the welcome app shows up. it has shortcuts for:
+#    - update mirrors (rate-rank arch's mirrors for your region)
+#    - update system
+#    - install nvidia drivers (if applicable)
+#    - common app-installer panels (steam, browsers, etc.)
+#    run "Update mirrors" first, then "Update system", then close it.
+
+# 5. enable timeshift + timeshift-autosnap BEFORE you do anything serious:
+sudo pacman -S timeshift timeshift-autosnap
+sudo timeshift --create --comments "post-install baseline" --tags D
+# now every -Syu auto-snapshots first. see [[btrfs]] MANJARO + TIMESHIFT
+# INTEGRATION — the same hook works on endeavour.
+
+
+PACKAGE MANAGER MAPPING — dnf → pacman
+--------------------------------------
+
+# the day-to-day commands. memorize this table. see [[pacman]] for depth.
+
+#  fedora                              endeavour / arch
+#  ---------------------------------   ---------------------------------
+#  sudo dnf install foo                sudo pacman -S foo
+#  sudo dnf remove foo                 sudo pacman -Rns foo
+#  sudo dnf upgrade                    sudo pacman -Syu
+#  sudo dnf upgrade --refresh          sudo pacman -Syyu
+#  sudo dnf check-update               checkupdates           (from pacman-contrib)
+#  dnf list installed                  pacman -Q
+#  dnf list installed | grep foo       pacman -Qs foo
+#  dnf info foo                        pacman -Si foo         (sync)
+#                                      pacman -Qi foo         (installed)
+#  dnf repoquery --userinstalled       pacman -Qe
+#  dnf list --installed | grep ...     pacman -Qm             (NOT-in-repo: AUR / local)
+#  dnf provides /usr/bin/foo           pacman -F /usr/bin/foo (after `pacman -Fy`)
+#  rpm -qf /usr/bin/foo                pacman -Qo /usr/bin/foo
+#  rpm -ql foo                         pacman -Ql foo
+#  rpm -V foo                          pacman -Qkk foo
+#  dnf clean all                       sudo pacman -Scc
+#  dnf history                         /var/log/pacman.log
+#  dnf autoremove                      sudo pacman -Rns $(pacman -Qdtq)
+#  dnf swap A B                        sudo pacman -S B       (pacman auto-resolves)
+#  dnf mark install foo                sudo pacman -D --asexplicit foo
+#  dnf mark remove foo                 sudo pacman -D --asdeps foo
+#  dnf copr enable user/proj           — closest analog: AUR (see below)
+#  dnf module enable foo:stream        — no analog; arch ships one version per pkg
+#  dnf needs-restarting                — closest: `needrestart` package, or reboot
+#  dnf system-upgrade                  sudo pacman -Syu       (always; rolling)
+
+# CRITICAL difference: NEVER run `pacman -Sy foo` (without -u). this
+# refreshes the database without upgrading, then installs foo — which can
+# pull in a fresh dependency against a stale system. always:
+#     sudo pacman -Syu                      # upgrade first, then
+#     sudo pacman -S foo                    # install
+# this "partial upgrade" trap doesn't exist on dnf; it's the #1 way new
+# arch users break their system.
+
+
+PACKAGE NAME MAPPING — the common ones that differ
+--------------------------------------------------
+
+# most package names are the same. these are the gotchas:
+
+#  fedora                              arch / endeavour
+#  ---------------------------------   ---------------------------------
+#  @development-tools                  base-devel              (group)
+#  @virtualization                     qemu-full libvirt virt-manager
+#  kernel-headers                      linux-headers
+#  kernel-devel                        linux-headers
+#  glibc-langpack-en                   — locales handled via /etc/locale.gen
+#  pulseaudio-utils                    pulseaudio              (or pipewire-pulse)
+#  pipewire-pulseaudio                 pipewire-pulse
+#  NetworkManager-tui                  networkmanager          (nmtui is in there)
+#  policycoreutils-python-utils        — selinux not standard on arch
+#  setools-console                     — selinux not standard on arch
+#  java-21-openjdk                     jdk-openjdk             (latest is default)
+#  java-21-openjdk-devel               jdk-openjdk             (-devel is bundled)
+#  python3                             python                  (python IS python 3)
+#  python3-pip                         python-pip
+#  python3-virtualenv                  python-virtualenv
+#  nodejs-npm                          npm
+#  golang                              go
+#  ImageMagick                         imagemagick             (lowercase)
+#  ffmpeg-free                         ffmpeg                  (full ffmpeg shipped)
+#  vlc                                 vlc
+#  google-chrome-stable                google-chrome           (AUR)
+#  code                                code                    (open source build)
+#                                      visual-studio-code-bin  (microsoft build, AUR)
+#  zoom                                zoom                    (AUR)
+#  slack                               slack-desktop           (AUR)
+#  1password                           1password               (AUR)
+#  spotify-client                      spotify                 (AUR)
+#  steam                               steam                   (needs multilib repo)
+#  podman-docker                       podman                  (docker alias separate)
+#  podman-compose                      podman-compose
+
+# the "needs multilib" point: steam, wine, lutris and friends need 32-bit
+# libs. enable multilib in /etc/pacman.conf — uncomment [multilib] and the
+# Include line — then `sudo pacman -Syu`. see [[pacman]] PACMAN.CONF.
+
+
+COPR → AUR — the closest analog
+-------------------------------
+
+# fedora's COPR (community packages built on koji) is roughly the AUR's
+# equivalent on the rpm side. the differences:
+#
+#   - COPR ships built binaries from a trusted-ish builder.
+#   - AUR ships build RECIPES (PKGBUILDs); your machine builds them.
+#   - both are community-maintained, unreviewed, "trust the maintainer".
+#
+# yay is preinstalled on endeavour. usage:
+yay -Ss foo                            # search repos + AUR
+yay -Si foo                            # info on an AUR package
+yay -S foo                             # install (builds + installs)
+yay -Syu                               # upgrade everything (repos + AUR)
+yay -Yc                                # clean orphaned AUR build dirs
+
+# the "binary cache for popular AUR" equivalent is chaotic-aur (third-party
+# repo). garuda uses it by default; endeavour doesn't. if you want
+# google-chrome / spotify / discord without compiling, the -bin variants
+# (e.g. spotify, google-chrome) are already prebuilt by their AUR
+# maintainers — no chaotic-aur needed.
+
+
+FLATPAK — same on both sides
+----------------------------
+
+# flatpak is identical between fedora and endeavour. your flatpak app list
+# ports unchanged. on endeavour:
+sudo pacman -S flatpak
+flatpak remote-add --if-not-exists flathub \
+    https://flathub.org/repo/flathub.flatpakrepo
+flatpak install flathub org.mozilla.firefox      # for example
+
+# bulk-restore from the fedora capture:
+while read app; do flatpak install -y flathub "$app"; done < ~/fedora-flatpaks.txt
+
+# the integration point that differs: fedora preconfigures the
+# fedora-flatpaks remote with rebuilt-by-redhat versions. on arch you only
+# have flathub by default. for most users that's fine.
+
+
+SERVICES & SYSTEMD — mostly the same
+------------------------------------
+
+# both are systemd. same commands, same unit files, same enable/start/status.
+systemctl enable --now sshd            # same syntax
+journalctl -u sshd --since today       # same syntax
+
+# the things that differ:
+#
+# - SELINUX: fedora ships enforcing; arch ships nothing. don't enable
+#   selinux on arch — the package set isn't labeled and you'll be in
+#   a maze of avc denials. if you want MAC, use AppArmor (`pacman -S
+#   apparmor`), which has working profiles for common services.
+#
+# - FIREWALLD: not default on arch. install + enable manually if you
+#   want it, or use ufw (see [[ufw]]):
+sudo pacman -S firewalld
+sudo systemctl enable --now firewalld
+#   or
+sudo pacman -S ufw
+sudo systemctl enable --now ufw
+sudo ufw default deny incoming
+sudo ufw enable
+#
+# - JOURNALD STORAGE: defaults to /var/log/journal on both. fedora caps
+#   more aggressively. tune Journal{,Storage}MaxUse= in
+#   /etc/systemd/journald.conf if you find logs ballooning.
+
+
+DAY-ONE INSTALL CHECKLIST
+-------------------------
+
+# the post-install ritual. run in this order.
+
+# 1. mirror rank + first full update
+sudo pacman -S reflector
+sudo reflector --country US --age 12 --sort rate --save /etc/pacman.d/mirrorlist
+sudo pacman -Syu
+
+# 2. dev toolchain bootstrap (same group as fedora's @development-tools)
+sudo pacman -S --needed base-devel git
+sudo pacman -S --needed neovim vim tmux zsh
+
+# 3. languages you actually use (skip what you don't)
+sudo pacman -S --needed python python-pip rustup nodejs npm go clang cmake ninja
+rustup default stable                     # if you grabbed rustup
+
+# 4. CLI you'll miss from fedora (most are 1:1 named):
+sudo pacman -S --needed ripgrep fd bat fzf jq htop wget curl unzip
+
+# 5. desktop apps (pick what you used). repos cover most;
+#    AUR for proprietary (chrome, vscode-ms, zoom, slack, 1password):
+sudo pacman -S firefox thunderbird libreoffice-fresh gimp inkscape vlc keepassxc
+
+# 6. containers / VMs
+sudo pacman -S docker docker-compose
+# or
+sudo pacman -S podman podman-compose
+sudo systemctl enable --now docker         # only if you chose docker
+
+sudo pacman -S qemu-full libvirt virt-manager
+sudo systemctl enable --now libvirtd
+sudo usermod -aG libvirt "$USER"
+
+# 7. multilib (steam, wine, 32-bit libs). edit /etc/pacman.conf,
+#    uncomment [multilib] + its Include line, then:
+sudo pacman -Syu
+sudo pacman -S steam wine-staging lutris
+
+# 8. nvidia (skip if intel/amd):
+sudo pacman -S nvidia nvidia-utils nvidia-settings
+#    (the endeavour welcome app has a button that does this and the
+#    kernel-param plumbing for you — preferred.)
+
+# 9. enable the firewall of your choice (see SERVICES above).
+
+# 10. fonts. fedora's font stack is more curated than arch's defaults:
+sudo pacman -S ttf-liberation ttf-dejavu noto-fonts noto-fonts-emoji \
+    ttf-cascadia-code ttf-jetbrains-mono ttf-fira-code
+
+# 11. set the hostname / timezone if installer didn't:
+sudo hostnamectl set-hostname mybox
+sudo timedatectl set-timezone America/Los_Angeles
+
+# 12. restore dotfiles:
+cd ~ && tar xzf ~/migration-backup/fedora-dotfiles.tar.gz
+chmod 700 ~/.ssh ~/.gnupg
+chmod 600 ~/.ssh/id_* 2>/dev/null
+
+# 13. set up timeshift (see INSTALL section). create a baseline snapshot:
+sudo pacman -S timeshift timeshift-autosnap
+sudo timeshift --create --comments "post-day-one-setup" --tags D
+
+
+PORTING YOUR FEDORA PACKAGE LIST
+--------------------------------
+
+# DO NOT pipe ~/fedora-userinstalled.txt straight into `pacman -S`. names
+# differ enough that you'll get partial failures and pull in stuff you
+# never asked for.
+
+# the disciplined approach: walk the list manually, install in groups,
+# accept that some fedora packages don't exist on arch (selinux tooling,
+# fedora-flatpaks-only apps, kernel-modules-extra bits).
+
+# the lazy approach: use `pacman -Ss` per name to check, then install
+# in batches:
+for pkg in $(cat ~/fedora-userinstalled.txt); do
+    pacman -Ss "^${pkg}$" >/dev/null 2>&1 && echo "$pkg" || echo "MISSING: $pkg"
+done > ~/port-status.txt
+grep -v MISSING ~/port-status.txt | xargs -r sudo pacman -S --needed --noconfirm
+grep MISSING ~/port-status.txt        # the manual-fix list
+
+# for the MISSING list: try the same name on AUR (`yay -Ss <name>`), or
+# look up the upstream project name and search both.
+
+
+CONFIG MERGE — .pacnew vs .rpmnew (same idea, different prefix)
+---------------------------------------------------------------
+
+# fedora's .rpmnew / .rpmsave files have direct equivalents:
+#   .pacnew  — package shipped a new version, your edited file was kept
+#   .pacsave — package was removed, your edited file was preserved
+#
+# every big -Syu drops some of these. merging them is part of the
+# maintenance loop. use pacdiff (interactive 3-way diff):
+sudo pacman -S pacman-contrib
+sudo pacdiff
+sudo find /etc -name '*.pacnew' -o -name '*.pacsave'
+
+
+THE MAINTENANCE LOOP — what changes from fedora
+-----------------------------------------------
+
+# fedora cadence:
+#   - dnf upgrade weekly-ish
+#   - dnf system-upgrade every 6 months for the release bump
+#   - that's it
+#
+# endeavour cadence:
+#   - check archlinux.org/news once a week (RSS-friendly)
+#   - sudo pacman -Syu weekly-ish
+#   - merge .pacnew files after each big update
+#   - keep an eye on /var/log/pacman.log for `[ALPM]` warnings
+#   - if you go >1 month without updating, refresh the keyring FIRST:
+sudo pacman -Sy archlinux-keyring && sudo pacman -Syu
+#   - never run partial upgrades: never `pacman -Sy <foo>` without `-u`
+
+# the news discipline matters. manual-intervention notices (e.g. "this
+# pacman upgrade requires you to remove /etc/pacman.d/mirrorlist.pacnew
+# first") live there and nowhere else. miss one and you can break boot.
+
+
+THINGS YOU'LL MISS / NEW HABITS
+-------------------------------
+
+# 1. dnf history rollback — pacman has no equivalent. timeshift is the
+#    replacement: snapshot before, roll back the WHOLE system if needed.
+#    individual package downgrade is `pacman -U /var/cache/pacman/pkg/<old>`
+#    (see [[pacman]] DOWNGRADING).
+#
+# 2. dnf modules / streams — gone. arch ships exactly one version of each
+#    package. for old-version needs: AUR `-lts` / `-legacy` variants,
+#    or a container/toolbx-equivalent.
+#
+# 3. needs-restarting — install the `needrestart` package, or just
+#    reboot after kernel / glibc / systemd / dbus updates.
+#
+# 4. SELinux — gone by default. don't try to bring it back; the
+#    package set isn't labeled. use AppArmor if you need MAC.
+#
+# 5. firewalld zones — install firewalld if you liked them; ufw is
+#    simpler (see [[ufw]]).
+#
+# 6. fedora's curated kernel — arch's linux package is vanilla-ish.
+#    if you want LTS stability, `pacman -S linux-lts` and keep both
+#    installed. zen kernel for desktop responsiveness. you can boot
+#    either from grub / systemd-boot.
+#
+# 7. dnf groups — pacman GROUPS exist but are shallower. base-devel is
+#    the main one you'll use. fedora's @workstation-product, etc., have
+#    no direct analog — endeavour's installer is where group-like
+#    decisions get made.
+#
+# 8. SECURITY UPDATES on a schedule — pacman doesn't categorize updates
+#    as security vs feature. you upgrade everything. this is the rolling-
+#    release trade: smaller deltas more often, no separate security stream.
+
+
+WHAT YOU CAN LEAVE BEHIND
+-------------------------
+
+# - dnf-specific tooling: dnf-plugins-core, dnf-automatic, etc.
+# - SELinux policy authoring tooling.
+# - firewalld unless you actively want it.
+# - rpm-build / mock / koji bits.
+# - fedora-packager, fedora-easy-karma, fedora-review.
+# - Anaconda/Kickstart files (calamares replaces this).
+
+
+ROLLBACK PLAN — if endeavour doesn't stick
+------------------------------------------
+
+# the backups you took (PRE-MIGRATION section) are also your rollback path.
+# reinstall fedora 44 from media, restore /etc, /home, /var/lib service
+# state. this is why we tar'd /etc and dumped postgres rather than relying
+# on filesystem copies.
+#
+# if you go btrfs on endeavour and keep send/receive backups (see [[btrfs]]
+# SEND / RECEIVE), the same snapshots work as a per-system backup.
+
+
+SEE ALSO
+
+# - [[arch-distros]] — why endeavour over manjaro, the family at large
+# - [[pacman]]       — package manager + AUR (the big primer)
+# - [[btrfs]]        — filesystem + timeshift + snapper
+# - [[dnf]]          — fedora's package manager (the side you're leaving)
+# - [[rpm]]          — low-level rpm queries (for the capture step)
+# - [[snap]]         — Canonical snap (not used on endeavour)
+# - [[ufw]]          — simple firewall replacement for firewalld
+# - [[grub]]         — bootloader, snapshot integration
+# - [[luks]]         — disk encryption (offered at install)
