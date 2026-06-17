@@ -3793,35 +3793,393 @@ rm .env.local                                     # delete plaintext
 GAMING
 ------
 
-# TODO STUB — the linux gaming stack on fedora. mentioned briefly in
-# WHAT FEDORA WORKSTATION SHIPS BY DEFAULT but never given a proper
-# treatment. linux gaming has matured massively since 2020 (steam deck,
-# proton GE) and this is a real daily use case.
-# expected content:
-#   - prerequisites: multilib via `dnf groupinstall`, RPM Fusion for
-#     proprietary codecs / nvidia driver, akmod-nvidia for nvidia GPUs
-#   - Steam install: dnf vs flatpak (and the trade-offs of each)
-#   - Proton + GE-Proton (community fork with extra game fixes;
-#     ProtonUp-Qt to manage versions)
-#   - Lutris — wine prefix mgmt for non-steam games (battle.net, GOG)
-#   - Heroic Games Launcher — native client for Epic, GOG, Amazon
-#   - Bottles — wine prefix manager (more flexible than Lutris for some)
-#   - gamemode — CPU governor + IO + niceness auto-tune around game launch
-#   - MangoHud — FPS/CPU/GPU overlay
-#   - vkBasalt — post-processing shaders (CAS sharpening etc.)
-#   - controllers: xbox, ps5, steam controller, 8bitdo; udev rules
-#     for non-standard pads
-#   - wayland vs xorg for gaming (both work; some titles still prefer X11)
-#   - HDR / VRR / Gsync status on wayland
-#   - nvidia gaming tuning (cross-link to NVIDIA section)
-#   - streaming: Sunshine (host) + Moonlight (client) for game streaming
-#     to other devices on your LAN
-#   - native linux games (the curated list) + emulation (RetroArch,
-#     Dolphin, RPCS3, PCSX2)
-#   - alternative: Bazzite (immutable fedora-based "gaming OS" built on
-#     Silverblue/Kinoite) for users who want a pre-configured gaming-
-#     focused fedora derivative — see [[arch-distros]] for the
-#     immutable-distro landscape context
+# linux gaming in 2026 is genuinely good. ~80% of windows games run
+# via Proton without configuration. native indie games are plentiful.
+# the Steam Deck halo effect drove Valve and game developers to take
+# linux seriously. this section is the fedora-native gaming stack.
+
+
+# PREREQUISITES
+
+# multilib (32-bit libraries — steam, proton, wine all need them):
+sudo dnf install glibc.i686
+
+# RPM Fusion enabled (covered in REPOS section). gives you ffmpeg
+# (NVENC / VAAPI for streaming), proprietary nvidia driver if needed,
+# and binary versions of common gaming-adjacent tools.
+
+# if nvidia: akmod-nvidia from RPM Fusion (covered in NVIDIA section).
+# the 545+ driver branch (current default) is fine for gaming on both
+# wayland and xorg.
+
+
+# STEAM — DNF VS FLATPAK
+
+# dnf install — native, deepest integration:
+sudo dnf install steam steam-devices
+# - steam-devices ships udev rules for controllers (xbox, steam
+#   controller, ps4/ps5). install it.
+# - native steam picks up host nvidia driver, host libraries, host
+#   audio (PipeWire) cleanly.
+# - downside: pulls a lot of 32-bit libraries into the system.
+
+# flatpak install — sandboxed, isolated:
+flatpak install flathub com.valvesoftware.Steam
+# - clean separation from host. all 32-bit libs live inside the
+#   flatpak runtime.
+# - downside: non-steam-runtime games (the "Add a Non-Steam Game"
+#   path) sometimes can't access the host filesystem cleanly. wine
+#   bottles outside steam don't see steam's environment.
+
+# RECOMMENDED PICK: native dnf for most users. flatpak if you want
+# strict separation, or you're on silverblue (where it's the natural
+# path — see SILVERBLUE).
+
+
+# PROTON — VALVE'S WINDOWS COMPATIBILITY LAYER
+
+# Proton is a downstream Wine fork that Valve maintains. it's the
+# magic that makes most windows games "just work" on linux. enabled
+# per-game via Steam → Properties → Compatibility → "Force the use
+# of a specific Steam Play compatibility tool".
+
+# GE-PROTON — community fork of Proton with extra game fixes. games
+# that "almost work" on stock Proton often work on GE-Proton.
+# manage versions with ProtonUp-Qt:
+flatpak install flathub net.davidotek.pupgui2
+# the tool installs GE-Proton into ~/.steam/root/compatibilitytools.d/
+# steam picks them up on restart. typical workflow:
+#   1. game won't launch on stock Proton
+#   2. open ProtonUp-Qt → install latest GE-Proton
+#   3. restart steam
+#   4. Steam → game → Properties → Compatibility → pick GE-Proton
+#   5. try again
+
+
+# LUTRIS — NON-STEAM WINDOWS GAMES
+
+# steam handles steam games via Proton. for everything else (battle.net,
+# GOG, custom wine prefixes, old discs), Lutris is the canonical answer.
+# manages wine prefixes per-game with community-maintained install
+# scripts.
+sudo dnf install lutris
+# or:
+flatpak install flathub net.lutris.Lutris
+
+# common use: "install battle.net via lutris" pulls the launcher,
+# creates a wine prefix, configures D9VK/DXVK, done. similar one-click
+# scripts for many older games.
+
+
+# HEROIC GAMES LAUNCHER — EPIC / GOG / AMAZON NATIVE CLIENT
+
+# the canonical native linux client for Epic Games Store, GOG, and
+# Amazon Prime Gaming libraries. plays nicer than wine'd versions of
+# the windows launchers.
+flatpak install flathub com.heroicgameslauncher.hgl
+
+# you log in with your epic / GOG credentials, download games, and
+# heroic configures Proton / Wine wrappers automatically.
+
+
+# BOTTLES — WINE PREFIX MANAGEMENT WITH MORE FLEXIBILITY
+
+# bottles is a GUI for managing wine "bottles" (isolated prefixes)
+# with curated defaults per use case (gaming, application, custom).
+# more flexible than Lutris for some workflows but smaller community
+# database.
+flatpak install flathub com.usebottles.bottles
+
+
+# GAMEMODE — CPU GOVERNOR + IO TUNING AROUND GAME LAUNCH
+
+# automatically switches to performance governor + tweaks niceness +
+# IO scheduler when a game launches. measurable FPS gains on
+# laptops. preinstalled on workstation; verify:
+rpm -q gamemode
+# if missing:
+sudo dnf install gamemode
+
+# steam: add `gamemoderun %command%` to launch options. for non-steam:
+gamemoderun ./mygame
+
+# verify it's working:
+gamemoded -s                                  # status (should be active)
+
+
+# MANGOHUD — FPS / CPU / GPU OVERLAY
+
+sudo dnf install mangohud
+# 32-bit version for 32-bit steam games:
+sudo dnf install mangohud.i686
+
+# enable per-game in steam launch options:
+#   mangohud %command%
+# or globally:
+echo 'MANGOHUD=1' >> ~/.profile
+
+# config: ~/.config/MangoHud/MangoHud.conf
+mkdir -p ~/.config/MangoHud
+cat > ~/.config/MangoHud/MangoHud.conf <<'EOF'
+gpu_stats
+cpu_stats
+fps
+frame_timing
+ram
+vram
+gpu_temp
+cpu_temp
+position=top-left
+font_size=20
+toggle_hud=F12
+EOF
+
+
+# VKBASALT — POST-PROCESSING SHADERS
+
+# vulkan layer for FXAA, CAS (AMD's contrast-adaptive sharpening),
+# DLS, and other post-effects. nice for games with weak built-in AA.
+sudo dnf install vkBasalt vkBasalt.i686
+# enable per-game in steam launch options:
+#   ENABLE_VKBASALT=1 %command%
+
+
+# CONTROLLERS
+
+# steam-devices (above) ships the udev rules for most major controllers.
+# what works:
+#
+#   - XBOX 360 / ONE / SERIES wired      — kernel driver, plug & play
+#   - XBOX wireless via xbox dongle      — kernel xpad driver
+#   - XBOX bluetooth                     — bluetoothctl pair, works
+#                                          (some need `xpadneo` for
+#                                          proper rumble: dnf install
+#                                          akmod-xpadneo from RPM Fusion)
+#   - PS4 / PS5 wired or bluetooth        — kernel hid-playstation driver,
+#                                          plug & play
+#   - STEAM CONTROLLER (original / Deck)  — built-in steam input
+#   - 8BITDO PRO 2 / SN30                — usually plug & play; configure
+#                                          mode switch on the back
+#   - NINTENDO PRO CONTROLLER             — bluetooth pair, then steam
+#                                          input handles mapping
+#
+# verify a controller is detected:
+ls /dev/input/by-id/ | grep -i controller
+# test it:
+sudo dnf install evtest
+sudo evtest                                   # pick the device, watch events
+# or jstest-gtk for a GUI:
+sudo dnf install jstest-gtk
+jstest-gtk
+
+
+# WAYLAND VS XORG FOR GAMING
+
+# both work. specifics:
+#
+#   WAYLAND        — better fractional scaling, better HiDPI, better
+#                    multi-monitor mixed refresh rates. some games
+#                    still launch under XWayland (which is fine — only
+#                    matters if the title specifically misbehaves).
+#   XORG           — slightly broader compatibility for very old
+#                    games. force-composition pipeline for screen
+#                    tearing fix on nvidia. fall back here if a
+#                    specific game refuses wayland.
+
+# verify which session you're in:
+echo $XDG_SESSION_TYPE
+
+# verify a specific game's actual rendering mode (XWayland vs native):
+xprop -id $(xdotool getactivewindow) | grep WM_NAME   # if XWayland
+# or check the game's window properties in a wayland tool.
+
+
+# HDR / VRR / G-SYNC — CURRENT STATUS (mid-2026)
+
+#   HDR        — landing across the stack. KDE Plasma 6 has the best
+#                support; GNOME 49+ added HDR for compatible displays.
+#                game HDR requires gamescope wrapper or direct support.
+#   VRR (FreeSync / G-Sync compatible) — works on KDE Plasma 6 wayland
+#                out of the box. GNOME wayland VRR added in 48+.
+#                AMD GPUs are smoothest; nvidia driver 545+ supports it.
+#   G-SYNC (proprietary nvidia)       — works under X11; wayland support
+#                rolling in via nvidia drivers.
+
+# enable on KDE:
+#   Settings → Display Configuration → toggle "Adaptive sync" per monitor
+
+# enable on GNOME (if your display supports it):
+gsettings set org.gnome.mutter experimental-features \
+    "['variable-refresh-rate']"
+
+
+# NVIDIA GAMING SPECIFICS
+
+# covered in NVIDIA section. quick gaming-relevant points:
+#   - akmod-nvidia 545+ is fine for both wayland and xorg gaming
+#   - install xorg-x11-drv-nvidia-libs.i686 for 32-bit steam:
+sudo dnf install xorg-x11-drv-nvidia-libs.i686
+#   - DLSS works in games that support it (via proton's vulkan layer)
+#   - force-composition pipeline (xorg only) for screen tearing:
+#     nvidia-settings → X Server Display Configuration →
+#     "Force Composition Pipeline"
+
+
+# STREAMING — SUNSHINE + MOONLIGHT
+
+# stream from this fedora box to other devices on your LAN (phones,
+# tablets, weak laptops, even another fedora machine). Sunshine
+# replaces nvidia GameStream which valve discontinued; works with
+# AMD and nvidia.
+
+# HOST side (this machine running the game):
+sudo dnf copr enable lizardbyte/sunshine
+sudo dnf install sunshine
+sunshine                                      # first-time setup
+# open https://localhost:47990/ to configure PIN pairing
+
+# CLIENT side (the device receiving the stream):
+#   - moonlight-qt on linux/windows/mac
+#   - moonlight on android / iOS / steam deck
+sudo dnf install moonlight-qt
+
+
+# NATIVE LINUX GAMES + EMULATION
+
+# native linux games on steam: filter store by "SteamOS + Linux".
+# growing list — most major indie games, many AAA from valve,
+# crusader kings, factorio, civilization, baldur's gate 3, etc.
+
+# EMULATION — fedora has packaging for most major emulators:
+sudo dnf install retroarch                    # front-end for many cores
+sudo dnf install dolphin-emu                  # GameCube / Wii
+sudo dnf install pcsx2                        # PS2
+sudo dnf install duckstation                  # PS1
+sudo dnf install ppsspp                       # PSP
+# PS3:
+flatpak install flathub net.rpcs3.RPCS3
+# Switch / WiiU: legally fraught after 2024 takedowns; use flathub
+# alternatives if available.
+
+
+# ANTI-CHEAT — WHAT WORKS AND WHAT DOESN'T
+
+# EAC (Easy Anti-Cheat) and BattlEye — both have native linux/proton
+# support since 2021. game developers OPT IN per-title. so "EAC is
+# linux-compatible" doesn't mean every EAC game works on linux —
+# only the ones whose developer enabled the linux build.
+#
+# WHAT WORKS:
+#   - Apex Legends (until 2024; reverted, then back; check current)
+#   - Apex spinoffs, Hunt: Showdown, Dead by Daylight, Elden Ring
+#     (under proton), Squad, Dying Light 2, many others
+#
+# WHAT DOESN'T WORK:
+#   - Riot's Vanguard (kernel-mode, Windows-only) — Valorant blocked
+#   - PUBG (anti-cheat developer hasn't enabled linux)
+#   - Call of Duty Warzone (similar)
+#   - Fortnite (Epic refuses to enable linux support)
+#   - Destiny 2 (Bungie blocked it)
+#   - Genshin Impact (anti-cheat blocks linux)
+#
+# the canonical lookup is PROTONDB.COM. paste a game name, see
+# community reports + medal rating + workarounds.
+
+
+# PROTONDB — THE COMMUNITY DATABASE
+
+# before assuming a game works (or doesn't), check protondb.com.
+# every popular game has community reports:
+#
+#   Platinum — works perfectly, no tweaks
+#   Gold     — works perfectly after minor tweaks
+#   Silver   — works with minor issues
+#   Bronze   — runs but with significant issues
+#   Borked   — does not run / unplayable
+#
+# the reports often include exact Proton version + launch options that
+# work. read 2-3 recent reports for any game you're unsure about.
+
+
+# BAZZITE — FEDORA-BASED IMMUTABLE GAMING OS
+
+# bazzite is uBlue's gaming-focused atomic fedora derivative (built
+# on silverblue/kinoite). preconfigured with:
+#   - steam + proton + gamescope + mangohud + lutris + heroic
+#   - nvidia or AMD drivers prebaked
+#   - controllers configured
+#   - HDR + VRR support out of the box
+#   - sunshine for streaming
+#   - desktop or "couch mode" (gamescope session, like steam deck)
+#
+# install via rebase from silverblue or fresh install. covered in
+# SILVERBLUE section.
+#
+# when to pick bazzite:
+#   - you want a steamOS-style experience on your hardware
+#   - you don't want to configure the gaming stack manually
+#   - you accept the immutable model (most casual gaming workflows fit)
+#
+# when to stay on workstation:
+#   - you want full mutable system control
+#   - you do non-gaming work that doesn't fit the atomic model
+#   - you're integrating with existing development workflows
+
+
+# COMMON GOTCHAS
+
+# 1. GAME CRASHES ON LAUNCH. order of operations:
+#    a. update Proton (Steam restart, settings → in-game)
+#    b. try GE-Proton (via ProtonUp-Qt)
+#    c. check protondb.com for known workaround
+#    d. delete shader cache: ~/.steam/steam/steamapps/shadercache/
+#
+# 2. STEAM STORE NOT LOADING / WEBVIEW BROKEN. delete the cache:
+rm -rf ~/.steam/steam/appcache ~/.steam/steam/htmlcache
+#
+# 3. CONTROLLER NOT DETECTED. check steam-devices is installed and
+#    udev rules loaded:
+sudo udevadm control --reload-rules && sudo udevadm trigger
+#    log out + back in if you just installed steam-devices.
+#
+# 4. FSR / DLSS NOT AVAILABLE. game-specific. FSR 2.x and FSR 3 work
+#    on most cards. DLSS requires nvidia + proton's vulkan layer for
+#    the game.
+#
+# 5. SAVE GAME CLOUD SYNC NOT WORKING. usually a permissions issue
+#    in the Proton prefix. delete ~/.steam/steam/userdata/<id>/
+#    cloud and let Steam re-sync.
+#
+# 6. ANTI-CHEAT BLOCKS GAME EVEN THOUGH PROTONDB SAYS WORKS. the
+#    game may need EAC's runtime files explicitly enabled — Steam →
+#    game → Properties → Compatibility → toggle. or the game's
+#    anti-cheat backend may have changed since the protondb report.
+#
+# 7. GAME RUNNING ON THE WRONG GPU (hybrid laptop). force
+#    nvidia render-offload (see NVIDIA section):
+#    Steam launch options:
+#        DRI_PRIME=1 %command%       # AMD/intel discrete
+#        __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia %command%
+#
+# 8. AUDIO CRACKLE / STUTTER. PipeWire quantum may be too tight.
+#    raise to 1024 in steam launch options:
+#        PIPEWIRE_QUANTUM=1024/48000 %command%
+#    or persistent (see AUDIO section).
+
+
+# DECISION MATRIX
+
+#   "I want to play steam games"               → steam + proton (default)
+#   "this game has minor proton issues"        → GE-Proton via ProtonUp-Qt
+#   "non-steam: epic / GOG / amazon"           → Heroic
+#   "non-steam: battle.net / old wine games"   → Lutris
+#   "isolate wine prefixes per game"           → Bottles
+#   "want FPS overlay"                         → MangoHud
+#   "auto-tune system on game launch"          → gamemode + gamemoderun
+#   "post-process shaders / sharpening"        → vkBasalt
+#   "stream to phone or other device"          → Sunshine + Moonlight
+#   "steamOS-style preconfigured experience"   → Bazzite (rebase)
+#   "does this game work on linux?"            → protondb.com
 
 
 WHAT FEDORA WORKSTATION SHIPS BY DEFAULT
