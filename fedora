@@ -3973,15 +3973,261 @@ journalctl --user -u 'xdg-desktop-portal*' -b  # portal logs
 LOCALE / FONTS / INPUT METHODS
 ------------------------------
 
-# TODO STUB — international users + font config.
-# expected content:
-#   - locale / timezone: localectl set-locale, timedatectl set-timezone
-#   - input methods: fcitx5 vs ibus; when to pick each
-#   - CJK input setup (mozc, sunpinyin, hangul)
-#   - emoji input (gnome's Ctrl+. picker, ibus-typing-booster)
-#   - fontconfig: ~/.config/fontconfig/, fc-list, font preference
-#     ordering for CJK fallback
-#   - hinting and antialiasing tweaks
+# fedora ships sensible defaults for english-speaking western locales.
+# for everyone else — CJK input, RTL languages, non-latin glyphs in
+# the terminal, mixed-script document editing — there's a small set
+# of tools that bring the experience up to parity.
+
+
+# LOCALE + TIMEZONE
+
+# locale = language + region + encoding. set system-wide:
+localectl                                      # current state
+localectl list-locales | grep ja               # available japanese
+sudo localectl set-locale LANG=ja_JP.UTF-8
+sudo localectl set-locale LC_TIME=en_US.UTF-8  # split: japanese
+                                                # interface but
+                                                # english dates
+
+# per-user (overrides system):
+echo 'LANG=ja_JP.UTF-8' > ~/.config/locale.conf
+echo 'LC_ALL=ja_JP.UTF-8' >> ~/.config/locale.conf
+
+# keyboard layout:
+localectl list-keymaps | grep us
+sudo localectl set-keymap us
+
+# X11 / wayland keyboard layout (separate from console):
+localectl set-x11-keymap us pc105 altgr-intl
+# or via GNOME: Settings → Keyboard → Input Sources
+
+# timezone (covered in TIME / NTP, repeated for completeness):
+timedatectl list-timezones | grep Tokyo
+sudo timedatectl set-timezone Asia/Tokyo
+
+
+# INPUT METHODS — FCITX5 vs IBUS
+
+# fedora ships IBUS as the default input-method framework. it covers
+# CJK, indic scripts, and emoji adequately for most users.
+#
+# FCITX5 is the modern community-preferred alternative — better
+# performance, more flexible configuration, smoother experience for
+# heavy CJK typists.
+
+# IBUS (default; no install needed):
+ibus-setup                                     # GUI to add input methods
+# add input methods via GNOME: Settings → Keyboard → Input Sources →
+# Add an Input Source → pick from "Japanese (Mozc)" / "Chinese
+# (Pinyin)" / "Korean (Hangul)" / etc.
+# switch with Super+Space.
+
+# FCITX5 (install + switch):
+sudo dnf install fcitx5 fcitx5-configtool \
+    fcitx5-autostart fcitx5-mozc fcitx5-chinese-addons \
+    fcitx5-hangul fcitx5-anthy
+
+# set fcitx5 as the system default input method:
+imsettings-switch fcitx5
+# OR set environment variables in ~/.config/environment.d/im.conf:
+cat > ~/.config/environment.d/im.conf <<'EOF'
+GTK_IM_MODULE=fcitx
+QT_IM_MODULE=fcitx
+XMODIFIERS=@im=fcitx
+SDL_IM_MODULE=fcitx
+EOF
+# log out + back in.
+
+# configure fcitx5 (add input methods, set switch keys):
+fcitx5-configtool
+
+
+# CJK INPUT — THE THREE MAJOR ENGINES
+
+# JAPANESE:
+sudo dnf install mozc                          # ibus-mozc (default)
+sudo dnf install fcitx5-mozc                   # for fcitx5 users
+# mozc is google's open-source japanese IME (anthy is the older
+# alternative).
+
+# CHINESE:
+sudo dnf install ibus-libpinyin                # pinyin (mainland)
+sudo dnf install ibus-rime                     # rime engine
+                                                # (cantonese, etc.)
+# pinyin is the most common; rime is for power users wanting
+# specific input schemes (zhuyin, cangjie, jyutping).
+
+# KOREAN:
+sudo dnf install ibus-hangul
+sudo dnf install fcitx5-hangul
+
+
+# EMOJI INPUT
+
+# GNOME has a built-in emoji picker — Ctrl+. or Ctrl+; in any text
+# field. works system-wide on wayland. no install needed.
+
+# more sophisticated typing assistance:
+sudo dnf install ibus-typing-booster
+# typing booster adds emoji prediction by partial-name typing, multi-
+# lingual prediction, and dictionary support. useful if you type
+# emoji often.
+
+
+# FONTCONFIG — THE FONT MATCHING SYSTEM
+
+# fontconfig decides which font renders each character. when an app
+# says "render this in DejaVu Sans" but the character isn't in
+# DejaVu, fontconfig picks a fallback. this matters most for CJK
+# users: without correct fallback ordering, characters render as the
+# dreaded box.
+
+# what fonts are installed:
+fc-list                                        # everything
+fc-list :lang=ja                               # japanese-capable
+fc-list :lang=zh-cn                            # simplified chinese
+fc-list :lang=zh-tw                            # traditional chinese
+fc-list :lang=ko                               # korean
+
+# which font would render specific characters:
+fc-match 'sans-serif'                          # default sans
+fc-match 'sans-serif:lang=ja'                  # japanese sans
+fc-match -s 'sans-serif:lang=ja'               # ordered list of
+                                                # fallbacks
+
+# install the noto family (covers nearly every script):
+sudo dnf install google-noto-fonts-common \
+    google-noto-sans-cjk-fonts \
+    google-noto-serif-cjk-fonts \
+    google-noto-emoji-fonts \
+    google-noto-color-emoji-fonts
+
+# per-user font preference ordering — controls which CJK font wins
+# when the system font isn't enough:
+mkdir -p ~/.config/fontconfig
+cat > ~/.config/fontconfig/fonts.conf <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <!-- prefer japanese over chinese when language is ja -->
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>ja</string></test>
+    <edit name="family" mode="prepend">
+      <string>Noto Sans CJK JP</string>
+    </edit>
+  </match>
+  <!-- prefer simplified chinese -->
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>zh-cn</string></test>
+    <edit name="family" mode="prepend">
+      <string>Noto Sans CJK SC</string>
+    </edit>
+  </match>
+</fontconfig>
+EOF
+fc-cache -fv                                   # rebuild font cache
+
+
+# THE "WRONG CJK FONT" PROBLEM
+
+# the famous one: a japanese website renders in a chinese font,
+# making characters look subtly wrong (kanji vs hanzi have different
+# stroke conventions). this happens when fontconfig picks Noto Sans
+# CJK SC (simplified chinese) for a page whose language tag is "ja"
+# (japanese). the fix above makes the language tag actually drive
+# the font choice.
+
+# verify:
+fc-match 'sans-serif:lang=ja'                  # should now say JP
+fc-match 'sans-serif:lang=zh-cn'               # should say SC
+
+
+# DEVELOPER FONTS
+
+# good monospace fonts make a big difference. modern picks:
+sudo dnf install \
+    jetbrains-mono-fonts \
+    cascadia-code-fonts \
+    cascadia-mono-fonts \
+    fira-code-fonts \
+    google-noto-sans-mono-fonts \
+    google-noto-sans-mono-cjk-fonts        # CJK-capable monospace
+
+# enable ligatures (fira code / jetbrains mono / cascadia code):
+# in ghostty, ptyxis, vscode, jetbrains — usually a font-feature
+# setting in the app's preferences. for terminals on GNOME, ligatures
+# work transparently in most modern terminal emulators.
+
+
+# HINTING + ANTIALIASING
+
+# the defaults are good on modern displays. when they're not:
+#
+#   - HINTING: "slight" is the modern recommended default.
+#     "full" was useful on low-res displays; on hidpi, set "slight"
+#     or "none" for cleaner glyph shapes.
+#   - ANTIALIASING: rgba for sub-pixel rendering on LCDs; greyscale
+#     for hidpi (sub-pixel breaks down past ~150 dpi).
+#
+# GNOME tweaks: Tweaks → Fonts → "Hinting" and "Antialiasing" sliders.
+# system-wide config (rarely needed):
+mkdir -p ~/.config/fontconfig
+cat > ~/.config/fontconfig/conf.d/10-hinting.conf <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <match target="font">
+    <edit name="hinting" mode="assign"><bool>true</bool></edit>
+    <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+    <edit name="rgba" mode="assign"><const>rgb</const></edit>
+  </match>
+</fontconfig>
+EOF
+fc-cache -fv
+
+
+# COMMON GOTCHAS
+
+# 1. "JAPANESE CHARACTERS LOOK SLIGHTLY OFF." you're rendering them
+#    in the chinese font. fix the fontconfig preference (above).
+#
+# 2. INPUT METHOD WORKS IN GNOME APPS BUT NOT IN VSCODE / ELECTRON.
+#    electron apps need the environment variables set (the
+#    environment.d/im.conf recipe above) AND they need to be relaunched
+#    after the change. some need additional flags
+#    (--enable-features=UseOzonePlatform for native wayland +
+#    fcitx5).
+#
+# 3. EMOJI RENDER AS MONOCHROME / WRONG. you have a monochrome emoji
+#    font higher in the cascade than color emoji. install
+#    `google-noto-color-emoji-fonts` and make sure it's preferred for
+#    emoji glyphs.
+#
+# 4. CONSOLE / TTY DOESN'T SHOW CJK. the linux console only renders
+#    glyphs from a small bitmap font. CJK in the TTY is essentially
+#    not supported. use a terminal emulator instead.
+#
+# 5. RTL LANGUAGES (arabic, hebrew). most apps render correctly. CLI
+#    apps in terminals depend on the terminal — recent ghostty,
+#    ptyxis, alacritty handle bidi reasonably. older terminals
+#    (gnome-terminal pre-VTE-bidi-merge) don't.
+#
+# 6. KEYBOARD INDICATOR DOESN'T SHOW IN GNOME TOPBAR. add input
+#    source via Settings → Keyboard → Input Sources. the indicator
+#    appears in the panel once 2+ sources are configured.
+
+
+# QUICK REFERENCE
+
+#   "set system locale"                  → sudo localectl set-locale
+#   "set user-only locale"               → ~/.config/locale.conf
+#   "switch to fcitx5"                   → ~/.config/environment.d/im.conf
+#   "add CJK input"                      → ibus / fcitx5 + mozc/pinyin/hangul
+#   "emoji picker"                       → Ctrl+. (GNOME builtin)
+#   "what font renders this language"    → fc-match :lang=<code>
+#   "fix wrong CJK font"                 → fontconfig prefer rule
+#   "rebuild font cache"                 → fc-cache -fv
 
 
 CLAUDE CODE — INSTALL ON FEDORA
