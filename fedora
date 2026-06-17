@@ -6024,26 +6024,278 @@ ls ~/rpmbuild/SOURCES/ ~/rpmbuild/SPECS/
 CONTRIBUTOR PIPELINE (MOCK / FEDPKG / KOJI / COPR)
 --------------------------------------------------
 
-# TODO STUB — getting your RPM (covered in RPM PACKAGING above) into
-# fedora itself, or into a personal COPR. the official packaging
-# workflow.
-# expected content:
-#   - MOCK: chroot-based builds against any fedora / RHEL / EPEL
-#     release. install + base config + targets. how you verify a
-#     package builds cleanly on F44 / F45 / EPEL 9 from one machine.
-#   - PERSONAL COPR: copr-cli + a fedora account; upload your SRPM,
-#     get a public dnf-installable repo. the gentlest "share my RPMs"
-#     path.
-#   - FEDPKG: the official maintainer CLI for the dist-git workflow.
-#     clone / commit / build / co-maintain official fedora packages.
-#   - KOJI: the build system. official builds run there; you can
-#     watch jobs at koji.fedoraproject.org.
-#   - BODHI: the updates system. submit builds for updates-testing,
-#     karma, stable.
-#   - THE PATH from "I packaged this" to "I'm a co-maintainer":
-#     creating a package review bugzilla, sponsors, FAS account,
-#     pkgdb / dist-git setup.
-#   - cross-link to RPM PACKAGING.
+# the RPM PACKAGING section covered building a working RPM on your
+# machine. this section covers what comes after — sharing it (COPR),
+# verifying it builds cleanly elsewhere (mock), and getting it INTO
+# fedora as an official package (fedpkg → koji → bodhi).
+
+
+# THE PIPELINE — FROM LOCAL SPEC TO OFFICIAL FEDORA
+
+#   rpmbuild  →  mock  →  COPR        →  fedpkg / dist-git  →  koji  →  bodhi
+#   (covered) (chroot) (personal repo)  (maintainer workflow)  (build)  (updates)
+#
+# you don't have to go through all of these. typical exits:
+#   - "i just want clean builds locally"           → mock + done
+#   - "i want others to dnf install this"          → COPR + done
+#   - "i want this to become an official fedora    → full pipeline,
+#      package i co-maintain"                       this section
+
+
+# MOCK — CLEAN-CHROOT BUILDS
+
+# rpmbuild builds in YOUR environment. mock builds in a clean chroot
+# matching a specific fedora / RHEL / EPEL target. it catches:
+#   - missing BuildRequires (you had a dep installed; the chroot
+#     doesn't)
+#   - "works on F44, breaks on F45" issues
+#   - file ownership / permissions surprises
+# you should always mock-build before submitting an RPM anywhere.
+
+sudo dnf install mock
+sudo usermod -aG mock "$USER"                     # log out + back in
+
+# list available targets:
+ls /etc/mock/*.cfg | head -20                     # fedora-44-x86_64,
+                                                  # rhel+epel-9-x86_64, etc.
+
+# build from a SRPM (most common):
+mock -r fedora-44-x86_64 --rebuild ~/rpmbuild/SRPMS/hello-2.12.1-1.fc44.src.rpm
+
+# build from a spec directly:
+mock -r fedora-44-x86_64 --buildsrpm \
+    --spec=~/rpmbuild/SPECS/hello.spec \
+    --sources=~/rpmbuild/SOURCES/
+
+# output lands in:
+#   /var/lib/mock/<target>/result/<package>-...rpm
+
+# common mock commands:
+mock -r fedora-44-x86_64 --shell                  # interactive chroot
+mock -r fedora-44-x86_64 --clean                  # reset the chroot
+mock -r fedora-44-x86_64 --scrub=all              # nuclear: wipe target
+
+# build against MULTIPLE targets in one go:
+for t in fedora-44-x86_64 fedora-45-x86_64 rhel+epel-9-x86_64; do
+    mock -r "$t" --rebuild foo.src.rpm
+done
+
+
+# PERSONAL COPR — SHARE WITHOUT BECOMING A MAINTAINER
+
+# COPR (Cool Other Package Repos — yes, really) is fedora's
+# user-controlled build service. you upload SRPMs, COPR builds them
+# for the targets you select, gives you a dnf-installable repo URL.
+# zero gatekeeping; no review.
+#
+# good for:
+#   - your own tools you want on multiple machines
+#   - betas of upstream projects that aren't in fedora yet
+#   - hosting a customized build of an existing fedora package
+#   - prototyping before going through formal review
+
+sudo dnf install copr-cli
+
+# auth — go to copr.fedoraproject.org, log in with FAS account, copy
+# the API token from "API" tab into ~/.config/copr.
+
+# create a project:
+copr-cli create my-tools \
+    --chroot fedora-44-x86_64 \
+    --chroot fedora-45-x86_64 \
+    --description "My personal tools" \
+    --instructions "dnf copr enable user/my-tools && dnf install hello"
+
+# build a SRPM:
+copr-cli build my-tools ~/rpmbuild/SRPMS/hello-2.12.1-1.fc44.src.rpm
+
+# watch the build:
+copr-cli watch-build <build-id>
+
+# users install with:
+#   sudo dnf copr enable youruser/my-tools
+#   sudo dnf install hello
+
+
+# FEDORA ACCOUNT SYSTEM (FAS) — THE PREREQUISITE
+
+# before fedpkg / official packaging you need a FAS account:
+#   https://accounts.fedoraproject.org/
+# - register, agree to the CLA / FPCA license
+# - sign up for the @packager group (gated by sponsor)
+# - generate an SSH key and add it to your account
+# - configure krb5 for authenticated requests (kinit your-fas@FEDORAPROJECT.ORG)
+
+
+# FEDPKG — THE MAINTAINER CLI
+
+sudo dnf install fedpkg
+
+# clone an existing package (the dist-git URL pattern):
+fedpkg clone hello                              # anonymous (read-only)
+fedpkg clone --anonymous hello                  # explicit anonymous
+# OR (maintainer, needs FAS access):
+fedpkg clone -B hello                           # all branches
+
+cd hello/
+
+# dist-git layout:
+#   hello.spec                          (the spec file)
+#   sources                             (sha512sums of source tarballs)
+#   .gitignore                          (excludes the actual tarballs)
+#
+# fedpkg uses LOOKASIDE CACHE for source tarballs — actual sources live
+# in a separate object store, not in git. git holds the spec + patches.
+
+# common workflow:
+fedpkg sources                                  # download tarballs
+                                                # from the lookaside
+fedpkg new-sources foo-1.2.tar.gz               # upload new tarball
+fedpkg srpm                                     # build a SRPM locally
+fedpkg local                                    # build binary RPM locally
+fedpkg mockbuild                                # mock-build for the
+                                                # current branch's target
+fedpkg push                                     # push spec changes
+fedpkg build                                    # submit a koji build
+fedpkg update                                   # submit to bodhi
+
+# switching branches (per fedora release):
+fedpkg switch-branch f44                        # spec for fedora 44
+fedpkg switch-branch f45                        # spec for fedora 45
+fedpkg switch-branch rawhide                    # rolling development
+
+
+# KOJI — THE OFFICIAL BUILD SYSTEM
+
+# koji is fedora's build farm. fedpkg build submits a job there;
+# koji rebuilds your spec in a sealed chroot, signs the result, and
+# stores it in the fedora repos.
+
+# watch a build:
+koji watch-task <task-id>
+koji buildinfo <NVR>                            # done build info
+
+# scratch builds (test, don't publish):
+koji build --scratch f44-candidate \
+    ~/rpmbuild/SRPMS/hello-2.12.1-1.fc44.src.rpm
+
+# browse builds:
+#   https://koji.fedoraproject.org/koji/
+
+
+# BODHI — THE UPDATES SYSTEM
+
+# a successful koji build doesn't immediately reach users. you
+# submit it through bodhi, which:
+#   - moves it to updates-testing
+#   - collects karma (+/- feedback) from testers
+#   - promotes to updates-stable after 7 days OR 3 positive karma
+#   - posts security / bug fix / enhancement classification
+
+sudo dnf install bodhi-client
+
+# submit a build (after fedpkg build succeeded):
+bodhi updates new \
+    --type bugfix \
+    --notes "Fix segfault in --version" \
+    --bugs 12345 \
+    hello-2.12.1-1.fc44
+
+# users can opt into updates-testing:
+sudo dnf update --enablerepo=updates-testing <pkg>
+
+# leave karma:
+bodhi updates request <update-id> testing       # request testing
+bodhi updates comment "Works for me, +1" --karma 1 <update-id>
+
+
+# THE NEW-PACKAGE REVIEW PROCESS
+
+# when you've packaged something that isn't yet IN fedora, you go
+# through the package review process:
+#
+# 1. file a Package Review bug at bugzilla.redhat.com:
+#       component: Package Review
+#       title: "Review Request: hello — GNU Hello"
+#       attach the SRPM URL (typically from COPR) and the spec URL
+# 2. find a REVIEWER (community member; volunteer)
+# 3. iterate based on review feedback (typically several rounds)
+# 4. once approved, get a SPONSOR (existing packager) if you're a new
+#    packager — sponsorship is the trust-establishment step
+# 5. once sponsored: request the dist-git repo creation
+# 6. fedpkg clone + push your reviewed spec
+# 7. fedpkg build → bodhi update → done
+
+
+# THE MAINTAINER LADDER
+
+# - PROSPECTIVE PACKAGER: anyone with a FAS account
+# - PACKAGER: completed a package review, has a sponsor, can maintain
+#   packages they've created and any they've been added to
+# - PROVENPACKAGER: longstanding packager with broad commit rights
+#   (across many packages, used for emergency fixes)
+# - SPONSOR: can vouch for and bring in new packagers; has reviewed
+#   ~5+ packages
+# - PACKAGING COMMITTEE (FPC): governance body for packaging policy
+
+
+# EPEL — EXTRA PACKAGES FOR ENTERPRISE LINUX
+
+# EPEL is the community repository of fedora packages BUILT for RHEL
+# and rebuilds (Rocky, Alma, etc.). many fedora packages have a
+# matching EPEL branch:
+#
+#   fedpkg switch-branch epel9       # the EPEL 9 spec for your package
+#
+# the build pipeline is the same (koji → bodhi); the target is RHEL/EPEL.
+# significant volunteer effort goes into keeping EPEL fresh; it's a
+# good entry point for new packagers (lots of small useful packages
+# need maintainers).
+
+
+# HONEST TRADEOFFS
+
+# 1. OFFICIAL PACKAGING IS AN ONGOING COMMITMENT. you have to
+#    respond to FTBFS bugs (Failed To Build From Source), security
+#    notifications, and version bumps. not a one-shot.
+#
+# 2. THE REVIEW PROCESS IS SLOW. expect weeks for a new package
+#    review. reviewers are volunteers. don't take iteration personally.
+#
+# 3. COPR FOR PERSONAL USE; FEDORA FOR THE COMMONS. if your package
+#    is only useful to you, COPR is the right answer. push to fedora
+#    proper only when there's broader demand and you'll maintain it.
+#
+# 4. ABANDONED PACKAGES ARE A REAL PROBLEM. if you stop maintaining,
+#    your package eventually gets orphaned. think hard before
+#    committing.
+#
+# 5. EPEL IS WHERE THE LEVERAGE IS. fedora has many packagers; EPEL
+#    is chronically short-handed. picking up an EPEL package nobody
+#    is maintaining helps both the RHEL and the fedora ecosystem.
+
+
+# DECISION MATRIX
+
+#   "test that my RPM builds clean"             → mock
+#   "share my RPM with friends or coworkers"    → personal COPR
+#   "ship a fedora package i'll co-maintain"    → review → fedpkg
+#                                                  → koji → bodhi
+#   "build for RHEL 9 / 10 too"                 → EPEL branch
+#   "scratch-build to test before publishing"   → koji --scratch
+#   "make a build live for users"               → bodhi updates new
+#   "i want to learn packaging, low stakes"     → EPEL adoption +
+#                                                  COPR experimentation
+
+
+# WHERE TO GET HELP
+
+# - discussion.fedoraproject.org → category "Project Discussion"
+#   → tag "packaging"
+# - #fedora-devel on matrix / IRC
+# - the fedora-devel mailing list
+# - the FPC (Fedora Packaging Committee) for policy questions
+# - cross-link to WHERE TO GO WHEN STUCK section
 
 
 WHAT FEDORA WORKSTATION SHIPS BY DEFAULT
