@@ -546,6 +546,204 @@ fwupdmgr get-updates                                # what's available
 sudo fwupdmgr update                                # apply (reboots into UEFI for some)
 
 
+GNOME TIPS (Workstation default)
+--------------------------------
+
+# fedora ships GNOME on Wayland by default. xorg session is removable
+# but still available — install gnome-session-xsession to add it back
+# to gdm's session picker. KDE Plasma is its own Edition (and Spin);
+# this section is GNOME-specific.
+
+
+# MIDDLE-CLICK PASTE — the X11 PRIMARY workflow on GNOME
+
+# how it works (built into GTK, no install / toggle needed):
+#   - SELECTING text auto-copies to the PRIMARY selection. instant. no
+#     Ctrl+C.
+#   - MIDDLE-CLICK pastes from PRIMARY.
+#   - Ctrl+C / Ctrl+V use a SEPARATE buffer (CLIPBOARD). the two
+#     buffers don't overlap — selecting doesn't stomp your Ctrl+C
+#     contents.
+# this works on both Wayland and X11 in GNOME for native GTK apps.
+
+# touchpad users — no physical middle button. two-finger tap maps to
+# middle click via:
+gsettings set org.gnome.desktop.peripherals.touchpad middle-click-emulation true
+
+# firefox: check `about:config` → `middlemouse.paste` is true. it is
+# by default on Linux builds; only a problem if you've imported a
+# Windows profile.
+
+# wayland-native apps that don't participate: a few Electron apps
+# still miss primary-selection support. GTK / Qt / chromium all
+# work. if a specific app misbehaves, that's a per-app bug, not a
+# GNOME setting.
+
+# vs code: enable selection-clipboard paste explicitly (it's on by
+# default on Linux, but worth knowing):
+#   "editor.selectionClipboard": true
+
+
+# THE TWEAK STACK — what to install on day one
+
+sudo dnf install gnome-tweaks gnome-extensions-app dconf-editor
+
+# - gnome-tweaks         — top-level toggles GNOME upstream removed from
+#                          Settings (fonts, window controls, startup apps,
+#                          legacy extensions list, mouse acceleration).
+# - gnome-extensions-app — manage installed extensions (enable/disable,
+#                          configure, remove). counterpart to the
+#                          extensions.gnome.org browser flow.
+# - dconf-editor         — the regedit-equivalent for GNOME's settings DB.
+#                          last resort when neither Settings nor Tweaks
+#                          exposes the knob you need.
+
+# fedora removes a few GNOME defaults you might want back:
+sudo dnf install gnome-shell-extension-appindicator           # system tray icons
+sudo dnf install gnome-shell-extension-caffeine              # inhibit suspend
+sudo dnf install gnome-shell-extension-pop-shell             # tiling WM mode
+sudo dnf install gnome-shell-extension-dash-to-dock          # macos-style dock
+sudo dnf install gnome-shell-extension-just-perfection       # granular UI tuning
+
+
+# EXTENSIONS — browser install vs dnf install
+
+# two paths to install GNOME extensions:
+#   1. dnf — packaged extensions, survive GNOME version bumps better,
+#            update with the rest of the system. preferred where available.
+#   2. extensions.gnome.org — browser-driven install. needs the
+#            "GNOME Shell integration" browser extension AND the
+#            gnome-browser-connector host (`sudo dnf install
+#            gnome-browser-connector`). easier for things not in the
+#            fedora repos.
+
+# critical default-extensions-on-fedora to know about:
+#   - background-logo-extension  — adds the fedora "f" watermark to the
+#                                  desktop wallpaper. cosmetic. disable
+#                                  via gnome-extensions-app if it bugs you.
+#   - window-list                 — bottom taskbar; comes with the
+#                                   "Classic" session, not standard.
+
+# extensions DO break across major GNOME versions. fedora 44 ships
+# GNOME 47; a fedora upgrade jumps GNOME too. check the extension's
+# supported versions before a release upgrade — or just disable
+# them all first and re-enable after.
+
+
+# COMMON gsettings / dconf KNOBS
+
+# show minimize + maximize window buttons (removed from default theme):
+gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close'
+
+# disable mouse acceleration (gamers / pixel-art):
+gsettings set org.gnome.desktop.peripherals.mouse accel-profile 'flat'
+
+# disable natural ("reverse") scrolling on a normal mouse:
+gsettings set org.gnome.desktop.peripherals.mouse natural-scroll false
+
+# tap-to-click on touchpad:
+gsettings set org.gnome.desktop.peripherals.touchpad tap-to-click true
+
+# fixed (not dynamic) workspace count:
+gsettings set org.gnome.mutter dynamic-workspaces false
+gsettings set org.gnome.desktop.wm.preferences num-workspaces 4
+
+# show seconds in the top-bar clock:
+gsettings set org.gnome.desktop.interface clock-show-seconds true
+
+# show battery percentage on laptops:
+gsettings set org.gnome.desktop.interface show-battery-percentage true
+
+# 12 vs 24 hour clock:
+gsettings set org.gnome.desktop.interface clock-format '24h'
+
+# disable animations entirely (perceived snappier, slightly less polish):
+gsettings set org.gnome.desktop.interface enable-animations false
+
+# dark mode:
+gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+
+# every gsettings command above has a Tweaks or Settings UI equivalent.
+# use the CLI when you want reproducibility (a setup script you can
+# rerun on a fresh install).
+
+
+# FRACTIONAL SCALING (4K / hi-DPI displays)
+
+# wayland fractional scaling is now stable in GNOME 47+. enable with:
+gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']"
+# then Settings → Displays exposes 125% / 150% / 175% options.
+# XWayland apps will look slightly softer (they render at integer scale
+# and get downsampled); native wayland apps are crisp.
+
+
+# WAYLAND vs XORG SESSION AT LOGIN
+
+# fedora 44 defaults to wayland. you can pick "GNOME on Xorg" at the
+# gear icon on the gdm login screen IF gnome-session-xsession is
+# installed:
+sudo dnf install gnome-session-xsession
+
+# check current session type:
+echo $XDG_SESSION_TYPE                  # "wayland" or "x11"
+loginctl show-session $XDG_SESSION_ID -p Type
+
+
+# GNOME SOFTWARE vs DNF
+
+# GNOME Software (the app store GUI) backends:
+#   - rpm packages from fedora repos (dnf under the hood)
+#   - flatpak from flathub / fedora-flatpaks
+#   - fwupd firmware updates
+# for power users: stick to `dnf` for system packages, GNOME Software
+# for flatpak apps and firmware. GNOME Software's rpm view sometimes
+# hides packages that have no .desktop file or no metainfo XML.
+
+
+# TOUCHPAD / GESTURES
+
+# three-finger swipe for workspace switching is built in on Wayland —
+# no extension needed. Settings → Touchpad shows the gesture options.
+# on X11 you need `touchegg` to get the same gestures.
+
+sudo dnf install xdotool ydotool        # if you want to script input
+sudo dnf install gestures-shell-extension     # if you want extra mappings
+
+
+# KEYBOARD SHORTCUTS
+
+# Settings → Keyboard → View and Customize Shortcuts is the GUI. for
+# scripting, the path is org.gnome.desktop.wm.keybindings + custom
+# entries under org.gnome.settings-daemon.plugins.media-keys.
+
+# add a custom Ctrl+Alt+T → launch gnome-terminal binding:
+cat >/tmp/term-keybind.sh <<'EOF'
+schema=org.gnome.settings-daemon.plugins.media-keys
+custom=custom-keybindings
+path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/
+
+gsettings set $schema $custom "[\"$path\"]"
+gsettings set $schema.custom-keybinding:$path name 'terminal'
+gsettings set $schema.custom-keybinding:$path command 'gnome-terminal'
+gsettings set $schema.custom-keybinding:$path binding '<Control><Alt>t'
+EOF
+bash /tmp/term-keybind.sh
+
+# (Ctrl+Alt+T is not bound by default in GNOME — long-time linux users
+#  often want it back. fun fact: there's no terminal hotkey at all
+#  out of the box.)
+
+
+# RESET TO DEFAULTS
+
+# revert a single setting:
+gsettings reset org.gnome.desktop.interface color-scheme
+
+# nuke the entire GNOME config back to defaults (RUNS IN YOUR SESSION,
+# logs you out cleanly):
+dconf reset -f /org/gnome/
+
+
 COMMON POST-INSTALL CHECKLIST (Workstation)
 -------------------------------------------
 
