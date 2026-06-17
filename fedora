@@ -70,6 +70,151 @@ rpm -E %fedora                                      # just the number
 # trips the resolver. one hop at a time is the safe path.
 
 
+UPGRADE STRATEGY — STAYING SUPPORTED WITHOUT DAY-ZERO PAIN
+----------------------------------------------------------
+
+# fedora's release math gives you a wide window:
+#   - 2 releases / year (~April and ~October)
+#   - ~13 months of support per release
+#   - so N-1 stays supported for ~7 months AFTER N releases (generous
+#     overlap — use it)
+#   - hard deadline: don't sit on a release once N+2 is announced. that's
+#     when the EOL clock starts ticking hard.
+#
+# day-zero upgrades are voluntary risk. the only thing you actually
+# HAVE to avoid is going EOL.
+
+
+# THE T+8 RULE (recommended default)
+
+# wait 8 weeks after a release before upgrading. by T+8:
+#   - 1-2 kernel point releases have shipped (6.x.1, 6.x.2)
+#   - DE patch releases (GNOME 47.1 instead of .0) have landed
+#   - the worst third-party-repo lag has resolved
+#   - the Common Issues thread has stabilized
+#
+# you give up ~2 months on the bleeding edge. you gain dramatically
+# fewer "why did my system break" incidents.
+
+
+# CALENDAR IN PRACTICE
+#
+#   fall release (~Oct/Nov)     →  upgrade in January   (past holidays,
+#                                                        T+8-10 weeks)
+#   spring release (~April/May) →  upgrade in June/July (T+8-10 weeks)
+#
+# this puts you on every release ~2 months after launch, ALWAYS one
+# release ahead of EOL, never racing the clock.
+
+
+# 5-POINT PRE-UPGRADE SANITY CHECK
+# (run at T+8 weeks; if any item is red, wait 4 more and re-check)
+
+# a) Common Issues thread is quiet for your stack:
+#       https://discussion.fedoraproject.org/c/announcements/
+
+# b) RPM Fusion ships for fedora N:
+curl -sI https://download1.rpmfusion.org/free/fedora/releases/45/Everything/x86_64/os/
+
+# c) akmod-nvidia is built for fedora N (only if you use nvidia — this
+#    is the #1 cause of "I'm on a black screen after upgrade"):
+dnf --releasever=45 list akmod-nvidia 2>/dev/null
+
+# d) your critical COPRs have published for fedora N. check each at
+#    copr.fedoraproject.org/coprs/
+
+# e) your current install is healthy:
+sudo dnf upgrade --refresh
+sudo find /etc -name '*.rpmnew' -o -name '*.rpmsave'
+sudo reboot                                    # confirm clean boot first
+
+
+# UPGRADE — THE COMMAND SEQUENCE
+# (only after the sanity check is green)
+
+# 1. snapshot first — btrfs root + a manual snapshot gives you a
+#    rollback path:
+sudo btrfs subvolume snapshot / /.snapshot-pre-f45
+
+# 2. system-upgrade plugin + download:
+sudo dnf install dnf5-plugin-system-upgrade
+sudo dnf system-upgrade download --releasever=45
+
+# 3. apply (reboots into a special target, performs the rpm
+#    transactions, reboots again into the new release):
+sudo dnf system-upgrade reboot
+
+# 4. verify post-upgrade. smoke test the things you actually use:
+cat /etc/fedora-release                        # confirm version
+lsmod | grep nvidia                            # if applicable
+nvidia-smi                                     # if applicable
+# launch your terminal, browser, dev toolchain, any niche apps.
+
+
+# ROLLBACK IF SOMETHING BROKE
+
+# btrfs rollback path (assumes you took the snapshot in step 1):
+sudo btrfs subvolume set-default \
+    $(sudo btrfs subvolume list / | grep '.snapshot-pre-f45' | awk '{print $2}') /
+sudo reboot
+# you're back on the pre-upgrade subvolume. promote it back to default
+# permanently via `btrfs subvolume set-default` or by mounting the
+# old @ and copying it back. this is exactly the openSUSE / Manjaro
+# snapshot-rollback story, just hand-rolled instead of snapper-driven.
+
+
+# SEQUENTIAL > SKIPPING
+
+# fedora SUPPORTS skipping releases (N-2 → N) via:
+#       sudo dnf system-upgrade download --releasever=N
+# but the rpm resolver gets exponentially crankier with each version
+# crossed. ALWAYS upgrade sequentially:
+#       N → N+1 → N+2
+# one extra hour, dramatically less --allowerasing debugging.
+#
+# if you've been off the grid and woke up on N-2:
+sudo dnf system-upgrade download --releasever=$(( $(rpm -E %fedora) + 1 ))
+sudo dnf system-upgrade reboot
+# boot, verify, reboot to a clean state, repeat for the next hop.
+
+
+# PRE-UPGRADE HARD RULES (apply to every upgrade)
+
+# - DON'T upgrade with un-merged .rpmnew files. they carry forward and
+#   bite you later. merge them on current release first.
+# - DON'T upgrade from a non-default kernel. boot the standard
+#   /boot/vmlinuz-<latest> first.
+# - DON'T upgrade with a broken current install. fix the current release
+#   first — dnf system-upgrade is not a recovery tool.
+# - DISABLE third-party repos that don't ship for N yet (chrome COPRs,
+#   vendor repos, etc.). re-enable after.
+# - On nvidia: CONFIRM akmod-nvidia has shipped for fedora N before
+#   pulling the trigger. (sanity check c above.)
+
+
+# WHERE TO MONITOR
+
+# - discussion.fedoraproject.org/c/announcements/  — official notes,
+#   Common Issues per release. this is the canonical source.
+# - fedoramagazine.org                             — readable summaries
+# - bodhi.fedoraproject.org                        — see what's in
+#   updates-testing if you want to peek ahead
+# - fedoraproject.org/wiki/Releases/N/ChangeSet    — per-release
+#   major changes
+#
+# RSS-subscribe at least the first two. the rest you check at upgrade
+# time.
+
+
+# WHAT THIS STRATEGY EXPLICITLY ACCEPTS
+
+# - ~2 months behind early adopters on new features.
+# - never bleeding-edge, never EOL — a permanent middle lane.
+# - ~1 hour of effort every 6 months (sanity check + upgrade).
+# - snapshot rollback path means worst-case recovery is minutes,
+#   not a reinstall.
+
+
 GRUB — SHOWING THE MENU, MANAGING KERNELS
 -----------------------------------------
 
