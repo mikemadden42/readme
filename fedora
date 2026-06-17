@@ -2758,20 +2758,254 @@ sudo usermod -aG docker "$USER"      # log out and back in
 SILVERBLUE / IMMUTABLE FEDORA
 -----------------------------
 
-# TODO STUB — the immutable Workstation variant and its siblings
-# (Kinoite for KDE, Sericea for Sway, Onyx for Budgie). flagged in the
-# editions list at the top but never explained in depth.
-# expected content:
-#   - the model: /usr read-only, atomic rpm-ostree deployments, A/B
-#     updates with automatic rollback on failure
-#   - rpm-ostree daily: status, upgrade, rollback, deploy
-#   - layering packages on top: rpm-ostree install (vs flatpak / toolbox)
-#   - toolbox as the mandatory dev environment
-#   - homed and overlays for /var
-#   - when to pick silverblue over workstation (and when NOT to)
-#   - gotchas: kernel modules, akmod-nvidia layering, system-wide configs
-#   - philosophical alignment with vanillaOS, blendOS, project bluefin
-#     (the broader atomic-linux trend)
+# fedora's immutable workstation family. silverblue (GNOME) is the
+# flagship; kinoite (KDE), sericea (sway), and onyx (budgie) are
+# siblings. the FUTURE TRENDS section names this family as where
+# "fedora" likely converges by 2030 — this section is the depth.
+
+
+# THE MODEL — IMAGE-BASED, ATOMIC, REVERSIBLE
+
+# silverblue swaps fedora's traditional package-by-package mutability
+# for IMAGE-BASED DEPLOYMENTS. the OS is shipped as a complete tree
+# downloaded atomically. core invariants:
+#
+#   - /usr is READ-ONLY at runtime. you cannot `dnf install`. cannot
+#     edit /usr files. immutable.
+#   - /etc is writable. config changes persist. on upgrade, merged
+#     intelligently with the new base.
+#   - /var is writable. logs, container images, /var/home (symlinked
+#     from /home), databases. persists across upgrades.
+#   - DEPLOYMENTS are versioned and side-by-side. upgrading downloads
+#     a new tree ALONGSIDE the current one. you reboot into the new
+#     tree; if it breaks, reboot into the old one.
+#   - ROLLBACK IS A REBOOT. literally — pick the previous deployment
+#     from grub.
+#   - rpm-ostree is the package manager. yum / dnf are not used on
+#     the host.
+#
+# ostree under the hood: deployments live under /ostree/deploy/. think
+# of it as git for filesystem trees — content-addressed, dedup'd,
+# atomic switches between references. similar concept to the nix store
+# but image-based rather than per-package.
+
+
+# THE VARIANTS
+
+#   Silverblue  — GNOME on wayland. flagship, most resourced.
+#   Kinoite     — KDE Plasma. official Edition since F35.
+#   Sericea     — Sway compositor. official since F37.
+#   Onyx        — Budgie. official since F39.
+#
+# all share the rpm-ostree base and tooling. only the DE + default
+# flatpak bundle differs.
+
+
+# rpm-ostree — DAILY COMMANDS
+
+# inspect current state
+rpm-ostree status                              # current + pending deployments
+rpm-ostree status -v                           # verbose (commit hashes)
+
+# upgrade — downloads new base, stages as pending deployment
+rpm-ostree upgrade
+sudo systemctl reboot                          # boot into the new deployment
+
+# preview / check without applying
+rpm-ostree upgrade --preview
+rpm-ostree upgrade --check
+
+# rollback — make the PREVIOUS deployment the default for next boot
+rpm-ostree rollback
+sudo systemctl reboot
+
+# diff between current and another deployment
+rpm-ostree db diff
+
+
+# LAYERING — PACKAGES ON THE BASE
+
+# some software MUST be in /usr — kernel modules, drivers, anything
+# that needs to run before flatpak / toolbox starts. layer it:
+rpm-ostree install fish
+sudo systemctl reboot
+
+# remove a layered package
+rpm-ostree uninstall fish
+
+# apply live (avoid reboot, where safe)
+rpm-ostree install --apply-live fish
+
+# WARNING: layered packages slow upgrades. each upgrade rebuilds the
+# deployment with your layers re-applied. KEEP LAYERS MINIMAL — only
+# what truly cannot live in flatpak or toolbox.
+
+# override / replace base packages
+rpm-ostree override replace ./fixed-kernel.rpm
+rpm-ostree override remove kernel-modules-extra
+
+# reset all overlays / overrides
+rpm-ostree reset
+
+# kernel arguments
+rpm-ostree kargs --append="nosmt"
+rpm-ostree kargs --delete="quiet"
+rpm-ostree kargs                               # show current
+
+
+# THE INSTALL DECISION TREE
+
+# silverblue users develop a habit. for any new piece of software:
+#
+#   1. desktop APP? → FLATPAK first. flathub covers most popular apps.
+#      sandboxed. portable across atomic distros. zero impact on base.
+#
+#   2. CLI / dev tool you'd use interactively? → TOOLBOX or DISTROBOX.
+#      enter a mutable container, dnf install there. host stays pristine.
+#
+#   3. SERVICE (a daemon you want running)? → PODMAN QUADLET (see
+#      CONTAINERS section). systemd manages a containerized service.
+#
+#   4. needs to BE IN /USR (kernel module, driver, login shell for the
+#      host, anything pre-session)? → only THEN `rpm-ostree install`.
+#
+# fewer than 10 layered packages on a typical silverblue install is
+# normal. host minimal; dev work in containers; apps in flatpaks.
+
+
+# TOOLBOX — THE MANDATORY DEV ENVIRONMENT
+
+# on workstation, toolbox is optional. on silverblue it's effectively
+# REQUIRED for dev work — you can't `dnf install gcc` on the host.
+
+# create a toolbox matching the host fedora release
+toolbox create -c f44
+
+# enter it
+toolbox enter f44
+
+# inside the toolbox: dnf install whatever you want
+sudo dnf install gcc cmake make ripgrep neovim
+
+# /home is shared host ↔ toolbox. /usr inside the toolbox is mutable;
+# the host's /usr is not.
+
+# cross-distro dev — a toolbox for each distro you need
+toolbox create -c ubuntu --image docker.io/library/ubuntu:24.04
+distrobox create -n arch -i docker.io/library/archlinux:latest
+
+# common pattern: one toolbox per language stack, or per distro for
+# cross-platform package testing.
+
+
+# SILVERBLUE-SPECIFIC GOTCHAS
+
+# 1. NVIDIA proprietary driver. path differs from workstation. enable
+#    RPM Fusion as layered packages first, then install akmod-nvidia:
+rpm-ostree install \
+    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+sudo systemctl reboot
+rpm-ostree install akmod-nvidia xorg-x11-drv-nvidia-cuda
+sudo systemctl reboot
+#    easier path: rebase to a uBlue variant that preconfigures nvidia
+#    (uCore-nvidia, Bazzite-nvidia, Bluefin-nvidia).
+#
+# 2. /USR/LOCAL IS A SYMLINK to /var/usrlocal. drop scripts into
+#    /var/usrlocal/bin/ — or use ~/.local/bin (preferred).
+#
+# 3. SYSTEM-WIDE CONFIGS outside /etc and /var don't survive upgrades.
+#    everything outside those two trees is part of the image.
+#
+# 4. UNLAYER BEFORE REPORTING BUGS. `rpm-ostree reset` and reboot to
+#    confirm it's not your layers.
+#
+# 5. /BOOT IS MANAGED BY OSTREE. don't edit grub.cfg directly. use
+#    `rpm-ostree kargs` instead.
+#
+# 6. DKMS DOESN'T WORK. use akmods (rpm-ostree handles it) or bake
+#    the module into a custom image (uBlue-style).
+#
+# 7. SERVICES INSTALLED VIA `rpm-ostree install` run as system
+#    services; their config goes in /etc/. for app-style services,
+#    prefer QUADLET over layered rpms — keeps the base lean.
+#
+# 8. GNOME EXTENSIONS install fine (per-user, no /usr writes).
+
+
+# WHEN TO PICK SILVERBLUE OVER WORKSTATION
+
+# pick silverblue when:
+#   - you want unbrickable updates with one-click rollback
+#   - your dev workflow can live in containers (most modern workflows can)
+#   - you're tired of config drift — machines diverging subtly from a
+#     fresh install over time
+#   - you want to share / sync your setup as an image (uBlue-style)
+#   - you self-host services and prefer them containerized anyway
+
+# stay on workstation when:
+#   - you actively run kernel-mode tooling that needs DKMS
+#   - your work requires layering many packages that don't fit
+#     flatpak / toolbox (research, niche scientific stacks)
+#   - you prefer imperative system mutation
+#   - you use rpm-ostree-incompatible workflows (custom-compiled
+#     kernel patches, hand-built /usr installs)
+
+# the population that thrives on silverblue: developers running
+# containerized stacks, users who appreciate stability, anyone who's
+# been burned by a bad upgrade and wants atomic rollback as a default.
+
+
+# UBLUE / PROJECT BLUEFIN / BAZZITE — OPINIONATED SILVERBLUE
+
+# the uBlue ("Universal Blue") family is community-maintained atomic
+# fedora derivatives with sensible defaults pre-baked. they fix
+# silverblue's biggest practical gripes — nvidia, codecs, common
+# tools — by shipping pre-built images rather than asking you to
+# layer them yourself.
+#
+#   - PROJECT BLUEFIN — silverblue + developer tooling (vscode,
+#     devcontainer support, just commands). "the new linux laptop for
+#     cloud-native developers".
+#   - BAZZITE        — silverblue + gaming stack (steam, proton-ge,
+#     gamescope, mangohud). steamOS-style desktop on AMD or NVIDIA.
+#   - UCORE          — silverblue minimal + nvidia + codecs prebaked.
+#     a clean base to build your own image from.
+#   - AURORA         — kinoite-based bluefin (KDE).
+#
+# install path is "rebase to a uBlue image":
+sudo rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/bluefin:latest
+sudo systemctl reboot
+# you're now running bluefin instead of stock silverblue. rebase back
+# any time. the machinery is the same.
+
+
+# THE BROADER ATOMIC LINUX TREND
+
+# silverblue is part of a larger movement toward image-based linux
+# desktops. peers:
+#
+#   - FEDORA SILVERBLUE / KINOITE — this section
+#   - VANILLA OS                  — debian-based, atomic, container-centric
+#   - blendOS                     — arch-based atomic
+#   - NixOS                       — declarative + reproducible (different
+#                                   model but same goal: deterministic,
+#                                   non-drifting system state)
+#   - openSUSE Aeon               — opensuse's atomic (formerly MicroOS
+#                                   desktop)
+#   - PopOS COSMIC                — system76's coming atomic desktop
+#   - Fedora CoreOS / IoT         — server / edge variants of the same
+#                                   ostree model
+#
+# the common thesis: TRADITIONAL PACKAGE-BY-PACKAGE OS MANAGEMENT IS
+# WRONG FOR DESKTOPS. drift is real. updates should be reversible.
+# config should be declarative-ish. the host should be a substrate,
+# not a craft project.
+#
+# silverblue is fedora's bet on this thesis. the family is growing,
+# the tooling is maturing, and the uBlue derivatives demonstrate the
+# model's flexibility. by 2030, this is likely what "Fedora" means
+# for new users (see THE NEXT 5-10 YEARS section).
 
 
 SHELL AND DEV-ENVIRONMENT PHILOSOPHY
