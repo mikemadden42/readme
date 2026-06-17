@@ -584,6 +584,84 @@ gsettings set org.gnome.desktop.peripherals.touchpad middle-click-emulation true
 #   "editor.selectionClipboard": true
 
 
+# PTYXIS — the new default terminal (Fedora 41+)
+
+# fedora replaced gnome-terminal with Ptyxis as the default terminal in
+# Workstation 41. Ptyxis is GTK4 + container-aware (transparent toolbox /
+# distrobox / podman integration) and uses VTE under the hood — same
+# terminal widget gnome-terminal used. middle-click paste works by
+# default for the same reason gnome-terminal's did.
+#
+# IMPORTANT: Ptyxis has its OWN Preferences dialog (hamburger menu →
+# Preferences, or Ctrl+,). it looks visually identical to gnome-tweaks
+# and other GTK4 settings panels — easy to confuse the two. terminal-
+# specific settings (palette, font, scrollback, paste behavior,
+# bell, container defaults, profile management) live there, not in
+# tweaks.
+#
+# inspect Ptyxis's settings from the CLI:
+gsettings list-recursively org.gnome.Ptyxis | grep -iE 'paste|scroll|bell'
+#
+# if middle-click paste DOESN'T work in Ptyxis (rare), the likely
+# culprits — in order of frequency:
+#   1. touchpad with no physical middle button → enable middle-click
+#      emulation (gsetting above).
+#   2. a tiling extension (Forge, Pop Shell) grabbing middle-click for
+#      window management.
+#   3. profile setting disabled — Preferences → Profiles → <name> →
+#      look for paste / clipboard options.
+#
+# container integration is the new selling point: Ptyxis detects
+# toolbox / distrobox / podman containers and offers them in the
+# "New Tab" dropdown. no manual `toolbox enter` typing.
+ptyxis --tab --container=<name>             # open a tab in a container
+ptyxis --working-directory=/path            # open with a starting cwd
+
+# if you preferred gnome-terminal and want it back:
+sudo dnf install gnome-terminal
+xdg-mime default org.gnome.Terminal.desktop x-scheme-handler/terminal
+gsettings set org.gnome.desktop.default-applications.terminal exec gnome-terminal
+
+
+# GHOSTTY — Mitchell Hashimoto's GPU-rendered terminal
+
+# ghostty (1.0 released Dec 2024) is a Zig-built GPU-rendered terminal,
+# native macOS app + GTK4 on Linux. it's in the same lane as alacritty /
+# kitty / wezterm: performance-focused, less DE-integrated, cross-
+# platform. NOT in Fedora's official repos. three install paths, in
+# increasing friction order:
+
+# 1. COPR (most common Fedora path — the closest analog to AUR or
+#    ubuntu's snap for ghostty). updates flow via `dnf upgrade`:
+sudo dnf copr enable pgdev/ghostty
+sudo dnf install ghostty
+
+# 2. flatpak from flathub. sandboxed; expect the usual flatpak caveats
+#    (home-dir access via Flatseal, slightly slower first launch, some
+#    $TERM / terminfo quirks at the sandbox boundary):
+flatpak install flathub com.mitchellh.ghostty
+
+# 3. build from source. you pay maintenance cost but get HEAD or any
+#    pinned tag:
+sudo dnf install zig gtk4-devel libadwaita-devel
+git clone https://github.com/ghostty-org/ghostty.git
+cd ghostty && zig build -Doptimize=ReleaseFast
+sudo zig build install -Doptimize=ReleaseFast --prefix /usr/local
+
+# canonical install instructions move over time. before relying on the
+# COPR or flatpak ID above, sanity-check ghostty.org/download — it's
+# the source of truth for current packaging.
+
+# config lives at ~/.config/ghostty/config (single file, plain key=value).
+# the doc page lists every option: ghostty.org/docs/config
+
+# ghostty vs ptyxis: not an either/or. ghostty as a daily driver +
+# ptyxis when you want quick toolbox/distrobox tabs is a common setup.
+# set the default with:
+xdg-mime default com.mitchellh.ghostty.desktop x-scheme-handler/terminal
+gsettings set org.gnome.desktop.default-applications.terminal exec ghostty
+
+
 # THE TWEAK STACK — what to install on day one
 
 sudo dnf install gnome-tweaks gnome-extensions-app dconf-editor
