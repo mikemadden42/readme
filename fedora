@@ -2793,6 +2793,40 @@ SHELL AND DEV-ENVIRONMENT PHILOSOPHY
 #     terminal multiplexers
 
 
+GAMING
+------
+
+# TODO STUB — the linux gaming stack on fedora. mentioned briefly in
+# WHAT FEDORA WORKSTATION SHIPS BY DEFAULT but never given a proper
+# treatment. linux gaming has matured massively since 2020 (steam deck,
+# proton GE) and this is a real daily use case.
+# expected content:
+#   - prerequisites: multilib via `dnf groupinstall`, RPM Fusion for
+#     proprietary codecs / nvidia driver, akmod-nvidia for nvidia GPUs
+#   - Steam install: dnf vs flatpak (and the trade-offs of each)
+#   - Proton + GE-Proton (community fork with extra game fixes;
+#     ProtonUp-Qt to manage versions)
+#   - Lutris — wine prefix mgmt for non-steam games (battle.net, GOG)
+#   - Heroic Games Launcher — native client for Epic, GOG, Amazon
+#   - Bottles — wine prefix manager (more flexible than Lutris for some)
+#   - gamemode — CPU governor + IO + niceness auto-tune around game launch
+#   - MangoHud — FPS/CPU/GPU overlay
+#   - vkBasalt — post-processing shaders (CAS sharpening etc.)
+#   - controllers: xbox, ps5, steam controller, 8bitdo; udev rules
+#     for non-standard pads
+#   - wayland vs xorg for gaming (both work; some titles still prefer X11)
+#   - HDR / VRR / Gsync status on wayland
+#   - nvidia gaming tuning (cross-link to NVIDIA section)
+#   - streaming: Sunshine (host) + Moonlight (client) for game streaming
+#     to other devices on your LAN
+#   - native linux games (the curated list) + emulation (RetroArch,
+#     Dolphin, RPCS3, PCSX2)
+#   - alternative: Bazzite (immutable fedora-based "gaming OS" built on
+#     Silverblue/Kinoite) for users who want a pre-configured gaming-
+#     focused fedora derivative — see [[arch-distros]] for the
+#     immutable-distro landscape context
+
+
 WHAT FEDORA WORKSTATION SHIPS BY DEFAULT
 ----------------------------------------
 
