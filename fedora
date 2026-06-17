@@ -1322,6 +1322,36 @@ cat /etc/kernel/cmdline                             # default cmdline for new ke
 #       reboot
 
 
+KERNEL CMDLINE — A CHEATSHEET
+-----------------------------
+
+# TODO STUB — kernel boot parameters are scattered across NVIDIA,
+# POWER MANAGEMENT, and TPM2 LUKS sections. collect them into a
+# single reference.
+# expected content:
+#   - inspect current cmdline: cat /proc/cmdline
+#   - modify: sudo grubby --update-kernel=ALL --args="..."
+#   - remove: sudo grubby --update-kernel=ALL --remove-args="..."
+#   - common parameters with one-line explanations:
+#       quiet rhgb                          — default fedora boot
+#       systemd.unit=multi-user.target / 3 — boot to text mode
+#       systemd.unit=emergency.target       — single-user rescue
+#       nomodeset                           — disable KMS (broken GPU rescue)
+#       nouveau.modeset=0                   — disable nouveau (nvidia)
+#       nvidia-drm.modeset=1                — enable nvidia DRM modeset
+#       mitigations=off                     — disable CPU mitigations
+#                                             (perf at security cost)
+#       intel_iommu=on / amd_iommu=on       — enable IOMMU for passthrough
+#       resume=UUID=... resume_offset=N     — hibernation resume target
+#       rd.luks.uuid=... / rd.luks.options  — LUKS unlock at boot
+#       systemd.unified_cgroup_hierarchy=0  — disable cgroups v2 (rare)
+#       i915.enable_psr=0                   — disable intel PSR (display
+#                                             flicker fix)
+#       acpi_osi=Linux                      — workaround broken ACPI
+#   - forward references to NVIDIA, POWER MANAGEMENT, TPM2 LUKS,
+#     SYSTEMD targets, GRUB sections.
+
+
 REPOS — OFFICIAL, RPM FUSION, COPR, FLATHUB
 -------------------------------------------
 
@@ -2377,6 +2407,28 @@ sudo rm /etc/modprobe.d/nvidia-modeset.conf 2>/dev/null
 sudo dracut --force
 sudo grubby --update-kernel=ALL --remove-args='nvidia-drm.modeset=1'
 sudo reboot
+
+
+DKMS — OUT-OF-TREE KERNEL MODULES
+---------------------------------
+
+# TODO STUB — DKMS (Dynamic Kernel Module Support) automatically
+# rebuilds out-of-tree kernel modules when the kernel updates.
+# mentioned in passing in SILVERBLUE gotchas but never explained.
+# expected content:
+#   - the mental model: source in /usr/src/<module>-<ver>/; DKMS
+#     rebuilds against the new kernel on update
+#   - dkms status / add / build / install / remove
+#   - dkms.conf format
+#   - DKMS vs AKMOD: RPM Fusion's alternative; preferred on fedora
+#     because it integrates cleanly with akmods.service
+#   - when DKMS is unavoidable (vendor drivers shipped DKMS-only)
+#   - Secure Boot + DKMS: enrolling a MOK to sign rebuilt modules
+#     (cross-link to SECURE BOOT)
+#   - troubleshooting: dkms autoinstall, manual rebuild after a
+#     kernel update that didn't trigger the hook
+#   - DKMS DOES NOT WORK on Silverblue (cross-link to SILVERBLUE)
+#   - cross-link to NVIDIA section (which uses akmod, not DKMS)
 
 
 SECURE BOOT — NOTES
@@ -3493,6 +3545,26 @@ sudo cupsctl --share-printers --remote-any
 #                                                   pick driver from list
 
 
+TUNED PROFILES — PERFORMANCE / LATENCY TUNING
+---------------------------------------------
+
+# TODO STUB — fedora ships `tuned`, the system-tunable framework used
+# heavily on RHEL. complements POWER MANAGEMENT's power-profiles-daemon
+# by exposing per-workload profiles for latency / throughput /
+# virtualization / etc.
+# expected content:
+#   - tuned-adm list / active / profile / recommend
+#   - shipped profiles: balanced, throughput-performance, latency-
+#     performance, virtual-host, virtual-guest, network-throughput,
+#     network-latency, powersave, hpc-compute
+#   - custom profiles: /etc/tuned/<name>/tuned.conf
+#   - cpu-partitioning / realtime profiles for low-latency workloads
+#   - how tuned and power-profiles-daemon coexist (or don't)
+#   - workloads where tuned matters: databases, HFT, video encoding,
+#     pro audio, kvm hosts
+#   - cross-link to POWER MANAGEMENT
+
+
 GNOME TIPS (Workstation default)
 --------------------------------
 
@@ -4534,6 +4606,28 @@ ls /sys/kernel/iommu_groups/                  # one dir per group
 #   "i want GPU passthrough"                 → virt-manager + reading
 
 
+COCKPIT — WEB-BASED SYSTEM ADMINISTRATION
+-----------------------------------------
+
+# TODO STUB — cockpit is fedora's blessed web UI for sysadmin. already
+# mentioned in VIRTUAL MACHINES (cockpit-machines) but the core tool
+# is much broader.
+# expected content:
+#   - install: dnf install cockpit + module packages (cockpit-*)
+#   - access at https://localhost:9090; auto-signed cert + first-time
+#     trust flow
+#   - what each module covers: Overview, Logs, Services, Networking,
+#     Accounts, Software Updates, Storage, Containers (cockpit-podman),
+#     Machines (cockpit-machines), Terminal
+#   - remote machine management via the SSH backend — one cockpit to
+#     admin many
+#   - federated dashboards
+#   - extending: writing your own cockpit module (advanced)
+#   - SELinux + firewalld implications
+#   - when cockpit beats SSH+CLI (visualizations, audit, less-experienced
+#     team members) and when it doesn't (scripting, automation)
+
+
 CONTAINERS — PODMAN FIRST
 -------------------------
 
@@ -5231,6 +5325,26 @@ rm .env.local                                     # delete plaintext
 #   "i'm onboarding a new machine"                  → CHEZMOI + mise install
 
 
+INOTIFY LIMITS — FILE WATCHER GOTCHA
+------------------------------------
+
+# TODO STUB — VS Code, Node, file watchers, syncthing, dropbox, and
+# many language servers all hit fedora's default inotify limits on
+# real projects. small but universal dev gotcha.
+# expected content:
+#   - symptoms: "ENOSPC: System limit for number of file watchers
+#     reached", VS Code's "your project has too many files" warning,
+#     node-watch / chokidar errors
+#   - inspect current limits:
+#       cat /proc/sys/fs/inotify/max_user_watches
+#       cat /proc/sys/fs/inotify/max_user_instances
+#       cat /proc/sys/fs/inotify/max_queued_events
+#   - raise temporarily: sysctl -w fs.inotify.max_user_watches=524288
+#   - raise permanently: /etc/sysctl.d/40-max-user-watches.conf
+#   - why fedora's default is conservative (each watch uses kernel mem)
+#   - what tends to consume watches (and how to find the offender)
+
+
 GAMING
 ------
 
@@ -5621,6 +5735,315 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 #   "stream to phone or other device"          → Sunshine + Moonlight
 #   "steamOS-style preconfigured experience"   → Bazzite (rebase)
 #   "does this game work on linux?"            → protondb.com
+
+
+RPM PACKAGING — BUILDING YOUR OWN
+---------------------------------
+
+# the primer covers using `dnf` and `rpm` deeply. this section is the
+# OTHER side: how to BUILD an RPM. you'll do this when:
+#   - you maintain an in-house tool you want to deploy via dnf
+#   - upstream doesn't ship an RPM and you want one
+#   - you're packaging something for fedora itself (copr → koji →
+#     official repos — see the CONTRIBUTOR PIPELINE stub below)
+#   - you're learning packaging mechanics before joining the
+#     fedora packaging team
+
+
+# THE MENTAL MODEL
+
+# an RPM is built from a .spec file + source tarball(s). the .spec
+# is a declarative recipe with build steps, file lists, and metadata.
+# rpmbuild runs the steps in a sandbox and produces:
+#   - a SRPM (source RPM): your sources + spec, distributable as a
+#     buildable archive
+#   - one or more binary RPMs: the actual installable packages
+#
+# the build sandbox uses a standard directory layout:
+#
+#   ~/rpmbuild/SOURCES   — input tarballs, patches, supporting files
+#   ~/rpmbuild/SPECS     — your .spec files
+#   ~/rpmbuild/BUILD     — extracted sources, where the build happens
+#   ~/rpmbuild/BUILDROOT — the fake filesystem root used for install
+#   ~/rpmbuild/RPMS      — finished binary RPMs (per arch)
+#   ~/rpmbuild/SRPMS     — finished source RPMs
+
+
+# SETUP
+
+sudo dnf install \
+    rpm-build rpmdevtools rpmlint mock \
+    redhat-rpm-config gcc make
+
+# create the standard directory layout:
+rpmdev-setuptree                                # creates ~/rpmbuild/...
+
+# verify the layout:
+ls -la ~/rpmbuild/                              # SOURCES SPECS BUILD ...
+
+# .rpmmacros — per-user defaults (rpmdev-setuptree creates a minimal one):
+cat ~/.rpmmacros
+# common addition for your maintainer identity:
+echo '%packager Your Name <you@example.com>' >> ~/.rpmmacros
+
+
+# A MINIMAL WORKED EXAMPLE — "hello" PACKAGE
+
+# 1. SOURCE TARBALL. drop the upstream tarball in SOURCES/:
+cd ~/rpmbuild/SOURCES
+wget https://ftp.gnu.org/gnu/hello/hello-2.12.1.tar.gz
+
+# 2. SPEC FILE. minimal but complete:
+cat > ~/rpmbuild/SPECS/hello.spec <<'EOF'
+Name:           hello
+Version:        2.12.1
+Release:        1%{?dist}
+Summary:        GNU Hello — a friendly greeting program
+License:        GPL-3.0-or-later
+URL:            https://www.gnu.org/software/hello/
+Source0:        https://ftp.gnu.org/gnu/hello/%{name}-%{version}.tar.gz
+
+BuildRequires:  gcc, make, gettext
+
+%description
+GNU Hello is a program that prints "Hello, world!" to the screen.
+It's the canonical example of a GNU package — useful as a packaging
+exercise more than as a tool.
+
+%prep
+%autosetup
+
+%build
+%configure
+%make_build
+
+%install
+%make_install
+%find_lang %{name}
+
+%files -f %{name}.lang
+%license COPYING
+%doc README NEWS
+%{_bindir}/hello
+%{_mandir}/man1/hello.1*
+%{_infodir}/hello.info*
+
+%changelog
+* Tue Jun 17 2026 Your Name <you@example.com> - 2.12.1-1
+- Initial RPM packaging
+EOF
+
+# 3. BUILD. -ba = build all (both SRPM and binary RPM):
+rpmbuild -ba ~/rpmbuild/SPECS/hello.spec
+
+# OUTPUT:
+#   ~/rpmbuild/SRPMS/hello-2.12.1-1.fc44.src.rpm
+#   ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+#   ~/rpmbuild/RPMS/x86_64/hello-debuginfo-...rpm
+#   ~/rpmbuild/RPMS/x86_64/hello-debugsource-...rpm
+
+# 4. INSPECT:
+rpm -qpi ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+rpm -qpl ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+
+# 5. INSTALL + RUN:
+sudo dnf install ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+hello
+
+
+# SPEC FILE TAGS — THE COMMON ONES
+
+# HEADER (required + recommended):
+#   Name:            package name (lowercase, no spaces)
+#   Version:         upstream version
+#   Release:         packaging revision (start at 1; bump on respin).
+#                    %{?dist} appends the disttag (.fc44, .el9, etc.)
+#   Summary:         single-line description (< 80 chars)
+#   License:         SPDX identifier (e.g. GPL-3.0-or-later, MIT, Apache-2.0)
+#   URL:             upstream project URL
+#   Source0:         primary source tarball (URL form is recommended)
+#   Source1+:        additional source files
+#   Patch0+:         patches to apply during %prep
+#
+# DEPENDENCIES:
+#   BuildRequires:   what you need TO BUILD this package
+#   Requires:        what the installed package needs at RUN time
+#   Recommends:      soft dep (installs unless --no-recommends)
+#   Suggests:        very soft dep (informational)
+#   Provides:        virtual capabilities this package satisfies
+#   Conflicts:       packages this one cannot coexist with
+#   Obsoletes:       packages this one replaces
+
+# SECTIONS (in order):
+#   %prep            extract sources, apply patches. usually:
+#                    %autosetup (handles tarball + patches together)
+#   %build           compile. usually %configure + %make_build for
+#                    autotools; %cmake / %meson_build for those
+#   %install         install into %{buildroot}. usually %make_install
+#                    or %meson_install
+#   %check           run upstream tests (optional but recommended)
+#   %files           list of installed files (the binary package
+#                    contents). wildcards OK.
+#   %changelog       chronological log; newest first
+
+
+# COMMON MACROS
+
+#   %{name}        — Name: value (e.g. "hello")
+#   %{version}     — Version: value
+#   %{release}     — Release: value
+#   %{?dist}       — disttag (.fc44 on fedora 44, .el9 on RHEL 9)
+#   %{_bindir}     — /usr/bin
+#   %{_sbindir}    — /usr/sbin
+#   %{_libdir}     — /usr/lib64 (or /usr/lib on 32-bit)
+#   %{_datadir}    — /usr/share
+#   %{_sysconfdir} — /etc
+#   %{_mandir}     — /usr/share/man
+#   %{_docdir}     — /usr/share/doc
+#   %{_infodir}    — /usr/share/info
+#   %{_unitdir}    — /usr/lib/systemd/system
+#   %{_userunitdir}— /usr/lib/systemd/user
+#   %{buildroot}   — the fake root for %install (~/rpmbuild/BUILDROOT/...)
+#   %{_arch}       — x86_64, aarch64, etc.
+
+# list every defined macro:
+rpm --showrc | less
+
+
+# RPMBUILD COMMAND VARIANTS
+
+rpmbuild -ba foo.spec          # build all (SRPM + binary)
+rpmbuild -bb foo.spec          # binary only
+rpmbuild -bs foo.spec          # SRPM only
+rpmbuild -bp foo.spec          # %prep only (debug source extraction)
+rpmbuild -bc foo.spec          # %prep + %build
+rpmbuild -bi foo.spec          # %prep + %build + %install
+rpmbuild -bl foo.spec          # lint check, no actual build
+rpmbuild --rebuild foo.src.rpm # rebuild from a SRPM
+
+
+# RPMLINT — STATIC ANALYSIS FOR YOUR PACKAGE
+
+rpmlint ~/rpmbuild/SPECS/hello.spec
+rpmlint ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+rpmlint -i <pkg>                                # include explanations
+
+# common rpmlint warnings worth fixing:
+#   - W: spelling-error          — typo in summary / description
+#   - W: no-version-in-last-changelog
+#   - E: hardcoded-library-path  — using /usr/lib instead of %{_libdir}
+#   - W: incorrect-fsf-address    — old GPL boilerplate
+#   - W: invalid-license          — License: field isn't an SPDX id
+
+
+# GPG SIGNING
+
+# generate (or use an existing) GPG key:
+gpg --full-generate-key                         # interactive
+
+# tell rpm about your key fingerprint:
+echo '%_signature gpg' >> ~/.rpmmacros
+echo '%_gpg_name your-key-id' >> ~/.rpmmacros
+
+# sign:
+rpmsign --addsign ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+rpm --checksig ~/rpmbuild/RPMS/x86_64/hello-2.12.1-1.fc44.x86_64.rpm
+
+
+# THE DISTTAG (%{?dist})
+
+# %{?dist} expands to ".fc44" on fedora 44, ".el9" on RHEL 9, ".eln"
+# on Fedora ELN, etc. lets the same spec produce builds tagged for
+# different targets:
+#
+#   hello-2.12.1-1.fc44.x86_64.rpm     # built on fedora 44
+#   hello-2.12.1-1.fc45.x86_64.rpm     # built on fedora 45
+#
+# this is why you rarely need different specs per release.
+
+
+# COMMON GOTCHAS
+
+# 1. "FILES LISTED TWICE." you wildcarded /usr/share/% AND listed a
+#    specific file inside it. pick one approach per directory.
+#
+# 2. "INSTALLED (BUT UNPACKAGED) FILES." %install produced files that
+#    %files doesn't claim. either add them to %files or remove them
+#    in %install. RPM refuses to ship a build with orphaned files.
+#
+# 3. "UNPACKAGED INSTALL DIRECTORY." you created an empty subdir in
+#    %install that nothing else owns. add `%dir /path` to %files
+#    to claim the directory itself.
+#
+# 4. "DEBUGINFO IS BROKEN." you stripped the binary in %install
+#    yourself. don't — fedora's `redhat-rpm-config` automatically
+#    extracts debuginfo into the -debuginfo subpackage. skip
+#    `strip` commands.
+#
+# 5. "FILE CONFLICTS BETWEEN PACKAGES" on install. you tried to ship
+#    a file already owned by another package. either rename, or use
+#    `Conflicts:` to declare incompatibility, or work around with an
+#    alternatives mechanism.
+#
+# 6. CHANGELOG DATE FORMAT. must be: `* DAY MMM DD YYYY Name <email>
+#    - VERSION-RELEASE`. exact format. typos = build failure.
+#
+# 7. SOURCE0 IS A URL BUT YOU PUT THE TARBALL IN SOURCES/. fine.
+#    `spectool -g foo.spec` will FETCH source URLs automatically if
+#    you want to automate that step:
+spectool -g -R ~/rpmbuild/SPECS/foo.spec
+
+
+# WORKING WITH SRPMS (source RPMs)
+
+# unpack a SRPM to inspect it:
+mkdir /tmp/srpm-unpack && cd /tmp/srpm-unpack
+rpm2cpio /path/to/foo-1.0-1.fc44.src.rpm | cpio -idmv
+# gives you the spec + sources back.
+
+# rebuild someone else's SRPM:
+rpmbuild --rebuild foo-1.0-1.fc44.src.rpm
+
+# install a SRPM into your own rpmbuild tree (modify + rebuild):
+rpm -ivh foo-1.0-1.fc44.src.rpm
+ls ~/rpmbuild/SOURCES/ ~/rpmbuild/SPECS/
+
+
+# QUICK REFERENCE
+
+#   "new package from scratch"              → rpmdev-newspec foo
+#   "build a binary RPM"                    → rpmbuild -bb foo.spec
+#   "check spec quality"                    → rpmlint foo.spec
+#   "produce a SRPM for distribution"       → rpmbuild -bs foo.spec
+#   "rebuild someone's SRPM"                → rpmbuild --rebuild foo.src.rpm
+#   "fetch upstream sources from URL"       → spectool -g -R foo.spec
+#   "sign a finished RPM"                   → rpmsign --addsign foo.rpm
+#   "see what macros exist"                 → rpm --showrc
+
+
+CONTRIBUTOR PIPELINE (MOCK / FEDPKG / KOJI / COPR)
+--------------------------------------------------
+
+# TODO STUB — getting your RPM (covered in RPM PACKAGING above) into
+# fedora itself, or into a personal COPR. the official packaging
+# workflow.
+# expected content:
+#   - MOCK: chroot-based builds against any fedora / RHEL / EPEL
+#     release. install + base config + targets. how you verify a
+#     package builds cleanly on F44 / F45 / EPEL 9 from one machine.
+#   - PERSONAL COPR: copr-cli + a fedora account; upload your SRPM,
+#     get a public dnf-installable repo. the gentlest "share my RPMs"
+#     path.
+#   - FEDPKG: the official maintainer CLI for the dist-git workflow.
+#     clone / commit / build / co-maintain official fedora packages.
+#   - KOJI: the build system. official builds run there; you can
+#     watch jobs at koji.fedoraproject.org.
+#   - BODHI: the updates system. submit builds for updates-testing,
+#     karma, stable.
+#   - THE PATH from "I packaged this" to "I'm a co-maintainer":
+#     creating a package review bugzilla, sponsors, FAS account,
+#     pkgdb / dist-git setup.
+#   - cross-link to RPM PACKAGING.
 
 
 WHAT FEDORA WORKSTATION SHIPS BY DEFAULT
