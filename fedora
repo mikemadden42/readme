@@ -4595,23 +4595,402 @@ THE NEXT 5-10 YEARS — TRENDS SHAPING FEDORA
 MIGRATION FROM WINDOWS / MACOS
 ------------------------------
 
-# TODO STUB — on-ramp content for users coming from non-linux. pairs
-# with the WHY UBUNTU MIGRATES and WHY ARCH/NIX RETURN sections to
-# complete the migration narrative arc.
-# expected content:
-#   - filesystem mental model: no C:\, no Program Files, /home is your
-#     world, package manager replaces installers
-#   - DE mapping: GNOME Activities vs Win11 Start vs macOS Mission Control
-#   - keyboard shortcut translations (Super = Cmd / Win)
-#   - app equivalents: office, mail, calendar, screen sharing, RDP,
-#     photo library, music, video editing
-#   - what NOT to install (no antivirus, no driver-downloader)
-#   - terminal-first sysadmin: dnf instead of "next next finish"
-#   - dual-boot setup with windows (briefly — most don't need it)
-#   - migrating files from time machine / windows backups
-#   - the "things that just work better on linux" list to recognize wins
-#   - things that are genuinely worse and how to cope (creative suite,
-#     some games, vendor-specific tooling)
+# most fedora users don't come from another linux. they come from
+# windows or macos. this section is the on-ramp — what carries over,
+# what doesn't, where the cognitive shifts hit.
+
+
+# THE THREE BIG CONCEPTUAL SHIFTS
+
+# 1. PACKAGE MANAGER REPLACES INSTALLERS. you don't download .exe
+#    or .dmg files from websites. you `dnf install <package>` or
+#    use GNOME Software / Flathub. the package manager owns updates,
+#    integrity, signing, dependencies. there are NO autostarting
+#    update programs from individual apps.
+#
+# 2. THE HOST IS A SUBSTRATE. /home is your world; everything else
+#    is plumbing. you don't reinstall the OS to fix things; you
+#    snapshot, roll back, or rebuild a specific config. see SILVERBLUE
+#    section for where fedora is heading on this.
+#
+# 3. THE TERMINAL IS THE OPS INTERFACE. windows event viewer →
+#    `journalctl`. control panel → `gsettings` + `systemctl`.
+#    services.msc → `systemctl`. registry → `/etc` + dconf. you don't
+#    have to use it for daily work, but every problem you'll
+#    eventually google has a terminal answer.
+
+
+# WHAT TO DELIBERATELY NOT INSTALL
+
+# windows muscle memory will push you toward installing things you
+# absolutely don't need:
+#
+#   - ANTIVIRUS. linux's threat model is different. user-mode malware
+#     can't easily persist; the package manager verifies signatures;
+#     selinux confines services. ClamAV exists for mail-server
+#     scanning but desktop AV is unnecessary.
+#   - DRIVER DOWNLOADERS. driver installation is done by the kernel
+#     and `fwupd`. you don't go to dell.com / lenovo.com to download
+#     a chipset driver. firmware updates run via `fwupdmgr update`.
+#   - SYSTEM OPTIMIZERS / REGISTRY CLEANERS. no registry. no
+#     equivalent. don't run "system cleaner" scripts from the
+#     internet on linux — same advice applies as on windows but
+#     more so.
+#   - DEFRAGMENTERS. ext4 and btrfs handle fragmentation themselves.
+#     btrfs even has online defrag for the rare case (see [[btrfs]]).
+#   - PARTITION MANAGERS unless you actually need them. GParted exists
+#     for occasional resizing. day-to-day, never needed.
+
+
+# FILESYSTEM MENTAL MODEL
+
+# windows users:
+#   C:\               → /
+#   C:\Users\you      → /home/you
+#   C:\Program Files  → /usr (package-managed) + /opt (vendor-bundled)
+#   C:\Windows        → /usr (mostly)
+#   C:\ProgramData    → /var
+#   %APPDATA%         → ~/.config (and ~/.local/share)
+#   %TEMP%            → /tmp (cleared on reboot)
+#   Registry          → /etc (system) + ~/.config + dconf (per-user GNOME)
+#   Drive letters     → mount points under /mnt/ or /run/media/
+#
+# macos users:
+#   /                 → / (same; macos IS unix)
+#   /Users/you        → /home/you
+#   /Applications     → /usr/bin + /opt (no central "Applications"
+#                       folder; apps are just files in $PATH)
+#   ~/Library         → ~/.config + ~/.local + ~/.cache
+#   /System           → /usr (mostly)
+#   /Volumes          → /run/media/$USER
+#
+# the BIG one for both: there's no "install location" for apps. an app
+# is a name in $PATH plus config in ~/.config. uninstalling is
+# `dnf remove` (system packages) or `flatpak uninstall` (flatpaks) or
+# deleting the directory (manually-built tools).
+
+
+# DESKTOP ENVIRONMENT MAPPING
+
+# GNOME 47+ on fedora 44 is closer to MACOS than to windows. the
+# rough mapping:
+#
+#                       GNOME        Win11           macOS
+#   ─────────────────   ───────────  ─────────────   ──────────────────
+#   open everything     Activities   Start menu      Spotlight / Mission Control
+#   search apps         type to find type to find   Cmd+Space
+#   workspaces          horizontal   limited         Mission Control / spaces
+#   "minimize"          (hidden)     taskbar         dock
+#   "maximize"          double-click full-screen   green button
+#   alt-tab             Alt+Tab      Alt+Tab         Cmd+Tab
+#   switch workspace    Super+1..9   Win+Tab        Ctrl+1..9
+#   show desktop        Super+D      Win+D          F11 / Show Desktop
+#   notification panel  top-right    bottom-right   top-right
+#   settings            "Settings"   Settings app    System Settings
+#
+# KDE Plasma (Edition since F41) is closer to Win11 if you prefer that
+# paradigm. you can install both and pick at gdm login.
+
+
+# KEYBOARD TRANSLATIONS
+
+# the Super key (windows / cmd logo) is the modifier of choice on
+# GNOME. think of it as Cmd (mac) or Win (windows):
+#
+#   Super              open Activities (like Cmd-Space style)
+#   Super+L            lock screen
+#   Super+E            (none — files via Activities)
+#   Super+arrow        snap windows left/right/maximize
+#   Super+Page Up/Down switch workspace
+#   Super+Tab          switch apps (like Alt+Tab but for app classes)
+#   Alt+Tab            switch windows
+#   Ctrl+C / Ctrl+V    copy / paste — terminal uses Ctrl+Shift+C/V
+#
+# REMAPPING CAPS LOCK (the universal Mac/Linux power-user habit):
+#   Settings → Keyboard → Compose Key → "Caps Lock" (or use Tweaks
+#   for finer control).
+#   to remap to Escape (for vim users):
+gsettings set org.gnome.desktop.input-sources xkb-options \
+    "['caps:escape']"
+#   to remap to Ctrl:
+gsettings set org.gnome.desktop.input-sources xkb-options \
+    "['ctrl:nocaps']"
+
+
+# APP EQUIVALENTS
+
+#   Category               Windows/Mac                Fedora option(s)
+#   ────────────────────   ───────────────────────    ──────────────────────────────
+#   Office docs            MS Office / iWork          LibreOffice (preinstall),
+#                                                     OnlyOffice, web Office 365
+#   Mail                   Outlook / Mail.app         Geary, Evolution, Thunderbird,
+#                                                     or web (Gmail / Outlook web)
+#   Calendar               native cal apps            GNOME Calendar, Evolution
+#   Browser                Edge / Safari              Firefox (preinstall),
+#                                                     Chromium, Brave
+#   Password manager       built-in / 1Password       Bitwarden, 1Password (native
+#                                                     linux app), KeePassXC
+#   Notes                  OneNote / Notes.app        Joplin, Obsidian (flatpak),
+#                                                     Logseq, plain-text + neovim
+#   Photo library          Photos                     Loupe (viewer), Shotwell, Digikam
+#   RAW editing            Lightroom                  Darktable, RawTherapee
+#   Image editing          Photoshop                  GIMP, Krita, web Photopea
+#   Vector / illustration  Illustrator                Inkscape
+#   Video editing          Premiere / iMovie          Kdenlive, DaVinci Resolve
+#                                                     (free version, native linux)
+#   Music                  Spotify / Apple Music      Spotify (native + flatpak),
+#                                                     Lollypop, Rhythmbox, web
+#   Video player           VLC / QuickTime            VLC, Celluloid, mpv
+#   PDF                    Acrobat                    Evince, Okular, xournal++
+#   Screenshot             built-in                   GNOME Screenshot (Print key),
+#                                                     Flameshot (annotations)
+#   Screen recording       Win+G / QuickTime          GNOME (Ctrl+Shift+Alt+R), OBS
+#   Chat                   Teams / Slack / Discord    web, native flatpaks of each
+#   Video calls            Zoom / Teams / FaceTime    Zoom (flatpak), Teams web,
+#                                                     no FaceTime (use Signal / Jitsi)
+#   Remote desktop         RDP / Screen Sharing       Remmina (RDP/VNC/SPICE client),
+#                                                     GNOME Remote Desktop (host)
+#   Cloud storage          OneDrive / iCloud Drive    Nextcloud, web clients,
+#                                                     rclone for any cloud
+#   Backup                 File History / Time Machine borg / restic (see BACKUPS)
+#   IDE                    Visual Studio / Xcode      VS Code (native + flatpak),
+#                                                     JetBrains Toolbox, Zed, neovim
+#   Password recovery      forget password → reset     KeePassXC / Bitwarden recovery
+
+
+# CLOUD / SYNC ECOSYSTEM
+
+# good news: most cloud services work via web. the native client
+# story is uneven:
+#
+#   - DROPBOX        — official linux client. RPM available from
+#                      dropbox.com or via repo.
+#   - GOOGLE DRIVE   — no official linux client. options: rclone
+#                      (CLI), Insync (paid GUI), GNOME Online Accounts
+#                      integration (mounts as a filesystem in nautilus).
+#   - ONEDRIVE       — no official linux client. options: rclone,
+#                      OneDriver (FUSE), abraunegg/onedrive (CLI sync),
+#                      web.
+#   - ICLOUD DRIVE   — web only. no native client. files lose iCloud
+#                      sync; export them out before migrating.
+#   - PROTON DRIVE   — official linux client (2024+).
+#
+# pragmatic suggestion: standardize on ONE cloud you actually need
+# (probably dropbox or nextcloud), web-access the rest, and use
+# rclone for any "I need this synced to that bucket" scripting.
+
+
+# MAC-SPECIFIC FRICTION
+
+# things that work differently coming from macos:
+#
+#   - NO ICLOUD ECOSYSTEM. messages, facetime, airdrop, handoff,
+#     universal clipboard — none of this works. Signal / Matrix
+#     for messages; KDE Connect / GS Connect for phone integration
+#     (works with android well, with iPhone limited).
+#   - NO APPLESCRIPT / AUTOMATOR. shell scripts replace both. for
+#     macro-style "watch for window state" automation, you want
+#     AT-SPI accessibility APIs or compositor-specific hotkeys.
+#   - NO SYSTEM-WIDE SPELL CHECK like macos. apps integrate
+#     `hunspell` or `enchant`; works in most modern editors and
+#     browsers but isn't system-wide.
+#   - DIFFERENT KEYBOARD LAYOUT. mac keyboards label Option / Cmd
+#     where linux expects Alt / Super. physically the keys swap on
+#     external Apple keyboards. some users remap.
+#   - NO MISSION CONTROL EXACTLY. GNOME Activities is the closest;
+#     conceptually similar but different gesture.
+#   - HOMEBREW HABITS. you can install brew on linux if you really
+#     want, but `dnf` covers 95% of what brew covered for you, and
+#     flatpak covers the rest. resist the urge.
+
+
+# WINDOWS-SPECIFIC FRICTION
+
+# things that work differently coming from windows:
+#
+#   - NO ADOBE CREATIVE CLOUD NATIVE. Photopea (web), GIMP, Krita,
+#     Inkscape, Kdenlive, DaVinci Resolve fill most of the gap.
+#     Lightroom RAW workflow: Darktable is the daily replacement;
+#     RawTherapee for specific cases.
+#   - GAMES THAT USE EAC / KERNEL ANTI-CHEAT may not work via
+#     proton. check protondb.com for your title before assuming.
+#     casual / single-player / valve-friendly games: almost always
+#     fine. competitive multiplayer with kernel anti-cheat: hit-or-
+#     miss. see GAMING stub.
+#   - SOME ENTERPRISE VPN CLIENTS (cisco anyconnect, palo alto
+#     globalprotect, fortinet) have native linux clients but with
+#     different UX. OpenConnect handles cisco well.
+#   - NO MS OFFICE NATIVE. for casual work, LibreOffice or web 365
+#     is fine. for heavy collab on .docx with track changes:
+#     OnlyOffice has the best compatibility. or run office in a
+#     VM (see VIRTUAL MACHINES).
+#   - DIFFERENT FILE PATH CONVENTIONS. forward slashes, case-
+#     sensitive filenames, no drive letters. paste a path from
+#     a windows app to a linux app → may need conversion.
+#   - NO BUILT-IN TEAMS / DEFAULT TEAMS HARDWARE. use teams web
+#     (works fine) or the linux flatpak (limited features).
+
+
+# TERMINAL-FIRST SYSADMIN HABITS
+
+# the terminal commands you'll use most often, mapped from gui muscle
+# memory:
+#
+#   "what process is using my CPU"  → htop / btop / top
+#   "what's listening on a port"    → ss -tlnp
+#   "view system logs"              → journalctl -xb / journalctl -fu <service>
+#   "service is broken"             → systemctl status <service>
+#   "restart a service"             → sudo systemctl restart <service>
+#   "check disk usage"              → df -h, du -sh, ncdu, dust
+#   "find a file"                   → find / fd / locate
+#   "search file contents"          → grep / ripgrep
+#   "what's eating my RAM"          → free -h, htop's M sort
+#   "kill an app"                   → killall <name>, xkill not on wayland
+#
+# you don't HAVE to memorize these. GNOME Settings + GNOME Software +
+# System Monitor cover most needs. but every google answer for a real
+# problem will be a terminal command. accept that and you'll move
+# faster.
+
+
+# DUAL-BOOT WITH WINDOWS — BRIEFLY
+
+# common question, rarely the right answer in 2026. dual-boot was
+# essential when linux gaming was bad and VMs were slow. now:
+#   - VMs run windows well enough for most users (see VIRTUAL MACHINES)
+#   - proton runs most games well enough (see GAMING stub)
+#   - office and adobe have web versions
+#
+# if you DO dual-boot:
+#   - install windows FIRST, fedora second. windows' bootloader
+#     overwrites fedora's; fedora's grub respects windows.
+#   - leave 50+ GB unallocated when installing windows so fedora has
+#     room.
+#   - fedora's anaconda installer will auto-detect windows and add
+#     it to grub.
+#   - keep separate filesystems. don't try to share home dirs across
+#     OSes — NTFS works for data sharing if you must.
+
+
+# THINGS THAT GENUINELY WORK BETTER ON LINUX
+
+# real wins worth recognizing so you know you've gained something:
+#
+#   - PACKAGE MANAGEMENT. one command updates everything; no
+#     individual app self-updaters; no "click here to update" popups.
+#   - TERMINAL. a real shell with a real package ecosystem.
+#     wsl tried to bring this to windows; it's still less integrated
+#     than the native thing.
+#   - NO ADS IN THE OS. no "did you know you can try edge" nags,
+#     no recommendations on the start menu, no game ads in the
+#     control panel.
+#   - UPDATES THAT DON'T HIJACK YOUR DAY. fedora upgrades run when
+#     you tell them to. no "updating, do not turn off your PC"
+#     for 45 minutes.
+#   - DEV ENVIRONMENT. installing a development stack on linux is
+#     measured in minutes, not hours. see SHELL AND DEV-ENVIRONMENT.
+#   - CUSTOMIZATION. GNOME extensions, KDE customization, window
+#     manager tiling, any keyboard layout you want.
+#   - REMOTE ADMINISTRATION. ssh into anything; full system access
+#     from a phone.
+#   - WORKSPACES THAT ACTUALLY WORK. macos and windows both have
+#     workspaces but they're awkward; GNOME's horizontal workspace
+#     paradigm is genuinely good once you adapt.
+
+
+# THINGS THAT ARE WORSE — AND HOW TO COPE
+
+# 1. ADOBE CREATIVE CLOUD. no native support. cope:
+#    - photopea.com for raster editing (web)
+#    - GIMP for daily raster (free)
+#    - Darktable for Lightroom-style RAW workflow
+#    - Inkscape for Illustrator-style vector work
+#    - DaVinci Resolve free for Premiere-style video editing
+#    - Krita for digital art
+#    - if you MUST run Photoshop: windows VM with GPU passthrough,
+#      see VIRTUAL MACHINES.
+#
+# 2. SPECIFIC GAMES. proton handles ~80% of windows games. the 20%
+#    that don't work are usually competitive multiplayer with kernel
+#    anti-cheat. check protondb.com before assuming.
+#
+# 3. SOME VENDOR-SPECIFIC TOOLS. if your bank requires a specific
+#    java applet, or your university uses a tool that's windows-only,
+#    keep a windows VM for those occasions.
+#
+# 4. ICLOUD ECOSYSTEM (mac users). there's no full replacement.
+#    Signal + Matrix + KDE Connect get you close. accept the loss.
+#
+# 5. SOME COLOR-MANAGED WORKFLOWS. photography / print workflow
+#    color management on linux works but is more manual than macos.
+#    Darktable + colord + display calibration probes (DisplayCAL) get
+#    you there; expect 1-2 evenings of setup.
+#
+# 6. SLEEP/RESUME ON SOME HARDWARE. windows has tighter integration
+#    with vendor firmware for s0ix (modern standby). on some laptops
+#    linux sleep is less battery-efficient. see POWER MANAGEMENT;
+#    `fwupdmgr update` to firmware-update first.
+
+
+# MIGRATING YOUR ACTUAL FILES
+
+# windows backup → fedora:
+#   - external drive with copied folders → mount + rsync
+#   - File History backups → restore on a windows machine first,
+#     then copy the data over
+#   - cloud-based (OneDrive web, Dropbox, etc.) → log in on fedora
+#     and re-sync
+#   - direct windows → linux copy via NTFS: install `ntfs-3g`
+#     (preinstalled), mount the partition, copy out
+
+# macos backup → fedora:
+#   - Time Machine: backups are HFS+ or APFS. restore on a mac first,
+#     copy to an external drive in exfat or NTFS, then copy to linux.
+#     OR: use `apfs-fuse` (third-party, less reliable) to read APFS
+#     directly on linux.
+#   - cloud (iCloud Drive web export, Dropbox, etc.) → log in on
+#     fedora.
+#   - direct mac → linux: format an external drive as exFAT, copy
+#     files via Finder, plug into linux.
+
+
+# FIRST-WEEK SANITY CHECKS
+
+# things to verify work on YOUR hardware before assuming the migration
+# is solid:
+#
+#   - wifi connects + survives suspend
+#   - bluetooth pairs + audio routes correctly (see AUDIO)
+#   - suspend / resume works (see POWER MANAGEMENT)
+#   - brightness keys work + persist across reboots
+#   - microphone works in zoom or meet
+#   - external monitor detected; if multi-monitor, layout is correct
+#   - touchpad gestures work (3-finger swipe for workspaces)
+#   - HiDPI scales sanely (200% if hi-res, fractional otherwise)
+#   - fwupd has no critical pending updates: `fwupdmgr get-updates`
+#   - print to your usual printer (see PRINTING / SCANNING stub)
+#   - your password manager works
+#   - your two-factor auth (yubikey, etc) works
+
+
+# WHEN TO PERSIST AND WHEN TO BAIL
+
+# most migration issues resolve in week one. give it 3-4 weeks of
+# real work before judging. expect the first week to feel slower —
+# you're re-learning muscle memory. by week 4 you should be at the
+# productivity of your previous OS, with strict improvements in
+# package management, terminal, customization, and absence of ads.
+#
+# the migrations that DON'T stick are usually:
+#   - users dependent on a specific adobe / autodesk / lightroom
+#     workflow they're unwilling to substitute
+#   - users dependent on competitive multiplayer gaming with kernel
+#     anti-cheat
+#   - users in highly-vendor-locked corporate environments
+#
+# none of these are wrong reasons to bail. linux isn't a religion.
+# but most users find the migration sticks once the initial friction
+# fades.
 
 
 WHY UBUNTU USERS MIGRATE TO FEDORA
