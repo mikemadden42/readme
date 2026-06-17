@@ -1,0 +1,378 @@
+# fedora — distro primer
+#
+# fedora is the upstream feeder for RHEL: a 6-month-cadence point-release
+# distro maintained by Red Hat with heavy community involvement. each
+# release is supported for ~13 months (current + previous), so you upgrade
+# roughly once a year and have a 1-month grace window. fedora 44 (current)
+# is supported through May 2026.
+#
+# default stack on a fresh Workstation install:
+#
+#   - GNOME on Wayland (Plasma + others are official Spins)
+#   - btrfs root (since F33), with @ / @home subvolumes inside; ext4 still
+#     an option in anaconda for those who pick it
+#   - LUKS root encryption offered in the installer (off by default on
+#     Workstation; some derivatives default to on)
+#   - systemd everywhere
+#   - NetworkManager
+#   - firewalld (zone-based; FedoraWorkstation zone by default)
+#   - SELinux ENFORCING (don't disable it; targeted policy is fine)
+#   - PipeWire for audio (replaced pulseaudio as default)
+#   - dnf5 from Fedora 41 onwards (native C++ rewrite of dnf4 — see [[dnf]])
+#   - GRUB2 + BootLoaderSpec (per-kernel .conf files in /boot/loader/entries/)
+#
+# editions worth knowing:
+#
+#   - Workstation       — GNOME desktop. the default
+#   - KDE Spin / Plasma — official KDE edition (promoted to Edition in F42)
+#   - Server            — text-mode + cockpit web UI; xfs root (not btrfs)
+#   - Silverblue        — immutable Workstation, rpm-ostree atomic updates
+#   - Kinoite           — immutable KDE, same model as Silverblue
+#   - Sericea / Onyx    — immutable Sway / Budgie
+#   - CoreOS            — minimal, auto-updating, container-host focused
+#   - IoT               — ostree-based, ARM/x86 for edge devices
+#   - Spins             — XFCE, MATE, Cinnamon, LXQt, i3, etc.
+#   - Labs              — purpose-built bundles (Astronomy, Robotics,
+#                         Comp Neuro, Design Suite, ...)
+
+
+RELEASE / UPGRADE
+-----------------
+
+# fedora is point-release. you upgrade in place between versions with the
+# system-upgrade plugin (the supported path — DON'T just edit /etc/dnf/dnf.conf
+# and `dnf upgrade` your way across, that's the partial-upgrade trap).
+
+# refresh, install the plugin (already shipped on F41+), and pull the new
+# release's packages WITHOUT applying them:
+sudo dnf upgrade --refresh
+sudo dnf install dnf5-plugin-system-upgrade        # F41+; on F40 it's dnf-plugin-system-upgrade
+sudo dnf system-upgrade download --releasever=45   # pick the target release
+
+# stage the actual upgrade — reboots into a special target that performs
+# the rpm transactions, then reboots again into the new system
+sudo dnf system-upgrade reboot
+
+# what to do BEFORE the system-upgrade:
+#   - merge .rpmnew / .rpmsave files in /etc:
+sudo find /etc -name '*.rpmnew' -o -name '*.rpmsave'
+#   - check release notes for known breakage:
+#       fedoraproject.org/wiki/Releases/<n>/ChangeSet
+#       discussion.fedoraproject.org (Common Issues thread)
+#   - snapshot if you're on btrfs and have snapper / timeshift configured
+
+# check current release:
+cat /etc/fedora-release
+rpm -E %fedora                                      # just the number
+
+# remember: skipping releases is supported (F43 → F45) but not RECOMMENDED.
+# the more versions you cross the more likely some package combination
+# trips the resolver. one hop at a time is the safe path.
+
+
+GRUB — SHOWING THE MENU, MANAGING KERNELS
+-----------------------------------------
+
+# fedora ships GRUB2 with two layers of menu-hiding stacked on top of each
+# other, which is why "I want to see the menu on boot" is a recurring
+# fedora question. the layers:
+#
+#   1. /etc/default/grub        — GRUB_TIMEOUT_STYLE / GRUB_TIMEOUT
+#   2. grubenv `menu_auto_hide` — fedora-specific "hide if last boot OK"
+#
+# you have to defeat BOTH to get a reliable menu on every boot.
+
+
+# THE FIX (do all three for a permanent visible menu):
+
+# 1. edit /etc/default/grub:
+sudo vi /etc/default/grub
+#    set or add:
+#       GRUB_TIMEOUT_STYLE=menu          (default: "hidden" — this is the key flag)
+#       GRUB_TIMEOUT=5                   (seconds; -1 = wait indefinitely for input)
+#       GRUB_DISABLE_SUBMENU=true        (flatten "Advanced options" so EVERY
+#                                         kernel shows at the top level instead
+#                                         of being hidden in a submenu)
+#       GRUB_DEFAULT=saved               (default is "saved" — remembers your
+#                                         last selection. 0 = always first entry)
+
+# 2. regenerate grub.cfg. on fedora 34+ the path is unified for BIOS + UEFI:
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+#    older UEFI installs may still use:
+#       sudo grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg
+#    check which one exists on your system if the first command's output
+#    looks too small.
+
+# 3. disable fedora's auto-hide (the bit that hides the menu when the
+#    PREVIOUS boot succeeded — independent of GRUB_TIMEOUT_STYLE):
+sudo grub2-editenv - list                          # see current vars
+sudo grub2-editenv - unset menu_auto_hide          # show menu every boot
+sudo grub2-editenv - unset boot_success            # clear the "last boot ok" flag
+sudo grub2-editenv - unset boot_indeterminate      # clear "boot uncertain" flag
+
+# verify after reboot. if the menu still hides, check `boot_success` keeps
+# getting set — it's written by the user-systemd unit grub-boot-success.timer
+# (~2.5 minutes after login). mask it if you want to be extra sure:
+systemctl --user mask grub-boot-success.timer
+
+
+# ONE-SHOT SHOW MENU AT BOOT (no config changes):
+#   - UEFI: hold/tap Esc (or F8 on some firmware) at POST
+#   - BIOS legacy: hold Shift
+# Shift on UEFI usually does NOT work — common source of "I tried shift and
+# nothing happened". use Esc on modern hardware.
+
+
+# UNDERSTANDING THE MENU ENTRIES — BootLoaderSpec:
+
+# since fedora 30, GRUB entries are NOT generated into grub.cfg the old
+# way. instead each kernel is a separate .conf file in /boot/loader/entries/.
+# the kernel package install drops a file there; GRUB discovers them at
+# boot. NO grub2-mkconfig needed when a new kernel lands.
+ls /boot/loader/entries/
+cat /boot/loader/entries/*.conf | head -30
+
+# the format (one entry per .conf):
+#   title    Fedora Linux 44 (Workstation Edition) (6.11.4-200.fc44.x86_64)
+#   version  6.11.4-200.fc44.x86_64
+#   linux    /vmlinuz-6.11.4-200.fc44.x86_64
+#   initrd   /initramfs-6.11.4-200.fc44.x86_64.img
+#   options  root=UUID=... ro rhgb quiet ...
+#   grub_users $grub_users
+#   grub_arg --unrestricted
+#   grub_class fedora
+
+
+# `grubby` IS THE TOOL for managing these entries (don't hand-edit):
+
+# list every installed kernel entry
+sudo grubby --info=ALL
+
+# show just the default
+sudo grubby --default-kernel
+sudo grubby --default-index
+sudo grubby --default-title
+
+# set a different default
+sudo grubby --set-default=/boot/vmlinuz-6.11.4-200.fc44.x86_64
+sudo grubby --set-default-index=2
+
+# add a kernel command-line argument permanently (writes to every entry
+# AND to /etc/kernel/cmdline so future kernels get it too)
+sudo grubby --update-kernel=ALL --args='quiet splash'
+
+# remove an argument
+sudo grubby --update-kernel=ALL --remove-args='quiet'
+
+# remove a specific kernel entry (rare — usually let dnf handle it)
+sudo grubby --remove-kernel=/boot/vmlinuz-6.10.3-200.fc44.x86_64
+
+
+# KERNEL RETENTION — how many show up in the menu:
+
+# fedora keeps the most recent 3 kernels by default. controlled by:
+grep installonly_limit /etc/dnf/dnf.conf            # default: 3
+#    bump it if you want more rollback options:
+#       installonly_limit=5
+
+# the rescue entry is generated once at install time as a special BLS
+# entry — it's a kernel + initramfs frozen at install. don't expect it
+# to track your current kernel. regenerate after a major upgrade:
+sudo /etc/kernel/install.d/51-dracut-rescue.install add \
+    $(uname -r) /boot $(uname -r)/initrd
+
+
+# QUICK MENU INSPECTION:
+sudo grub2-editenv - list                           # grubenv vars
+sudo grubby --info=ALL | grep -E '^(index|title)='  # what the menu will show
+ls /boot/loader/entries/                            # BLS entry files
+cat /etc/default/grub                               # high-level config
+cat /etc/kernel/cmdline                             # default cmdline for new kernels
+
+
+# RECOMMENDED CONFIG for "show me everything, every boot":
+#
+#   /etc/default/grub:
+#       GRUB_TIMEOUT_STYLE=menu
+#       GRUB_TIMEOUT=5
+#       GRUB_DISABLE_SUBMENU=true
+#       GRUB_DEFAULT=saved
+#
+#   grubenv:
+#       sudo grub2-editenv - unset menu_auto_hide
+#
+#   then:
+#       sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+#       reboot
+
+
+REPOS — OFFICIAL, RPM FUSION, COPR, FLATHUB
+-------------------------------------------
+
+# stock fedora repos cover free software only. enable these for the
+# common "I want chrome / nvidia / mp3 codecs" needs:
+
+# 1. RPM Fusion (free + nonfree codecs, multimedia, nvidia drivers):
+sudo dnf install \
+    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+# 2. flathub (cross-distro app sandboxing). fedora preconfigures a
+#    filtered subset; add full flathub for everything:
+flatpak remote-add --if-not-exists flathub \
+    https://flathub.org/repo/flathub.flatpakrepo
+flatpak remote-modify --enable flathub
+
+# 3. COPR (community per-developer repos — same idea as the AUR, but with
+#    binaries built on koji infrastructure):
+sudo dnf copr enable user/project
+sudo dnf install <pkg>
+
+# multimedia codecs — the one-time setup most people want post-install:
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing
+sudo dnf install gstreamer1-plugins-{bad-\*,good-\*,base} gstreamer1-plugin-openh264 \
+    gstreamer1-plugins-bad-free-extras lame\* --exclude=gstreamer1-plugins-bad-free-devel
+
+
+SELINUX — KEEP IT ENFORCING
+---------------------------
+
+# fedora's SELinux policy is mature. the right answer to AVC denials is
+# almost never "permissive" or "disabled" — it's usually a missing label
+# (`restorecon`) or a small policy adjustment (`audit2allow`).
+
+# check status
+sestatus
+getenforce                                          # Enforcing / Permissive / Disabled
+
+# investigate recent denials
+sudo ausearch -m AVC -ts recent
+sudo journalctl -b -t setroubleshoot
+
+# auto-suggested fixes (read before applying)
+sudo sealert -a /var/log/audit/audit.log
+
+# common fix: relabel a file/dir to its policy-expected context
+sudo restorecon -Rv /path/to/thing
+
+# temporary permissive (next boot back to enforcing — useful for triage)
+sudo setenforce 0
+
+# DON'T disable in /etc/selinux/config unless you know exactly why.
+# disabled SELinux means an unlabeled filesystem; turning it back on
+# requires an autorelabel boot.
+
+
+FIREWALLD — ZONE-BASED FIREWALL
+-------------------------------
+
+# fedora ships firewalld enabled with the FedoraWorkstation zone.
+# day-to-day usage:
+
+# show what's active
+sudo firewall-cmd --get-active-zones
+sudo firewall-cmd --list-all                        # default zone
+sudo firewall-cmd --list-all --zone=public
+
+# open a port — twice (--permanent for survival, no --permanent for live)
+sudo firewall-cmd --add-port=8080/tcp
+sudo firewall-cmd --add-port=8080/tcp --permanent
+
+# or in one command with auto-reload
+sudo firewall-cmd --add-port=8080/tcp --permanent && sudo firewall-cmd --reload
+
+# allow a service by name (curated list in /usr/lib/firewalld/services)
+sudo firewall-cmd --add-service=http --permanent
+sudo firewall-cmd --reload
+
+# zone assignment for an interface (default: tied to NetworkManager profile)
+sudo firewall-cmd --zone=trusted --change-interface=virbr0 --permanent
+
+
+NVIDIA DRIVERS — RPM FUSION PATH
+--------------------------------
+
+# install the kmod (Akmod auto-builds for new kernels via dkms-like mech):
+sudo dnf install akmod-nvidia xorg-x11-drv-nvidia-cuda
+
+# wait ~5 minutes after install for akmod-build to finish, then reboot.
+# verify the kmod was built:
+modinfo -F version nvidia
+
+# common nvidia + fedora gotcha: secure boot. nvidia kmod is unsigned
+# unless you enroll a MOK. either disable secure boot in firmware, or:
+sudo mokutil --import /var/lib/dkms/mok.pub
+#    reboot, enroll the key in shim's MokManager prompt with the
+#    password mokutil asked for.
+
+
+SECURE BOOT — NOTES
+-------------------
+
+# fedora's shim is signed by Microsoft, so secure boot works out of the
+# box for the default kernel and the shipped grub. third-party kmods
+# (nvidia, virtualbox, dkms-built modules) need signing. options:
+#   - disable secure boot in firmware (simplest, least secure)
+#   - enroll a MOK and sign kmods (correct path; see above)
+#   - use sbctl to manage your own keys (advanced)
+
+# verify state:
+mokutil --sb-state                                  # SecureBoot enabled / disabled
+mokutil --list-enrolled
+
+
+HARDWARE / FIRMWARE — fwupd
+---------------------------
+
+# LVFS (the linux vendor firmware service) is wired up out of the box.
+# check / apply firmware updates from userspace, no reboot to firmware
+# update utility:
+fwupdmgr get-devices                                # what's reported
+fwupdmgr refresh                                    # pull metadata
+fwupdmgr get-updates                                # what's available
+sudo fwupdmgr update                                # apply (reboots into UEFI for some)
+
+
+COMMON POST-INSTALL CHECKLIST (Workstation)
+-------------------------------------------
+
+# 1. update fully + reboot
+sudo dnf upgrade --refresh -y
+sudo reboot
+
+# 2. enable RPM Fusion (free + nonfree, see REPOS above)
+
+# 3. multimedia codecs (see REPOS above)
+
+# 4. flathub (full, not filtered — see REPOS above)
+
+# 5. dev tools
+sudo dnf groupinstall "Development Tools" "Development Libraries"
+sudo dnf install gh git-delta neovim tmux zsh ripgrep fd-find bat fzf jq htop
+
+# 6. languages / runtimes (pick what you use)
+sudo dnf install python3 python3-pip nodejs npm golang rust cargo clang cmake
+
+# 7. containers — fedora's blessed path is podman + toolbox/distrobox
+sudo dnf install podman podman-compose toolbox
+
+# 8. fonts (default fedora set is good; these fill common gaps)
+sudo dnf install jetbrains-mono-fonts cascadia-code-fonts \
+    google-noto-emoji-fonts liberation-fonts
+
+# 9. firewall — usually fine as-is. open ports only as needed.
+
+# 10. fwupd metadata refresh (see HARDWARE above)
+
+
+SEE ALSO
+
+# - [[dnf]]                — package manager (this is the big primer)
+# - [[rpm]]                — low-level rpm queries (verify, files, sigs)
+# - [[btrfs]]              — fedora's default root fs since F33
+# - [[luks]]               — disk encryption (fedora workstation opt-in)
+# - [[grub]]               — brief grub one-liner (this primer's GRUB section
+#                            covers fedora specifically in depth)
+# - [[arch-distros]]       — the rolling-release alternative family
+# - [[fedora-to-endeavouros]] — migration primer (kept as reference; not the
+#                            user's current path)
