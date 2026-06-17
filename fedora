@@ -1546,6 +1546,100 @@ fwupdmgr get-updates                                # what's available
 sudo fwupdmgr update                                # apply (reboots into UEFI for some)
 
 
+OEMs THAT SHIP FEDORA PREINSTALLED
+----------------------------------
+
+# the list is shorter than ubuntu's. one major OEM ships fedora as a
+# factory option; a few boutique vendors offer it among others.
+
+
+# LENOVO — THE ONLY TOP-TIER OEM SHIPPING FEDORA
+
+# lenovo started shipping fedora as a factory option around 2020. as
+# of 2026 the lineup covers most of their pro / dev-oriented laptops:
+#
+#   ThinkPad X1 Carbon (Gen 8+) — the flagship fedora preinstall option
+#   ThinkPad P series           — mobile workstations (P14s, P15s, P1,
+#                                 P15, P16). original certification target.
+#   ThinkPad T series           — added over time (T14, T16, etc.)
+#   ThinkStation P series       — desktop workstations (some configs)
+#
+# available primarily in US + select EU markets. lenovo's linux
+# engineering team works directly with the fedora project on hardware
+# enablement, fwupd / LVFS coverage, and upstream kernel support.
+
+
+# DELL — UBUNTU, NOT FEDORA
+
+# dell's "Project Sputnik" / XPS Developer Edition has shipped Linux
+# since 2012, but it's UBUNTU LTS. dell precision workstations are
+# RHEL-certified but ship with windows or ubuntu. dell has been the
+# LARGEST CONTRIBUTOR to fwupd / LVFS — so even though they don't
+# ship fedora as factory OS, fedora users on dell hardware benefit
+# from their firmware-update work daily.
+
+
+# HP — TRIED, DISCONTINUED
+
+# HP made one notable attempt: the HP Dev One (2022), which shipped
+# with Pop!_OS (System76's ubuntu-based distro). discontinued. HP Z
+# workstations are RHEL-certified but ship windows. no fedora factory
+# option currently.
+
+
+# BOUTIQUE LINUX VENDORS (not top-tier OEMs but real options)
+
+# - Framework Laptop  — modular, officially supports fedora; has
+#                       fedora-specific docs and works with the project
+#                       on hardware enablement. typically ship DIY or
+#                       with another distro; install fedora yourself.
+# - Slimbook (Spain)  — fedora as a configuration option
+# - Star Labs (UK)    — fedora as an option among several distros
+# - TUXEDO (Germany)  — primarily TUXEDO OS but fedora available
+# - System76          — ship pop!_OS only; not a fedora option, but
+#                       hardware works fine if you install fedora.
+
+
+# WHY SO FEW FEDORA OEM PARTNERS vs UBUNTU?
+
+# three structural reasons:
+#
+# 1. SUPPORT WINDOW MATH. ubuntu LTS gives OEMs a 5-year support
+#    contract horizon to commit to drivers, certifications, and customer
+#    support. fedora's 13-month support window would require
+#    re-certification annually. ubuntu LTS is easier business.
+#
+# 2. CANONICAL HAS A COMMERCIAL OEM PROGRAM. they actively pursue
+#    OEM deals with paid support contracts. red hat focuses commercial
+#    OEM work on RHEL (servers / workstations), not fedora — fedora
+#    is positioned as upstream community work, not a commercial product.
+#
+# 3. IMAGE STABILITY. a 6-month release cadence makes it hard for an
+#    OEM to ship "the version we tested" — by the time the laptop hits
+#    shelves, fedora has moved.
+
+
+# WHAT THIS MEANS PRACTICALLY
+
+# if you want a laptop that ships with fedora out of the box, lenovo
+# ThinkPad X1 Carbon or P-series is essentially the only mainstream
+# answer.
+#
+# most fedora users buy hardware (often a thinkpad or framework) and
+# install fedora themselves. the fedora workstation HCL and LVFS
+# coverage make this very smooth on modern x86:
+#
+#   https://fedoraproject.org/wiki/Workstation/HCL
+#   fwupdmgr get-devices                       # see if your hardware
+#                                              # has LVFS firmware coverage
+#
+# the practical pattern: pick hardware where dell / lenovo / framework
+# have firmware on LVFS (most modern thinkpads, latitudes, frameworks,
+# many xps models, some HP elitebooks), install fedora yourself, and
+# you'll have a near-identical experience to a factory preinstall plus
+# silent firmware updates via fwupd.
+
+
 FINGERPRINT READER (LAPTOPS)
 ----------------------------
 
