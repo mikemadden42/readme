@@ -5636,20 +5636,185 @@ WHY FEDORA — A NOTE ON THE LINUS PERSPECTIVE
 WHERE TO GO WHEN STUCK
 ----------------------
 
-# TODO STUB — community resources for when documented fixes don't apply.
-# expected content:
-#   - bugzilla.redhat.com — file bugs against fedora
-#   - discussion.fedoraproject.org — the modern forum (replaces the old
-#     fedoraforum.org)
-#   - ask.fedoraproject.org — Q&A
-#   - matrix: #fedora:fedoraproject.org and topic-specific rooms
-#   - IRC: #fedora on libera.chat (still active)
-#   - fedoramagazine.org — articles, "what's new" posts
-#   - mailing lists: devel, users, test
-#   - per-release Common Issues threads (see UPGRADE STRATEGY)
-#   - reading the source: pkgs.fedoraproject.org for spec files
-#   - escalation discipline: triage the problem; isolate the change;
-#     produce a minimal reproducer before filing
+# the primer covers the documented fixes for common problems. when
+# you're outside that — a regression, a niche hardware bug, something
+# nobody has written up — this is the map.
+
+
+# THE OFFICIAL CHANNELS, RANKED BY HOW OFTEN YOU'LL USE THEM
+
+# 1. DISCUSSION.FEDORAPROJECT.ORG
+#    the modern forum. discourse-based. replaces the old fedoraforum.org
+#    and largely supersedes ask.fedoraproject.org. categories:
+#       - Common Issues (per-release; canonical for known release bugs)
+#       - Workstation / KDE / Server / Atomic Desktops (per-edition help)
+#       - Project Discussion (policy, governance)
+#       - End user support / Ask in English
+#    if you ask one place, ask here. high signal-to-noise. searchable.
+#    most volunteer answers within hours.
+
+# 2. ASK.FEDORAPROJECT.ORG
+#    legacy Q&A forum. still active but quieter than discussion.
+#    fine for searching old answers; less useful for new questions.
+
+# 3. BUGZILLA.REDHAT.COM (component: fedora)
+#    the bug tracker. file here when:
+#       - you've reproduced the bug
+#       - it's NOT documented in the per-release Common Issues thread
+#       - your problem looks like a package bug, not a config issue
+#    don't file there for "how do I…" questions. those go to discussion.
+
+# 4. FEDORAMAGAZINE.ORG
+#    articles, release announcements, "What's new in Fedora N" posts.
+#    not a support venue but invaluable for "what changed and why" in
+#    a recent release. RSS-subscribe it.
+
+# 5. PER-RELEASE COMMON ISSUES THREADS
+#    pinned at discussion.fedoraproject.org/c/announcements/ for every
+#    release. canonical "what just landed, what's broken, what to do
+#    about it" — maintainers post hotfixes there for the first 24-72h
+#    after a stable push. SEE UPGRADE STRATEGY section.
+
+
+# CHAT — REAL-TIME HELP
+
+# MATRIX (the modern stack):
+#   - #fedora:fedoraproject.org              — general
+#   - #fedora-workstation:fedoraproject.org  — workstation
+#   - #fedora-kde:fedoraproject.org          — KDE
+#   - #fedora-silverblue:fedoraproject.org   — atomic desktops
+#   - #fedora-arm:fedoraproject.org          — ARM
+#   - #fedora-iot:fedoraproject.org          — IoT
+#   - #fedora-meeting:fedoraproject.org      — official meeting room
+#
+# join via element.io, fluffychat, or any matrix client. accounts
+# free at matrix.org or fedoraproject.org's homeserver.
+
+# IRC (still active, bridged to matrix):
+#   - #fedora on libera.chat
+#   - #fedora-devel for development
+#   - #fedora-meeting for governance meetings
+
+# DISCORD (smaller, more casual):
+#   - Fedora has unofficial Discord servers for general community
+
+
+# MAILING LISTS — FOR DEVS AND DEEP-DIVE DISCUSSIONS
+
+# subscribe via lists.fedoraproject.org:
+#   - users@                — general user-level questions
+#   - devel@                — development discussion (high traffic)
+#   - test@                 — test day announcements, beta testing
+#   - announce@             — release announcements only (low traffic)
+#   - rpm-list@             — packaging / rpm-related
+
+
+# READING THE SOURCE
+
+# pkgs.fedoraproject.org/<package>
+#   the dist-git for any fedora package. you can read the .spec file
+#   (build instructions), see the patches applied, see who maintains
+#   it. essential for "what is this package actually doing".
+#
+# example: how is the firefox package built?
+#   https://src.fedoraproject.org/rpms/firefox
+
+# bodhi.fedoraproject.org
+#   tracks every update going through the testing pipeline. useful
+#   for "is the fix for my bug already pending in updates-testing?"
+#   you can opt into updates-testing per-package:
+sudo dnf update --enablerepo=updates-testing <package>
+
+# koji.fedoraproject.org
+#   the build system. tracks every build of every package, all
+#   architectures. usually only relevant if you're packaging.
+
+# COPR (copr.fedoraproject.org)
+#   community-built repos. for community/per-developer packages.
+#   useful as a search target when an upstream project says "we
+#   ship via COPR".
+
+
+# ESCALATION DISCIPLINE — HOW TO ACTUALLY GET HELP
+
+# the difference between "i posted a question and got a useful answer
+# in 20 minutes" and "i posted a question and got nothing" is almost
+# always how the question was asked. before posting:
+#
+# 1. ISOLATE WHAT CHANGED. "it broke after the upgrade" is not enough.
+#    which package? `dnf history info <transaction-id>` shows the
+#    actual transaction. `journalctl -b -p err` shows boot errors.
+#    `coredumpctl list` shows crashes.
+#
+# 2. CHECK THE COMMON ISSUES THREAD FIRST. if your problem is on it,
+#    the answer is on it. nothing kills your goodwill faster than a
+#    "this is already in common issues" reply.
+#
+# 3. SEARCH DISCUSSION + BUGZILLA. someone has probably already hit
+#    it. paste an error message verbatim into google with
+#    `site:discussion.fedoraproject.org` and `site:bugzilla.redhat.com`.
+#
+# 4. PRODUCE A MINIMAL REPRODUCER. "X is broken" is unhelpful.
+#    "fresh fedora 44 workstation install, install package Y, run
+#    command Z, get error E" is actionable.
+#
+# 5. COLLECT THE OBVIOUS LOGS. for bugzilla:
+#       sudo dnf info <package>                   # version installed
+#       uname -r                                  # kernel
+#       cat /etc/fedora-release                   # release
+#       journalctl -b -u <unit> -n 100            # service logs
+#       coredumpctl info <pid-or-program>         # crash details
+#       rpm -q <package>                          # versions
+#
+# 6. ATTACH, DON'T PASTE. logs longer than 30 lines go in attachments
+#    or paste sites (paste.centos.org, dpaste.com), not inline.
+#
+# 7. STATE WHAT YOU'VE TRIED. helpers don't want to suggest things
+#    you've already done. listing the failed attempts speeds the
+#    conversation 10x.
+
+
+# FINDING WHO MAINTAINS A PACKAGE
+
+# every fedora package has a maintainer. if you've found a real bug
+# and bugzilla is taking too long, find them:
+dnf info <package>                           # "URL" field often points to source
+rpm -qi <package> | grep -i packager         # rarely set; usually generic
+
+# better: pkgs.fedoraproject.org/<package> shows the maintainer
+# group and recent commits. you can open an issue against the
+# dist-git repo directly, or @-mention the maintainer in
+# discussion.fedoraproject.org.
+
+
+# THE NUCLEAR OPTIONS
+
+# when nothing on the above has worked:
+#
+#   - file a bug against the UPSTREAM project (the actual software,
+#     not fedora's package). often the right move for application bugs
+#     vs distro packaging bugs.
+#   - cross-post to the kernel mailing list (lkml.org) for kernel
+#     bugs — but only after you've verified it's actually a kernel
+#     bug, not a userspace problem. you'll get a tough crowd.
+#   - reach out to red hat directly only if you have a RHEL
+#     entitlement; for community fedora users there's no commercial
+#     support path.
+
+
+# REMEMBER: FEDORA IS VOLUNTEER-DRIVEN
+
+# the people answering your question are not paid. they're maintaining
+# packages on the side because they care. respect their time:
+#   - search before asking
+#   - report back when something works ("the suggestion fixed it")
+#   - if you get an answer, mark it as the solution on discussion
+#   - update bugzilla bugs when they're resolved
+#   - contribute back when you learn something (write a wiki page,
+#     answer someone else's question)
+#
+# the community survives on this etiquette. you joined the moment you
+# installed fedora — you're part of it now.
 
 
 SEE ALSO
