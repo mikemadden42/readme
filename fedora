@@ -475,14 +475,305 @@ sudo -u postgres pg_dumpall -f /backup/postgres-dump.sql
 DISK MANAGEMENT (LVM, SWAP, PARTITIONING)
 -----------------------------------------
 
-# TODO STUB — disk management on fedora beyond what's in [[btrfs]].
-# expected content:
-#   - LVM basics (pvcreate / vgcreate / lvcreate); when to pick LVM vs btrfs
-#   - swap configuration: partition vs swapfile, on-btrfs caveats, zram-swap
-#   - lsblk / blkid / df / smartctl quick reference
-#   - filesystem layout choices in anaconda (default vs custom)
-#   - extending / shrinking partitions and filesystems
-#   - smartmontools schedule for disk health
+# fedora workstation has defaulted to btrfs since F33 (covered in
+# [[btrfs]]). this section is everything ELSE about disk management
+# on fedora: LVM, swap, partitioning, SMART monitoring, fsck.
+
+
+# INSPECTING DISKS — THE EVERYDAY TOOLS
+
+lsblk                                          # block devices + sizes + mounts
+lsblk -f                                       # add filesystem + UUID
+lsblk -o NAME,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINT  # custom columns
+
+blkid                                          # filesystem UUID + label
+blkid /dev/nvme0n1p3                          # one device
+
+df -h                                          # mounted fs usage
+df -h --output=source,fstype,size,used,avail,target
+
+# byte-accurate space (df can lie on btrfs — see [[btrfs]]):
+ncdu /                                         # interactive disk usage
+sudo dnf install dust && dust                  # modern alternative
+
+# what's attached
+lsusb                                          # USB devices
+lspci | grep -iE 'sata|nvme|ahci'             # storage controllers
+
+
+# ANACONDA INSTALLER LAYOUTS
+
+# at install time anaconda offers three modes:
+#
+#   AUTOMATIC — "use the entire disk". on F33+ this gives you:
+#       /boot/efi  fat32   ~600 MiB (UEFI only)
+#       /boot      ext4    ~1 GiB
+#       /          btrfs   the rest (with @ and @home subvolumes)
+#       [swap]     zram    in-memory swap, no disk partition
+#     if you ticked "Encrypt my data": LUKS wraps the root partition.
+#
+#   ADVANCED CUSTOM (BLIVET) — full manual control. pick FS per mount
+#       point. supports btrfs, xfs, ext4, lvm. needed for non-default
+#       layouts.
+#
+#   ADVANCED CUSTOM (WEBUI) — newer, simpler version of above.
+
+
+# WHY BTRFS BY DEFAULT? (vs LVM + ext4 / xfs)
+
+# the rationale fedora landed on for F33:
+#   - SNAPSHOTS are first-class (timeshift, snapper, btrfs send)
+#   - SUBVOLUMES replace per-mount-point partitioning — no more
+#     "i sized /home too small"
+#   - TRANSPARENT COMPRESSION (zstd) saves 20-40% on typical workloads
+#   - CHECKSUMS catch silent data corruption
+#
+# LVM still makes sense when:
+#   - you need a fs btrfs doesn't support (xfs for >16TB single-volume
+#     workloads; ext4 for "boring is good")
+#   - you're managing multiple disks as one volume group across
+#     filesystem boundaries
+#   - shared storage with cluster file systems
+#   - production servers with strict-conservatism culture (RHEL leans
+#     LVM + xfs as the supported default)
+
+
+# LVM BASICS
+
+# LVM (Logical Volume Manager) sits between physical disks and
+# filesystems. three concepts:
+#
+#   PV  (physical volume)  — a disk or partition prepared for LVM
+#   VG  (volume group)     — a pool of PVs, allocates blocks
+#   LV  (logical volume)   — a "virtual partition" carved from a VG
+#
+# inspect:
+sudo pvs                                       # physical volumes
+sudo vgs                                       # volume groups
+sudo lvs                                       # logical volumes
+sudo pvdisplay / vgdisplay / lvdisplay         # verbose
+
+# create from scratch (a typical 2-disk setup):
+sudo pvcreate /dev/sdb /dev/sdc
+sudo vgcreate datavg /dev/sdb /dev/sdc
+sudo lvcreate -L 100G -n homelv datavg
+sudo mkfs.xfs /dev/datavg/homelv               # or btrfs, ext4
+sudo mkdir /data && sudo mount /dev/datavg/homelv /data
+
+# extend an LV (grow a "partition" online):
+sudo lvextend -L +50G /dev/datavg/homelv
+sudo xfs_growfs /data                          # for xfs
+# OR sudo resize2fs /dev/datavg/homelv          # for ext4
+
+# shrink an LV (ext4 only; xfs CANNOT shrink):
+sudo umount /data
+sudo e2fsck -f /dev/datavg/homelv
+sudo resize2fs /dev/datavg/homelv 50G
+sudo lvreduce -L 50G /dev/datavg/homelv
+sudo mount /dev/datavg/homelv /data
+
+# remove an LV (DANGEROUS — data loss):
+sudo umount /data
+sudo lvremove /dev/datavg/homelv
+
+# add a new disk to an existing VG:
+sudo pvcreate /dev/sdd
+sudo vgextend datavg /dev/sdd
+
+# LVM SNAPSHOTS — copy-on-write at the LV layer (similar concept to
+# btrfs snapshots but per-volume):
+sudo lvcreate --snapshot --name homelv-snap -L 10G /dev/datavg/homelv
+sudo lvremove /dev/datavg/homelv-snap         # delete it later
+
+# snapshots are sized — they hold deltas from the original; if more
+# than the snapshot size changes, the snapshot is invalidated.
+
+
+# SWAP — PARTITION, SWAPFILE, OR ZRAM
+
+# fedora workstation defaults to ZRAM-SWAP since F33: a compressed
+# RAM-backed swap. no disk partition. faster than disk swap; uses RAM
+# more efficiently under memory pressure.
+
+# inspect current swap
+swapon --show
+free -h
+
+# verify zram-swap status
+zramctl                                        # active zram devices
+
+# zram-swap config (already configured by zram-generator):
+cat /usr/lib/systemd/zram-generator.conf
+cat /etc/systemd/zram-generator.conf 2>/dev/null
+# example tuning override:
+sudo tee /etc/systemd/zram-generator.conf <<'EOF'
+[zram0]
+zram-size = ram / 2
+compression-algorithm = zstd
+EOF
+sudo systemctl restart systemd-zram-setup@zram0
+
+
+# SWAP PARTITION — for hibernation or non-zram setups
+
+# create:
+sudo mkswap /dev/sdX2                          # the partition
+sudo swapon /dev/sdX2
+echo 'UUID=... swap swap defaults 0 0' | sudo tee -a /etc/fstab
+
+# permanent disable:
+sudo swapoff /dev/sdX2
+# remove the line from /etc/fstab
+
+
+# SWAPFILE — when partitioning isn't an option
+
+# btrfs swapfile (covered in POWER MANAGEMENT for hibernate; needs
+# chattr +C):
+sudo touch /swapfile
+sudo chattr +C /swapfile                       # btrfs: nodatacow REQUIRED
+sudo fallocate -l 8G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap defaults 0 0' | sudo tee -a /etc/fstab
+
+# ext4 / xfs swapfile (no chattr +C needed):
+sudo fallocate -l 8G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# typical swappiness tune (lower = use disk swap less aggressively):
+sudo sysctl vm.swappiness=10                   # try this
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/swap.conf
+
+
+# PARTITIONING — INTERACTIVE TOOLS
+
+# CLI (most precise):
+sudo fdisk /dev/sda                            # MBR + GPT, interactive
+sudo gdisk /dev/sda                            # GPT only
+sudo parted /dev/sda                           # GNU parted; scriptable
+sudo cfdisk /dev/sda                           # curses TUI; friendly
+
+# GUI:
+sudo dnf install gparted
+sudo gparted                                   # the classic partition GUI
+
+# GNOME Disks (preinstalled):
+gnome-disks                                    # simpler GUI
+
+
+# RESIZING A PARTITION + FILESYSTEM
+
+# the safe path: shrink fs first, then partition. extend partition
+# first, then fs. NEVER the reverse.
+
+# extend an ext4:
+sudo parted /dev/sda resizepart 3 100%
+sudo resize2fs /dev/sda3                       # online
+
+# extend xfs:
+sudo parted /dev/sda resizepart 3 100%
+sudo xfs_growfs /                              # mount point, not device
+
+# btrfs grow (covered in [[btrfs]]):
+sudo btrfs filesystem resize max /
+
+
+# SMART MONITORING — CATCHING DRIVE FAILURE EARLY
+
+# smartmontools reads SMART (self-monitoring) data from drives. catches
+# pre-failure conditions days to weeks before actual failure.
+
+sudo dnf install smartmontools
+
+# check one drive
+sudo smartctl -a /dev/sda                      # full report
+sudo smartctl -H /dev/sda                      # just health summary
+sudo smartctl -t short /dev/sda                # 2-min self-test
+sudo smartctl -t long /dev/sda                 # hours; nightly job
+sudo smartctl -l selftest /dev/sda             # past results
+
+# what to watch:
+#   - Reallocated_Sectors_Count    rising = drive is dying
+#   - Current_Pending_Sectors      rising = imminent failure
+#   - Wear_Leveling_Count (SSD)    falling toward 0 = wear limit
+#   - Reported_Uncorrectable      any nonzero = errors during reads
+
+# enable scheduled monitoring:
+sudo systemctl enable --now smartd
+# config: /etc/smartmontools/smartd.conf
+#   default: monitor all drives, daily short test, weekly long test,
+#   email-on-failure to root
+# tune email destination:
+echo 'DEVICESCAN -m you@example.com -M exec /usr/libexec/smartmontools/smartdnotify' \
+    | sudo tee /etc/smartmontools/smartd.conf
+sudo systemctl restart smartd
+
+
+# FILESYSTEM CHECK / REPAIR
+
+# ext4 — fsck.ext4
+sudo umount /dev/sda3                          # MUST be unmounted
+sudo fsck.ext4 -fy /dev/sda3                   # force check, auto-yes
+
+# xfs — xfs_repair (no fsck; xfs_repair is the tool)
+sudo umount /xfs-mount
+sudo xfs_repair /dev/sda3
+
+# btrfs — btrfs check (offline only; covered in [[btrfs]] RECOVERY)
+sudo btrfs check --readonly /dev/sda3
+
+# emergency: boot the live ISO, mount nothing, repair from there.
+# all repair tools require UNMOUNTED targets — you can't repair a
+# mounted root from itself.
+
+
+# COMMON GOTCHAS
+
+# 1. RAN OUT OF SPACE ON / BUT df SHOWS FREE SPACE. inode exhaustion.
+#    check:
+df -i                                          # inode usage
+#    fix: delete lots of small files (often /tmp or /var/cache).
+#    btrfs doesn't have inode limits.
+#
+# 2. SWAP NOT BEING USED. check vm.swappiness:
+cat /proc/sys/vm/swappiness                    # default: 30
+#    fedora's default is conservative; many people lower it further.
+#    if swap is "off" but you expected on, check zramctl + swapon.
+#
+# 3. SHRINKING A PARTITION CAUSED CORRUPTION. you skipped the
+#    "shrink fs first, then partition" rule. recovery: restore from
+#    backup. fsck won't save you here.
+#
+# 4. LVM SNAPSHOT FILLED UP. snapshots are sized; if too much changes
+#    on the original, the snapshot is invalidated. recover by
+#    extending the snapshot LV BEFORE it fills:
+sudo lvextend -L +5G /dev/datavg/homelv-snap
+#
+# 5. "DISK FULL" BUT DELETING FILES DOESN'T HELP. a process has a
+#    file open by inode; deleting the directory entry doesn't free
+#    the space. find the process:
+sudo lsof | grep deleted
+#    kill it or restart it to actually release the space.
+#
+# 6. SMART DATA UNAVAILABLE THROUGH USB ENCLOSURE. some USB-to-SATA
+#    bridges don't pass SMART commands through. workarounds:
+sudo smartctl -d sat /dev/sdX                 # try SAT pass-through
+sudo smartctl -d sntasmedia /dev/sdX          # asmedia bridges
+
+
+# QUICK REFERENCE
+
+#   "what disks do I have"               → lsblk -f
+#   "what's mounted where"               → df -h --output=source,target,fstype
+#   "is my disk healthy"                 → sudo smartctl -H /dev/sdX
+#   "grow a logical volume + fs"         → lvextend / resize2fs (or xfs_growfs)
+#   "shrink a logical volume + fs"       → ext4 only; lvreduce + resize2fs
+#   "add swap on btrfs"                  → chattr +C, fallocate, mkswap, swapon
+#   "boot rescue an unbootable disk"     → live ISO + arch-chroot equivalent
 
 
 SYSTEMD — THE FOUNDATIONAL GLUE
