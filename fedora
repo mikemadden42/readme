@@ -1028,6 +1028,265 @@ fprintd-delete "$USER"                        # remove enrolled prints
 sudo dnf remove fprintd-pam                   # optional
 
 
+POWER MANAGEMENT — SLEEP, HIBERNATE, PROFILES
+---------------------------------------------
+
+# the stack on fedora workstation:
+#
+#   power-profiles-daemon (PPD)  — performance / balanced / power-saver
+#                                  modes. fedora's default since F35,
+#                                  replaced TLP for most users.
+#   GNOME Settings → Power        — UI on top of gsettings keys
+#   systemd-logind                — lid switch, power button, idle
+#   upower                        — battery state introspection
+#   the kernel's cpufreq governor — intel_pstate / amd-pstate driver +
+#                                  schedutil governor by default
+#
+# the four sleep modes (`cat /sys/power/state` shows what's supported):
+#
+#   suspend (s2idle / S3) — to RAM, quick resume, small power draw
+#   hibernate             — to disk, zero power, slow resume
+#   suspend-then-hibernate — to RAM first, then to disk after a delay
+#   hybrid-sleep          — to RAM + disk simultaneously
+
+
+# AUTOMATIC SUSPEND TIMEOUTS
+
+# Settings → Power → "Automatic Suspend" (it's a click-through, not an
+# inline toggle — opens a dialog with separate "On Battery" and
+# "Plugged In" toggles).
+#
+# desktops or docked-only laptops: no battery = GNOME hides the
+# battery/AC distinction. you get a single "Suspend when inactive"
+# toggle, or nothing.
+
+# CLI equivalents under org.gnome.settings-daemon.plugins.power:
+gsettings list-recursively org.gnome.settings-daemon.plugins.power \
+    | grep -E 'sleep|idle'
+
+# AC behavior (plugged in):
+gsettings set org.gnome.settings-daemon.plugins.power \
+    sleep-inactive-ac-type 'suspend'        # or 'nothing' / 'hibernate'
+gsettings set org.gnome.settings-daemon.plugins.power \
+    sleep-inactive-ac-timeout 1800          # 30 min
+
+# battery behavior:
+gsettings set org.gnome.settings-daemon.plugins.power \
+    sleep-inactive-battery-type 'suspend'
+gsettings set org.gnome.settings-daemon.plugins.power \
+    sleep-inactive-battery-timeout 900      # 15 min
+
+# screen blank — separate setting; screen off but system stays awake:
+gsettings set org.gnome.desktop.session idle-delay 600
+
+# workstation defaults: screen blanks at 5 min, battery suspends at 15
+# min, AC suspends at 20 min. it's never literally "always on" by
+# default, but people often miss the AC case because the timeout is
+# generous.
+
+
+# POWER PROFILES
+
+# performance / balanced / power-saver via power-profiles-daemon.
+# CLI:
+powerprofilesctl list
+powerprofilesctl get
+powerprofilesctl set performance              # max perf, hot, loud fans
+powerprofilesctl set balanced                 # default
+powerprofilesctl set power-saver              # tighten timeouts, cap CPU
+powerprofilesctl version
+
+# GUI: Settings → Power → Power Mode, OR click the system-tray battery
+# icon — the three options appear there.
+#
+# the kernel responsively biases the cpufreq governor and may
+# tweak boost / thermal headroom based on the chosen profile.
+
+
+# LID SWITCH AND POWER BUTTON — logind, not GNOME
+
+# /etc/systemd/logind.conf controls these, NOT the GNOME panel:
+#
+#   HandleLidSwitch=                  what closing the lid does
+#   HandleLidSwitchExternalPower=     same, but only when plugged in
+#   HandleLidSwitchDocked=            same, but only when docked
+#   HandlePowerKey=                   short power-button press
+#   HandlePowerKeyLongPress=          held power-button press
+#   HandleSuspendKey=                 hardware suspend key
+#   HandleHibernateKey=               hardware hibernate key
+#
+# valid actions: ignore, poweroff, reboot, halt, kexec, suspend,
+# hibernate, hybrid-sleep, suspend-then-hibernate, lock.
+
+# common scenario: laptop hooked to an external monitor, don't want
+# lid-close to suspend:
+sudo mkdir -p /etc/systemd/logind.conf.d
+sudo tee /etc/systemd/logind.conf.d/lid.conf <<'EOF'
+[Login]
+HandleLidSwitch=suspend
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+EOF
+sudo systemctl restart systemd-logind
+# warning: this kicks you out of your gnome session. save first.
+
+
+# HIBERNATE — SETUP IS NOT AUTOMATIC
+
+# hibernate writes the entire RAM state to swap, then powers off
+# fully. it requires:
+#   - swap space >= total RAM size (ideally with ~20% headroom)
+#   - a `resume=` kernel parameter pointing at the swap location
+#   - the kernel built with hibernation support (fedora's is)
+#   - secure boot may need extra config (signed hibernation image)
+
+# check if hibernation is currently available:
+cat /sys/power/state                          # should list 'disk'
+cat /sys/power/disk                           # methods available
+systemctl status hibernate.target
+
+# if you picked "Swap (with Hibernate)" in calamares / anaconda at
+# install time, this is already set up:
+swapon --show                                 # confirm swap >= RAM
+cat /proc/cmdline | grep -o 'resume=[^ ]*'    # confirm resume= present
+
+# if NOT — easiest fix is creating a swapfile (btrfs needs care):
+sudo touch /swapfile
+sudo chattr +C /swapfile                      # btrfs: nodatacow REQUIRED
+sudo fallocate -l 32G /swapfile                # match your RAM
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap defaults 0 0' | sudo tee -a /etc/fstab
+# add resume= kernel arg pointing at swap device + offset:
+sudo grubby --update-kernel=ALL \
+    --args="resume=UUID=$(findmnt / -no UUID) resume_offset=$(sudo filefrag -v /swapfile | awk 'NR==4 {print $4}' | tr -d '.')"
+
+# test:
+systemctl hibernate
+# after resume, verify: `last -x | head` should show no clean shutdown
+# between hibernation and now.
+
+
+# SUSPEND-THEN-HIBERNATE — the hybrid people actually want
+
+# suspends to RAM first (quick resume), then hibernates after a
+# configurable delay (saves battery overnight). configure in
+# /etc/systemd/sleep.conf:
+sudo tee /etc/systemd/sleep.conf.d/hybrid.conf <<'EOF'
+[Sleep]
+HibernateDelaySec=2h
+EOF
+# trigger:
+systemctl suspend-then-hibernate
+# bind it to lid-close (laptops):
+#   set HandleLidSwitch=suspend-then-hibernate in logind.conf
+# bind it to the gnome auto-suspend action:
+#   gsettings set org.gnome.settings-daemon.plugins.power \
+#       sleep-inactive-battery-type 'suspend-then-hibernate'
+
+
+# TLP vs POWER-PROFILES-DAEMON — DON'T RUN BOTH
+
+# historical advice ("install TLP for laptop battery") is outdated for
+# fedora. power-profiles-daemon is the default and is what GNOME's
+# power-mode selector controls. TLP is a separate tool with much
+# finer-grained tuning knobs (per-device USB autosuspend, PCIe ASPM,
+# wifi power-save, disk APM, etc.).
+#
+# they CONFLICT. running both produces unpredictable behavior. if you
+# install TLP, you must mask PPD:
+sudo dnf install tlp tlp-rdw
+sudo systemctl mask power-profiles-daemon
+sudo systemctl enable --now tlp
+# config: /etc/tlp.conf
+
+# the question of which to use: PPD is enough for 90% of users. TLP
+# is worth it ONLY if you've measured a real problem PPD can't fix
+# (specific USB device draining battery at idle, wifi card not
+# entering low-power state, etc.). default to PPD.
+
+
+# BATTERY MONITORING
+
+# list power devices:
+upower -e
+
+# detailed battery state (substitute the BAT path from -e):
+upower -i $(upower -e | grep -m1 BAT)
+# look for: energy-full / energy-full-design (capacity vs new)
+#           capacity (% of design — battery health, <80% means worn)
+#           time-to-empty (current rate of discharge)
+
+# gnome-power-statistics shows it graphically:
+sudo dnf install gnome-power-manager
+gnome-power-statistics
+
+
+# POWERTOP — IDENTIFY POWER HOGS
+
+sudo dnf install powertop
+sudo powertop                                  # interactive UI
+sudo powertop --html=/tmp/power-report.html    # report
+
+# `sudo powertop --auto-tune` applies every suggested tweak in one
+# shot. famously aggressive — can break wifi, USB devices, brightness
+# keys. don't run it blindly. read the suggestions, apply the safe
+# ones in /etc/tmpfiles.d/.
+
+
+# COMMON GOTCHAS
+
+# 1. SUSPEND WAKES UP IMMEDIATELY. usually a USB device generating wake
+#    events (mouse jitter, keyboard, hub). find culprits:
+cat /proc/acpi/wakeup
+#    disable wake from a device (substitute the device id):
+echo XHC | sudo tee /proc/acpi/wakeup
+
+# 2. WIFI / BLUETOOTH BROKEN AFTER SUSPEND. firmware quirk on some
+#    chipsets. quick fix:
+sudo systemctl restart NetworkManager
+#    persistent: kernel cmdline workaround `iwlwifi.power_save=0`
+#    or similar (varies by chipset).
+
+# 3. NVIDIA + SUSPEND. covered in the NVIDIA section above —
+#    enable the nvidia-suspend / -resume / -hibernate systemd units.
+
+# 4. HIBERNATE FAILS SILENTLY. usually swap is too small, OR resume=
+#    kernel parameter is missing or wrong:
+journalctl -b -1 -g hibernate                  # check the failed boot
+journalctl -b 0 -g resume
+
+# 5. SECURE BOOT + HIBERNATE. some firmwares refuse to resume a
+#    hibernation image under secure boot (treats it as code-signing
+#    violation). either disable secure boot or use a signed
+#    kernel + signed hibernation setup (rare on fedora workstation).
+
+# 6. BATTERY % JUMPS OR STICKS AT 0% / 100%. calibration drift in
+#    the embedded controller. discharge to empty + charge to full a
+#    few cycles, or check vendor's firmware via fwupd for a calibration
+#    update.
+
+# 7. DISABLE SLEEP ENTIRELY (servers, kiosks). mask the targets:
+sudo systemctl mask sleep.target suspend.target hibernate.target \
+    hybrid-sleep.target
+
+# 8. DESKTOPS SOMETIMES SUSPEND ON SCREEN BLANK. usually because GNOME
+#    detected a fake "battery" device (UPS plugged in to USB) and is
+#    applying laptop defaults. either remove the udev quirk or set
+#    sleep-inactive-ac-type='nothing'.
+
+
+# WHAT TO CHECK FIRST WHEN POWER MISBEHAVES
+
+powerprofilesctl get                           # current profile
+gsettings list-recursively org.gnome.settings-daemon.plugins.power \
+    | grep -E 'sleep|idle'
+cat /etc/systemd/logind.conf                   # lid / power button
+journalctl -b -g -E 'suspend|hibernate|resume' # recent transitions
+upower -i $(upower -e | grep -m1 BAT)          # battery state
+
+
 GNOME TIPS (Workstation default)
 --------------------------------
 
