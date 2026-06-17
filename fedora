@@ -546,6 +546,86 @@ fwupdmgr get-updates                                # what's available
 sudo fwupdmgr update                                # apply (reboots into UEFI for some)
 
 
+FINGERPRINT READER (LAPTOPS)
+----------------------------
+
+# fedora's stack: libfprint (driver library) + fprintd (daemon) +
+# authselect (PAM wiring). the biggest gotcha is hardware support —
+# many recent laptops ship Goodix or Synaptics readers that need
+# specific libfprint versions or third-party drivers. always verify
+# support FIRST before installing anything.
+
+
+# STEP 1 — identify the reader and check support
+lsusb | grep -iE 'fingerprint|sensor|biometric'
+# cross-reference vendor/product IDs at:
+#   https://fprint.freedesktop.org/supported-devices.html
+
+
+# STEP 2 — install fprintd (usually already on Workstation)
+sudo dnf install fprintd fprintd-pam
+
+
+# STEP 3 — enroll a finger
+fprintd-enroll                                # default: right-index
+fprintd-enroll -f left-index                  # specific finger
+fprintd-list "$USER"                          # verify enrolled fingers
+fprintd-delete "$USER" -f left-index          # remove one
+# GUI path: Settings → Users → Fingerprint Login (toggle only
+# appears when a supported reader is detected).
+
+
+# STEP 4 — wire into PAM via authselect
+# DON'T hand-edit /etc/pam.d/* on fedora — authselect manages PAM
+# via profiles, and direct edits get overwritten.
+sudo authselect enable-feature with-fingerprint
+sudo authselect apply-changes
+authselect current                            # verify the feature is on
+# this adds fingerprint to sudo, su, login, GDM, and polkit. password
+# remains the fallback if the reader fails or you cancel the prompt.
+
+
+# STEP 5 — test
+sudo -k && sudo true                          # should prompt for fingerprint
+# then lock the screen (Super+L) and try GDM unlock.
+
+
+# COMMON GOTCHAS
+
+# 1. lsusb shows the reader but `fprintd-enroll` says "no devices".
+#    libfprint doesn't support that exact revision yet. options:
+#      - check upstream libfprint issue tracker for your USB ID
+#      - try a newer libfprint from COPR if available
+#      - for some Synaptics readers, the out-of-tree open-fprintd +
+#        python-validity drivers exist (RPM build required; messy)
+#
+# 2. resume from suspend kills the reader. quick fix:
+sudo systemctl restart fprintd
+#    if it's persistent, file the kernel bug — there are open ones
+#    for several laptop models, sometimes fixed by a firmware update
+#    (worth running `fwupdmgr update` first).
+#
+# 3. Goodix 53xx family is hit-or-miss. some IDs (53b2, 5395, etc.)
+#    are in mainline libfprint; others still need vendor patches.
+#    check your specific ID against the supported-devices list, not
+#    just "Goodix Generic".
+#
+# 4. fingerprint does NOT unlock LUKS. fingerprint kicks in only
+#    post-boot (GDM, sudo, polkit). pre-boot biometric unlock isn't
+#    a thing on linux. for hands-off boot, use TPM-backed unlock via
+#    systemd-cryptenroll (see [[luks]] / the fedora-to-endeavouros
+#    LUKS section) — different mechanism, different threat model.
+#
+# 5. multiple users: each user enrolls their own fingerprints. there's
+#    no system-wide enrollment. enroll while logged in as the user.
+#
+# 6. disable / uninstall the wiring cleanly:
+sudo authselect disable-feature with-fingerprint
+sudo authselect apply-changes
+fprintd-delete "$USER"                        # remove enrolled prints
+sudo dnf remove fprintd-pam                   # optional
+
+
 GNOME TIPS (Workstation default)
 --------------------------------
 
