@@ -632,8 +632,26 @@ sudo dnf install gnome-shell-extension-just-perfection       # granular UI tunin
 
 # COMMON gsettings / dconf KNOBS
 
-# show minimize + maximize window buttons (removed from default theme):
+# show minimize + maximize window buttons (removed from GNOME default).
+# this is the most-asked "where did my buttons go" GNOME question.
+#
+#   gnome-tweaks path: Tweaks → Windows → Titlebar Buttons → toggle
+#                      Maximize and Minimize on. takes effect instantly,
+#                      no logout needed.
+#   gsettings path (same thing, scriptable):
 gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close'
+#
+# the prefix before the colon = LEFT side; after = RIGHT side. swap
+# for macos-style controls on the left:
+#       'close,minimize,maximize:appmenu'
+#
+# CSD vs SSD caveat: most modern GNOME apps (Files, Settings, Text
+# Editor, gedit, etc.) use Client-Side Decorations — they don't have
+# a traditional titlebar, they put window controls inside the header
+# bar. the button-layout setting controls that header bar too, so
+# you'll get min/max buttons there. older GTK3 apps / Qt apps /
+# Electron apps with Server-Side Decorations show the buttons in a
+# traditional titlebar.
 
 # disable mouse acceleration (gamers / pixel-art):
 gsettings set org.gnome.desktop.peripherals.mouse accel-profile 'flat'
