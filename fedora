@@ -1293,15 +1293,267 @@ sudo setenforce 0
 SELINUX — GOING DEEPER
 ----------------------
 
-# TODO STUB — extend the SELinux section above for "I got an AVC denial
-# I can't restorecon away" use cases.
-# expected content:
-#   - audit2allow workflow (read AVC, generate policy module, install)
-#   - useful booleans: getsebool -a; setsebool -P
-#   - file context cheatsheet (semanage fcontext / chcon / restorecon)
-#   - port labeling (semanage port) for services on non-standard ports
-#   - permissive domains: one process without dropping global enforcement
-#   - third-party software gotchas (docker, nvidia, nfs, samba)
+# the SELINUX section above covers the 80% answer: keep it enforcing,
+# restorecon when things break, sealert for diagnostics. this section
+# is the next 15% — what to do when restorecon doesn't fix it.
+
+
+# THE MENTAL MODEL
+
+# every process has a TYPE (e.g. httpd_t). every file has a TYPE
+# (httpd_config_t, httpd_sys_content_t, etc.). the SELinux policy is
+# a giant list of rules saying "type X can do action Y on type Z".
+#
+# the format you'll see everywhere is "user:role:type:level":
+#   system_u:object_r:httpd_config_t:s0
+#
+# 95% of the time, only the TYPE (third field) matters for
+# troubleshooting. user / role / level are MLS infrastructure for
+# multi-level secure systems that desktop fedora doesn't use.
+#
+# inspect labels:
+ls -Z /etc/httpd/conf/                           # files
+ps -Z                                            # running processes
+id -Z                                            # current user / process
+
+
+# THE AUDIT2ALLOW WORKFLOW
+
+# the canonical "write a tiny policy module to allow a denial":
+#
+# 1. reproduce the denial (run the thing that's failing)
+# 2. read the AVC:
+sudo ausearch -m AVC -ts recent
+#    (or sealert -a /var/log/audit/audit.log for the friendly version)
+#
+# 3. pipe the AVC into audit2allow to generate a policy module:
+sudo ausearch -m AVC -ts recent | audit2allow -M my-customrule
+#    creates: my-customrule.te (source) + my-customrule.pp (compiled)
+#
+# 4. READ THE GENERATED .te FILE BEFORE INSTALLING.
+#    if it's allowing something that looks too broad ("allow X type Y
+#    *" with wildcards), narrow it manually before installing. don't
+#    just trust audit2allow's output.
+cat my-customrule.te
+#
+# 5. install:
+sudo semodule -i my-customrule.pp
+#
+# 6. verify it worked:
+sudo semodule -l | grep my-customrule
+#    rerun the failing operation; the denial should be gone.
+
+# common iteration pattern:
+sudo ausearch -m AVC --start recent --raw | audit2allow -M attempt1
+# inspect, refine, install. if more denials surface (rules often
+# cascade), repeat.
+
+
+# BOOLEANS — TOGGLE COMMON POLICY DECISIONS
+
+# many common "should this be allowed" decisions are exposed as
+# BOOLEANS — pre-shipped toggles that don't require writing custom
+# policy.
+
+getsebool -a                                     # all booleans
+getsebool -a | grep -i http                      # filter
+semanage boolean -l                              # with descriptions
+
+# toggle (the -P makes it persist across reboot — without it, reverts
+# on the next boot):
+sudo setsebool -P httpd_can_network_connect on
+sudo setsebool -P samba_export_all_rw on
+
+# booleans worth knowing on a typical fedora workstation:
+#
+#   httpd_can_network_connect           — let apache make outbound conns
+#   httpd_can_network_connect_db        — apache → database server
+#   httpd_unified                       — apache write to its own dirs
+#   samba_export_all_rw                 — samba serve any path RW
+#   samba_share_nfs                     — samba share an NFS-mounted dir
+#   nfs_export_all_rw                   — let NFS export any RW path
+#   virt_use_nfs                        — VMs can read NFS shares
+#   virt_use_samba                      — VMs can read SMB shares
+#   container_use_devices               — containers can use /dev/*
+#   ssh_chroot_rw_homedirs              — ssh chroot can write to home
+#   use_nfs_home_dirs                   — home dirs on NFS
+#   xserver_object_manager              — for some X11 / wayland tools
+#
+# the boolean approach is preferred over custom policy when one exists
+# — fewer moving parts, fewer security surprises.
+
+
+# FILE CONTEXTS — RELABELING THE RIGHT WAY
+
+# files inherit type from their PARENT DIRECTORY by default. moving a
+# file from /var/www/html to /home/me preserves the OLD type, which
+# breaks apache.
+
+# inspect what type SHOULD be assigned:
+sudo matchpathcon /var/www/html/index.html
+sudo matchpathcon -V /var/www/html/index.html    # is it correct?
+
+# restorecon — apply the policy's "correct" labels (most common fix):
+sudo restorecon -Rv /var/www/html               # recursive, verbose
+sudo restorecon -RFv /var/www/html              # force (re-label every
+                                                # file, not just wrong)
+
+# chcon — change context BUT not in policy. survives until next
+# `restorecon` (volatile). useful for ONE-OFF experimentation.
+sudo chcon -t httpd_sys_content_t /tmp/test.html
+
+# semanage fcontext — change the POLICY's idea of what a path should
+# be labeled. then restorecon to apply. permanent.
+sudo semanage fcontext -a -t httpd_sys_content_t '/srv/www(/.*)?'
+sudo restorecon -Rv /srv/www
+
+# delete a policy file-context entry:
+sudo semanage fcontext -d '/srv/www(/.*)?'
+
+# list custom file-context entries (everything YOU added):
+sudo semanage fcontext -l -C
+
+
+# PORT LABELING — RUNNING SERVICES ON NON-STANDARD PORTS
+
+# sshd on port 22 = labeled ssh_port_t. sshd on port 2222 = labeled
+# unreserved_port_t which sshd's policy doesn't allow it to bind to.
+# the failure mode is "the service starts but exits immediately."
+
+# list existing port labels:
+sudo semanage port -l | grep ssh
+sudo semanage port -l | grep http
+
+# add a port to a type:
+sudo semanage port -a -t ssh_port_t -p tcp 2222
+sudo semanage port -a -t http_port_t -p tcp 8080
+
+# the canonical apache on 8080 incantation. and the canonical
+# "I moved sshd to a non-standard port and now it won't start"
+# incantation.
+
+# delete (rare; usually you want to add, not remove):
+sudo semanage port -d -t ssh_port_t -p tcp 2222
+
+
+# PERMISSIVE DOMAINS — TRIAGE WITHOUT DROPPING GLOBAL ENFORCEMENT
+
+# `setenforce 0` makes the whole system permissive. too coarse.
+# instead, set ONE DOMAIN permissive while everything else stays
+# enforcing. useful for "this one service is misbehaving; i need to
+# see what it's trying to do without blocking it":
+sudo semanage permissive -a httpd_t              # httpd permissive
+sudo semanage permissive -d httpd_t              # back to enforcing
+
+# list currently-permissive domains:
+sudo semanage permissive -l
+
+
+# CUSTOM POLICY MODULES — WHEN AUDIT2ALLOW ISN'T QUITE RIGHT
+
+# audit2allow generates the simplest possible rule. sometimes you
+# need something more nuanced — interfaces, transitions, conditional
+# policy. write a .te file by hand.
+
+cat > my-app.te <<'EOF'
+policy_module(my-app, 1.0.0)
+
+require {
+    type httpd_t;
+    type my_app_t;
+    class file { read write };
+}
+
+allow httpd_t my_app_t:file { read write };
+EOF
+
+# compile + install:
+sudo dnf install policycoreutils-devel selinux-policy-devel
+make -f /usr/share/selinux/devel/Makefile my-app.pp
+sudo semodule -i my-app.pp
+
+# remove a custom module:
+sudo semodule -r my-app
+
+
+# DIAGNOSTIC TOOLING — THE FULL CHAIN
+
+sudo journalctl -t setroubleshoot -b           # human-readable
+                                                # denial summaries
+sudo sealert -a /var/log/audit/audit.log       # suggested fixes
+                                                # for recent denials
+sudo ausearch -m AVC -ts today                 # raw AVCs since today
+sudo ausearch -m AVC -c httpd                  # only httpd-related
+sudo ausearch -m AVC --start recent --raw \
+    | audit2allow                              # quick "what would
+                                                # allow this"
+sudo ausearch -m AVC -ts recent --interpret    # human-readable AVCs
+
+# setroubleshoot is the "user-friendly" layer. on a desktop you may
+# get desktop notifications about denials with a "View" button that
+# opens the suggested-fix UI. install if missing:
+sudo dnf install setroubleshoot setroubleshoot-server
+
+
+# THIRD-PARTY SOFTWARE GOTCHAS
+
+# 1. DOCKER. since cgroups v2 and recent SELinux policy, modern docker
+#    plays well — `container_t` type, container_use_devices boolean
+#    for /dev access. older docker installations may need
+#    container_t labeling on volumes:
+#       docker run -v /data:/data:Z ...                # relabel volume
+#
+# 2. PODMAN. same labeling concerns as docker. use :Z (per-container
+#    label) or :z (shared label) volume mount options.
+#
+# 3. NVIDIA AKMOD-BUILT KMODS. inherit the right label automatically.
+#    no special handling needed in 2026. if you see denials, it's
+#    usually a relabel issue:
+sudo restorecon -RFv /lib/modules
+#
+# 4. NFS. mount with selinux context or enable booleans:
+sudo setsebool -P use_nfs_home_dirs on          # if /home is NFS
+sudo setsebool -P virt_use_nfs on               # for VMs
+#
+# 5. SAMBA. multiple booleans depending on what you're doing:
+sudo setsebool -P samba_enable_home_dirs on
+sudo setsebool -P samba_export_all_rw on
+#
+# 6. CUSTOM SYSTEMD SERVICES IN /usr/local. unconfined by default —
+#    they get the wide-open `unconfined_service_t` type. fine for
+#    quick experiments; for production, write a small policy module
+#    (audit2allow workflow) to confine it.
+
+
+# AUTORELABEL — THE FULL SYSTEM RELABEL
+
+# if your file-system labels are massively wrong (you ran an OS
+# upgrade in some unusual way; you restored from a non-SELinux backup),
+# trigger a full relabel at boot:
+sudo touch /.autorelabel
+sudo reboot
+# takes 5-20 minutes during boot. reboots a second time when done.
+
+
+# WHEN TO ESCALATE
+
+# - PERMISSIVE GLOBALLY (`setenforce 0`) — fine for short triage. NEVER
+#   leave it permissive in /etc/selinux/config. you lose all SELinux
+#   protection.
+#
+# - PERMISSIVE PER-DOMAIN (`semanage permissive -a`) — better. lets
+#   you debug one service while keeping the rest enforcing. remove
+#   the permissive label after the fix is in.
+#
+# - DISABLED in /etc/selinux/config — essentially never the answer.
+#   disabling SELinux means the next time you turn it back on, you
+#   need an autorelabel boot. and you've spent the intervening time
+#   with all the contexts drifting away from what policy expects.
+#
+# the most common "i need to disable SELinux" feeling is usually
+# fixable with one boolean, one fcontext, or one port labeling
+# command. give the audit2allow workflow ten minutes before reaching
+# for the off switch.
 
 
 FIREWALLD — ZONE-BASED FIREWALL
