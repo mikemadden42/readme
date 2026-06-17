@@ -2286,16 +2286,200 @@ wpctl set-default <new-id>
 PRINTING AND SCANNING
 ---------------------
 
-# TODO STUB — CUPS + SANE on fedora. boring but ubiquitous.
-# expected content:
-#   - default CUPS daemon + system-config-printer
-#   - IPP-Everywhere driverless printing (most printers since 2018)
-#   - hp-setup (hplip) for HP printers specifically
-#   - network printer discovery via Avahi / mDNS
-#   - SANE for scanning (sane-utils, simple-scan, document-scanner)
-#   - SELinux booleans for printer / scanner access
-#   - common: LAN print server, AirPrint compatibility, double-sided
-#     defaults, color management
+# the stack on fedora workstation:
+#
+#   CUPS                 — the print daemon. always running, listens
+#                          on localhost:631 with a web interface.
+#   IPP-Everywhere       — driverless printing standard. covers most
+#                          printers manufactured since 2018. zero-config
+#                          for the user; no vendor driver needed.
+#   cups-filters         — translates print jobs through ghostscript
+#                          and friends.
+#   HPLIP (hp-*)         — HP's vendor printer stack. needed for many
+#                          HP printers (scanner side especially).
+#   SANE                 — the scanner driver framework. sane-utils
+#                          (CLI), simple-scan / document-scanner (GUI).
+#   Avahi (mDNS)         — network printer discovery. preinstalled.
+#                          covered in NETWORKING section.
+
+
+# ADDING A PRINTER — THE EASY PATH
+
+# Settings → Printers → Add Printer (GNOME)
+# (KDE: System Settings → Printers)
+# the GUI scans for IPP-Everywhere + mDNS printers automatically.
+# pick yours from the list, name it, done.
+
+# the CUPS web interface — when the GUI isn't enough:
+#   http://localhost:631
+# add printer, manage queues, view jobs. login as a sudoers user.
+
+# from the CLI — useful for headless or scripted setup:
+sudo dnf install cups-pdf                          # virtual PDF printer
+lpinfo -v                                          # discovered printers
+lpinfo -m                                          # available drivers
+lpadmin -p MyPrinter \
+    -E \
+    -v "ipp://192.168.1.20/ipp/print" \
+    -m everywhere
+lpoptions -d MyPrinter                             # set as default
+
+
+# IPP-EVERYWHERE — DRIVERLESS PRINTING
+
+# IPP-Everywhere (a.k.a. "driverless printing") means the printer
+# speaks the IPP protocol natively + advertises its capabilities over
+# mDNS. CUPS picks them up without per-vendor drivers. supports:
+#   - most HP, Brother, Canon, Epson, Xerox printers since 2018
+#   - AirPrint printers (apple's marketing name for IPP-Everywhere)
+#   - most modern network laser printers
+
+# verify a printer is IPP-Everywhere capable:
+sudo dnf install ipp-usb avahi-tools
+avahi-browse -rt _ipp._tcp                         # IPP printers on LAN
+ippfind                                            # canonical scan
+
+
+# HP PRINTERS — HPLIP
+
+# many HP printers (especially MFPs with scanners) need HPLIP for
+# full functionality. the GUI walks through detection + queue setup:
+sudo dnf install hplip hplip-gui
+hp-setup                                           # interactive setup
+
+# CLI variants:
+hp-info -i                                         # device info
+hp-check                                           # diagnostic
+hp-firmware -l                                     # firmware status
+
+
+# NETWORK PRINTER DISCOVERY
+
+# Avahi handles mDNS / DNS-SD. printers advertising _ipp._tcp,
+# _ipps._tcp, or _printer._tcp show up automatically. inspect:
+avahi-browse -rt _ipp._tcp                         # IPP
+avahi-browse -rt _ipps._tcp                        # IPPS (secured)
+avahi-browse -rt _printer._tcp                     # LPD-style
+avahi-browse -art                                  # everything (filter manually)
+
+# if printers aren't appearing:
+#   - firewall: make sure mDNS UDP/5353 is open in your zone
+#   - firewalld zone: FedoraWorkstation allows mDNS by default; if
+#     you're on the public zone, allow it:
+sudo firewall-cmd --add-service=mdns --permanent && \
+    sudo firewall-cmd --reload
+
+
+# AIRPRINT COMPATIBILITY
+
+# AirPrint = IPP-Everywhere + Bonjour. if your printer supports
+# AirPrint, it works with linux out of the box. nothing to configure.
+# CUPS also exposes attached USB printers via AirPrint for iOS / mac
+# clients on the LAN — set "Share This Printer" in CUPS web ui.
+
+
+# SCANNING — SANE
+
+sudo dnf install sane-backends sane-utils \
+    simple-scan gnome-document-scanner
+
+# CLI scanning:
+scanimage -L                                       # list scanners
+scanimage --format=png > scan.png                  # default settings
+scanimage --device=epson2:libusb:002:003 --format=png > scan.png
+
+# GUI: simple-scan (lightweight) or Document Scanner (newer GNOME app)
+simple-scan                                        # one-shot scans
+# or: launch "Document Scanner" from Activities
+
+# HP MFPs: scanner is reached through HPLIP + hp-scan:
+hp-scan -m flatbed                                 # one-shot
+hp-scan --output=scan.png
+
+
+# NETWORK SCANNERS
+
+# many MFPs share their scanner over the network (eSCL protocol,
+# Apple's marketing name "AirScan"). detection:
+sudo dnf install sane-airscan
+scanimage -L                                       # should now show
+                                                   # network MFPs
+
+
+# SELINUX + PRINTING/SCANNING
+
+# default policy covers normal use. if you hit denials:
+# - allow CUPS to write to NFS-mounted spool:
+sudo setsebool -P cups_execmem 1
+# - allow scanning from a user-mounted USB device:
+sudo setsebool -P sanlock_use_usb 1
+# - debug with:
+sudo ausearch -m AVC -ts recent -c cupsd
+sudo sealert -a /var/log/audit/audit.log
+
+
+# COMMON GOTCHAS
+
+# 1. PRINTER FOUND BUT JOBS STAY "PROCESSING" FOREVER. likely a queue
+#    problem. clear and restart:
+sudo systemctl restart cups
+cancel -a                                          # cancel all jobs
+#    if persistent, check the printer's web ui — often a paper-out
+#    or toner-low pause that CUPS doesn't surface clearly.
+#
+# 2. DOUBLE-SIDED PRINTING DEFAULTS BACKWARDS. set the per-printer
+#    default:
+lpoptions -p MyPrinter -o sides=two-sided-long-edge
+#    options: one-sided / two-sided-long-edge / two-sided-short-edge.
+#
+# 3. JOBS COME OUT SCALED WRONG (page area). default media size
+#    mismatch:
+lpoptions -p MyPrinter -o media=Letter             # or A4, Legal, etc.
+#
+# 4. COLOR PROFILE LOOKS OFF. install gnome-color-manager and
+#    calibrate via Settings → Color (needs a colorimeter for proper
+#    profiling; default sRGB is fine for most use).
+#
+# 5. PRINTING TO A LAN PRINTER THAT WORKED YESTERDAY. the printer
+#    likely got a new DHCP-assigned IP. either set a static lease on
+#    your router, or use the printer's mDNS .local hostname instead
+#    of an IP in the URI:
+#       ipp://myprinter.local/ipp/print
+#
+# 6. WIFI PRINTER DROPS OFF THE NETWORK. usually printer-side power-
+#    save. check the printer's own settings for "always-on wifi" or
+#    "deep sleep disabled".
+#
+# 7. SCANNING FROM AN HP MFP DOESN'T WORK BUT PRINTING DOES. install
+#    hplip-common and run hp-setup with --type=scan. some older HP
+#    MFPs need a specific scanner backend selected.
+#
+# 8. CUPS WEB UI REJECTS YOUR LOGIN. you need to be in the
+#    `lpadmin` group:
+sudo usermod -aG lpadmin "$USER"
+#    log out + back in.
+
+
+# SHARING A PRINTER FROM THIS MACHINE
+
+# turn this fedora box into a print server other devices can use:
+sudo cupsctl --share-printers --remote-any
+# then per-printer: enable sharing in CUPS web UI → Printers →
+# MyPrinter → Administration → Set Default Options → Set as Server
+# Default. other clients (iOS, mac, windows, other linux) will see
+# it via Avahi automatically.
+
+
+# DECISION MATRIX
+
+#   "I have a modern (2018+) network printer"     → IPP-Everywhere auto-detect
+#   "I have an HP printer or MFP"                 → HPLIP + hp-setup
+#   "I want CLI scanning automation"              → scanimage
+#   "I want a GUI for occasional scans"           → simple-scan
+#   "MFP scanner on the LAN"                      → sane-airscan
+#   "I want this fedora to be a LAN print server" → cupsctl --share-printers
+#   "old USB printer with no IPP support"         → CUPS web UI add manually,
+#                                                   pick driver from list
 
 
 GNOME TIPS (Workstation default)
