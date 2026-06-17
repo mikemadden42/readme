@@ -1097,6 +1097,60 @@ sudo dnf install jetbrains-mono-fonts cascadia-code-fonts \
 # 10. fwupd metadata refresh (see HARDWARE above)
 
 
+WHY FEDORA — A NOTE ON THE LINUS PERSPECTIVE
+--------------------------------------------
+
+# Linus Torvalds has run fedora as his daily driver for ~20 years and
+# counting. across interviews, mailing-list posts, and DebConf-style
+# talks he's been consistent about why. paraphrased:
+#
+# 1. HE WANTS THE DISTRO TO BE INVISIBLE.
+#    "i'm not interested in fighting my distro; i want to fight my code."
+#    a kernel maintainer can't afford for the desktop OS to be a project
+#    in itself. fedora installs, hardware works, he writes kernel code.
+#
+# 2. HARDWARE SUPPORT WAS THE ORIGINAL DRAW. early on (mid-2000s) he was
+#    on PowerPC G5 macs and fedora had the best PPC support among the
+#    big distros. as he moved to x86 and later experimented with ARM
+#    development boxes, fedora kept up. it's been the path of least
+#    friction on every machine he's used.
+#
+# 3. REASONABLY CURRENT WITHOUT BEING BLEEDING-EDGE. kernel devs need
+#    recent toolchains (gcc, glibc, binutils, perf) — fedora ships them
+#    within weeks of upstream. but every package update is a tiny risk
+#    surface, and the 6-month cadence gives him fewer disruptions than
+#    a true rolling distro would. he's been explicit that he's tried
+#    rolling and prefers point releases.
+#
+# 4. HE DOESN'T CARE ABOUT DISTRO RELIGION. he's said many times he's
+#    not loyal to fedora as an ideology. he just hasn't found a reason
+#    to switch. picking a distro is logistics, not identity.
+#
+# 5. SENSIBLE DEFAULTS. out of the box, fedora doesn't make him
+#    configure things to reach a working desktop. the kernel choice,
+#    toolchain, default GNOME — they're all already there.
+#
+# 6. INERTIA, HONESTLY. once you're set up productively, switching has
+#    a cost. that's a perfectly valid reason and he says so.
+
+# FUN FOOTNOTE: in 2011 when GNOME 3 dropped, Linus very publicly tore
+# into it ("an unholy mess") and switched to XFCE for a while. he
+# stayed on FEDORA the whole time, just changed DE. he's since rotated
+# through several DEs and is back to using mainstream ones. the point:
+# the distro choice survived even a DE he hated.
+
+# THE FRAME WORTH STEALING:
+# Linus is explicit that his distro choice is NOT a recommendation. any
+# reasonable distro works. but the frame is useful: if your distro is
+# invisible enough that you stop thinking about it, you've picked
+# correctly. the question isn't "which distro is best" — it's "which
+# one lets me forget i picked one."
+#
+# this is exactly the test that turned [[arch-distros]] and the
+# [[fedora-to-endeavouros]] migration into a "stay on fedora" decision:
+# rolling-release maintenance demands attention; fedora doesn't.
+
+
 SEE ALSO
 
 # - [[dnf]]                — package manager (this is the big primer)
