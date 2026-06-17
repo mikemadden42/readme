@@ -2979,6 +2979,174 @@ sudo dnf install jetbrains-mono-fonts cascadia-code-fonts \
 # 10. fwupd metadata refresh (see HARDWARE above)
 
 
+FEDORA RELEASE HISTORY (2003 → present)
+---------------------------------------
+
+# 44 releases over 22+ years. the long arc tells a real story about
+# how linux desktop evolved.
+
+
+# PRE-FEDORA BASELINE (2003 and before)
+
+# red hat linux was the dominant desktop linux distro from the late
+# 90s through early 2000s. boxed sets at compusa, fry's, best buy:
+# RHL 8 (2002), RHL 9 (March 2003). RHL 9 was the LAST.
+#
+# late 2003: red hat split. RHEL became the commercial subscription
+# product (RHEL 3 had just launched in Oct 2003); fedora project became
+# the community continuation.
+
+
+# FEDORA CORE ERA (2003-2007) — RHL's community lineage
+
+# Fedora Core 1 ("Yarrow")     — Nov 2003. kernel 2.4, GNOME 2.4,
+#                                KDE 3.1. essentially RHL 9 rebranded
+#                                with newer packages.
+# Fedora Core 2 ("Tettnang")   — May 2004. linux 2.6 (huge jump).
+#                                SELinux included (not enforcing).
+#                                X.org replaced XFree86. infamous
+#                                "ate my windows partition" GRUB bug.
+# Fedora Core 3 ("Heidelberg") — Nov 2004. GCC 3.4, GNOME 2.8.
+# Fedora Core 4 ("Stentz")     — Jun 2005. GCC 4.0, Eclipse + open Java
+#                                by default. first PPC support.
+# Fedora Core 5 ("Bordeaux")   — Mar 2006. Mono. graphical package
+#                                tools (Pup / Pirut).
+# Fedora Core 6 ("Zod")        — Oct 2006. compiz / AIGLX — the
+#                                wobbly-windows era. OLPC partnership.
+
+# the "Core" repo (red hat maintained) + "Extras" repo (community
+# maintained) split caused dependency hell across the boundary.
+# fedora 7 fixed it.
+
+
+# FEDORA REBRAND (2007) — single repo, modern identity
+
+# Fedora 7 ("Moonshine")  — May 2007. Core + Extras MERGED. just
+#                           "Fedora" from here. custom spins, live USB.
+# Fedora 8 ("Werewolf")   — Nov 2007. PulseAudio default (audio stack
+#                           reset). IcedTea (open java).
+# Fedora 9 ("Sulphur")    — May 2008. KDE 4.0 default (the controversial
+#                           buggy release). ext4 preview. Firefox 3.
+# Fedora 10 ("Cambridge") — Nov 2008. Plymouth boot animation replaced
+#                           RHGB. Empathy IM.
+# Fedora 11 ("Leonidas")  — Jun 2009. ext4 default. 20-second boot
+#                           goal. devicekit / udisks.
+# Fedora 12 ("Constantine") — Nov 2009. NetworkManager improvements.
+# Fedora 13 ("Goddard")   — May 2010. nouveau 3D. btrfs preview.
+# Fedora 14 ("Laughlin")  — Nov 2010. LAST GNOME 2 release (2.32).
+#                           systemd available, not yet default.
+
+
+# THE SYSTEMD / GNOME 3 TRANSITION (2011-2013) — most disruptive era
+
+# Fedora 15 ("Lovelock")        — May 2011. GNOME 3.0 DEFAULT AND
+#                                 systemd as DEFAULT INIT, same release.
+#                                 brutal for users. linus famously
+#                                 switched to XFCE here.
+# Fedora 16 ("Verne")           — Nov 2011. GRUB 2 default.
+# Fedora 17 ("Beefy Miracle")   — May 2012. /bin → /usr/bin merge
+#                                 (UsrMove) — quietly massive change
+#                                 for the filesystem hierarchy. the
+#                                 codename became its own meme.
+# Fedora 18 ("Spherical Cow")   — Jan 2013. delayed multiple times —
+#                                 became the byword for "slipped
+#                                 releases". new (much-hated) Anaconda
+#                                 installer rewrite.
+# Fedora 19 ("Schrödinger's Cat") — Jul 2013. OpenShift Origin. 3D
+#                                 printer support.
+# Fedora 20 ("Heisenbug")       — Dec 2013. 10TH ANNIVERSARY release.
+#                                 systemd-journald replaced rsyslog
+#                                 as default.
+
+
+# FEDORA.NEXT ERA (2014-2018) — Editions split, DNF, modularity
+
+# Fedora 21               — Dec 2014. CODENAMES DROPPED. split into
+#                           Editions: Workstation, Server, Cloud.
+#                           wayland preview. the big reorganization.
+# Fedora 22               — May 2015. DNF replaced YUM. generational
+#                           change in the package tool.
+# Fedora 23               — Nov 2015. LibreOffice 5.
+# Fedora 24               — Jun 2016. flatpak support introduced.
+# Fedora 25               — Nov 2016. WAYLAND BY DEFAULT on GNOME —
+#                           first major distro to do it. MP3 decoding
+#                           enabled (patent finally expired). rust
+#                           packaging.
+# Fedora 26               — Jul 2017. EFI boot improvements.
+# Fedora 27               — Nov 2017. Modular Server preview. Cloud
+#                           edition retired (containers obsoleted it).
+# Fedora 28               — May 2018. Modular Server stable.
+
+
+# MODERN ERA (2018-2024) — atomic, btrfs, PipeWire
+
+# Fedora 29  — Oct 2018. SILVERBLUE FIRST STABLE. the immutable
+#              workstation arrives.
+# Fedora 30  — May 2019. IoT edition official. ZRAM for low-memory.
+# Fedora 31  — Oct 2019. PYTHON 2 EOL. cgroups v2 by default — this is
+#              what broke docker on fedora and accelerated the move to
+#              podman.
+# Fedora 32  — Apr 2020. COVID-era release. EarlyOOM. python 2 fully
+#              removed.
+# Fedora 33  — Oct 2020. BTRFS AS DEFAULT FILESYSTEM. major change.
+#              swap-on-zram by default. Kinoite stable (immutable KDE).
+# Fedora 34  — Apr 2021. PIPEWIRE BY DEFAULT (replaced PulseAudio after
+#              14 years). GNOME 40 — new horizontal workspace UI.
+# Fedora 35  — Nov 2021. power-profiles-daemon by default (replacing
+#              TLP for most). WirePlumber. Kinoite official Edition.
+# Fedora 36  — May 2022. GNOME 42 — libadwaita era begins. Wayland
+#              default for Plasma.
+# Fedora 37  — Nov 2022. GNOME 43. Anaconda webui preview. Phosh spin
+#              for mobile. Sericea (immutable Sway).
+# Fedora 38  — Apr 2023. GNOME 44. FRAME POINTERS ENABLED by default
+#              (perf debugging win).
+# Fedora 39  — Nov 2023. GNOME 45. Onyx (immutable Budgie) official.
+# Fedora 40  — Apr 2024. KDE PLASMA 6. GNOME 46. atomic desktops
+#              rebrand — silverblue / kinoite / sericea / onyx got a
+#              unified name.
+
+
+# RECENT (2024-2026) — DNF5, KDE as Edition, polish
+
+# Fedora 41  — Oct 2024. DNF5 AS DEFAULT package manager (the C++
+#              rewrite). PTYXIS REPLACED GNOME-TERMINAL as default.
+#              KDE Plasma promoted from Spin to OFFICIAL EDITION —
+#              big political move recognizing KDE's renewed momentum.
+#              GNOME 47.
+# Fedora 42  — Apr 2025. GNOME 48 (variable refresh rate, triple
+#              buffering). KDE Plasma 6.3. Anaconda webui maturing.
+# Fedora 43  — Oct 2025. GNOME 49. KDE Plasma 6.4. HDR improvements
+#              landing.
+# Fedora 44  — Apr 2026. CURRENT. the release this primer is built on.
+
+
+# THE THROUGHLINES
+
+# 1. from boxed software to community to atomic. fedora's whole arc is
+#    a story of how commodity OS distribution should work: boxed CDs →
+#    bittorrent ISOs → live USBs → cloud images → atomic deployments.
+#
+# 2. FEDORA SHIPS DEFAULTS LINUX TALKS ABOUT FOR YEARS AFTERWARD.
+#    systemd, wayland, pipewire, btrfs, DNF5 — each was a fedora-first
+#    decision the rest of mainstream linux eventually adopted.
+#
+# 3. the 6-month cadence held remarkably steady. only F18 slipped badly.
+#    most releases are within 2-4 weeks of target.
+#
+# 4. the big disruptions clustered. GNOME 3 + systemd + Anaconda
+#    rewrite + new package format all hit 2011-2015. then the desktop
+#    calmed down for a decade.
+#
+# 5. codename loss in F21 hurt more than it should have. "Heisenbug"
+#    and "Spherical Cow" had personality; "Fedora 41" doesn't. the
+#    Editions reorganization was right but a small branding loss.
+
+# the CompUSA boxed-set era was a moment when getting linux meant
+# going to a store. by 2026 we're at "container OS, ship pre-installed
+# on hyperscaler images". fedora has been threaded through every
+# transition between those two worlds.
+
+
 MIGRATION FROM WINDOWS / MACOS
 ------------------------------
 
