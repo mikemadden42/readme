@@ -5669,21 +5669,134 @@ rm .env.local                                     # delete plaintext
 INOTIFY LIMITS — FILE WATCHER GOTCHA
 ------------------------------------
 
-# TODO STUB — VS Code, Node, file watchers, syncthing, dropbox, and
-# many language servers all hit fedora's default inotify limits on
-# real projects. small but universal dev gotcha.
-# expected content:
-#   - symptoms: "ENOSPC: System limit for number of file watchers
-#     reached", VS Code's "your project has too many files" warning,
-#     node-watch / chokidar errors
-#   - inspect current limits:
-#       cat /proc/sys/fs/inotify/max_user_watches
-#       cat /proc/sys/fs/inotify/max_user_instances
-#       cat /proc/sys/fs/inotify/max_queued_events
-#   - raise temporarily: sysctl -w fs.inotify.max_user_watches=524288
-#   - raise permanently: /etc/sysctl.d/40-max-user-watches.conf
-#   - why fedora's default is conservative (each watch uses kernel mem)
-#   - what tends to consume watches (and how to find the offender)
+# inotify is the kernel mechanism that lets a userspace process get
+# notified when files change. VS Code, Node, IntelliJ, Syncthing,
+# Dropbox, language servers, and most modern dev tooling rely on it.
+# fedora ships with relatively conservative limits — when you hit
+# them, the errors look more dramatic than they are.
+
+
+# SYMPTOMS
+
+# the canonical error messages, all the same underlying cause:
+#
+#   Node:        Error: ENOSPC: System limit for number of file
+#                watchers reached
+#   chokidar:    Error: ENOSPC, watch ...
+#   VS Code:     "Unable to watch for file changes in this large
+#                workspace. Please follow the instructions link..."
+#   IntelliJ:    "The current inotify(7) watch limit is too low"
+#   Syncthing:   "Failed to set up inotify handler"
+#   tail -f:     "Cannot watch ...: No space left on device"
+#
+# "no space left on device" is misleading — disk is fine. the kernel
+# is out of WATCH SLOTS, not blocks.
+
+
+# INSPECT CURRENT LIMITS
+
+cat /proc/sys/fs/inotify/max_user_watches      # watches per user
+cat /proc/sys/fs/inotify/max_user_instances    # inotify fds per user
+cat /proc/sys/fs/inotify/max_queued_events     # buffered events / fd
+
+# fedora 44 defaults (subject to kernel version):
+#   max_user_watches    ~ 65536 — 524288 (varies by kernel version
+#                                          and RAM)
+#   max_user_instances  ~ 128
+#   max_queued_events   ~ 16384
+#
+# the first one is what most people exhaust.
+
+
+# TEMPORARY FIX (until reboot)
+
+sudo sysctl -w fs.inotify.max_user_watches=524288
+sudo sysctl -w fs.inotify.max_user_instances=512
+
+
+# PERSISTENT FIX (across reboots)
+
+sudo tee /etc/sysctl.d/40-max-user-watches.conf <<'EOF'
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 512
+EOF
+sudo sysctl --system                            # apply now
+
+
+# WHY FEDORA'S DEFAULT IS CONSERVATIVE
+
+# each inotify watch consumes ~1 KB of UNSWAPPABLE kernel memory.
+# 524288 watches = ~500 MB locked in kernel space. on a 4 GB embedded
+# system or a memory-constrained VM, a runaway watcher can starve
+# everything else. the conservative defaults are "safe on any
+# reasonable hardware".
+#
+# on a modern desktop (16+ GB RAM), raising to 524288 is fine.
+# people pushing 2-4 million watches for very large monorepos can
+# do so but should monitor memory.
+
+
+# FINDING THE OFFENDER
+
+# you've raised limits and still hit them. who's actually using all
+# your watches? per-process inotify usage:
+for pid in /proc/[0-9]*; do
+    n=$(ls $pid/fd 2>/dev/null \
+        | while read fd; do
+              readlink $pid/fd/$fd 2>/dev/null | grep -q anon_inode:inotify && echo 1
+          done | wc -l)
+    [ "$n" -gt 0 ] && echo "$n  $(cat $pid/comm 2>/dev/null)  pid=$(basename $pid)"
+done | sort -rn | head -20
+
+# alternative (slower but cleaner):
+sudo dnf install procps-ng
+sudo find /proc/*/fd -lname 'anon_inode:inotify' 2>/dev/null \
+    | cut -d/ -f3 | sort | uniq -c | sort -rn | head -20
+
+# typical offenders:
+#   - VS Code's file watcher (large monorepos especially)
+#   - Node dev servers (vite, webpack, next.js — they watch a lot)
+#   - Syncthing (every shared directory)
+#   - JetBrains IDEs (intellij, pycharm, goland — each is a process)
+
+
+# PER-PROCESS CONTAINMENT
+
+# if one app is the only thing eating watches, exclude unwanted paths
+# instead of raising limits.
+#
+# VS CODE — files.watcherExclude in settings.json:
+{
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/target/**": true,
+    "**/.venv/**": true,
+    "**/dist/**": true
+  }
+}
+# this is the right answer for most "VS Code is hitting limits"
+# situations — let it watch your source, not node_modules.
+
+# NODE / CHOKIDAR — most file-watching libraries support an `ignored`
+# pattern. configure in your dev server's webpack / vite / next config.
+
+
+# RELATED LIMITS (not inotify but adjacent)
+
+# fs.file-max               — kernel-wide file descriptor cap. rarely
+#                             a problem on modern systems.
+# ulimit -n / nofile        — per-process fd cap. systemd units can
+#                             override via LimitNOFILE=.
+# fs.epoll                  — epoll instance limits. relevant for
+#                             very-high-connection servers.
+
+
+# CROSS-REFERENCES
+
+# - SHELL AND DEV-ENVIRONMENT PHILOSOPHY: where the dev-tools stack
+#   is described
+# - CONTAINERS: containerized dev environments have their own inotify
+#   limits (inherited from the host but bounded by per-cgroup limits)
 
 
 GAMING
