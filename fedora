@@ -1319,13 +1319,202 @@ sudo systemctl edit tailscaled
 TIME / NTP — CHRONY
 -------------------
 
-# TODO STUB — fedora's default time-sync stack (chrony, not ntpd).
-# expected content:
-#   - chronyc tracking / sources / clients
-#   - configuring custom NTP servers in /etc/chrony.conf
-#   - hardware clock vs system clock; timedatectl set-local-rtc
-#   - dual-boot with windows hardware-clock gotcha (and the fix)
-#   - PTP for nanosecond-precision LAN sync (niche)
+# fedora's default time-sync daemon is chrony (NOT ntpd, NOT
+# systemd-timesyncd). chrony handles both as a CLIENT (sync your
+# clock to upstream) and as a SERVER (serve time to your LAN).
+# faster convergence than ntpd, better behavior on machines that
+# suspend / hibernate / have intermittent network — all the reasons
+# laptops in particular benefit.
+
+
+# THE STACK
+
+#   chronyd            — the daemon. enabled + running by default
+#                        on workstation.
+#   chronyc            — the control / inspection CLI.
+#   /etc/chrony.conf   — server config.
+#   timedatectl        — systemd's high-level time UI; wraps the
+#                        kernel + RTC settings, not chrony itself.
+#   ntpsec / sntp      — alternative implementations; fedora doesn't
+#                        ship them in workstation default.
+
+
+# THE BASICS — timedatectl
+
+# the modern "what's my time situation" command:
+timedatectl                                        # local time, UTC,
+                                                   # RTC, timezone,
+                                                   # NTP enabled / synced
+
+# set timezone
+timedatectl list-timezones | grep America
+sudo timedatectl set-timezone America/Los_Angeles
+
+# enable / disable NTP sync (just toggles chrony)
+sudo timedatectl set-ntp true
+sudo timedatectl set-ntp false
+
+
+# CHRONYC — DAILY INSPECTION
+
+chronyc tracking                                   # how good is the
+                                                   # current sync
+chronyc sources                                    # which servers
+chronyc sources -v                                 # verbose (with state
+                                                   # legend)
+chronyc sourcestats                                # quality stats per
+                                                   # source
+chronyc activity                                   # 8/8 sources online
+chronyc clients                                    # who's syncing FROM
+                                                   # this machine (if
+                                                   # serving)
+chronyc serverstats                                # if serving
+
+# force an immediate poll + step
+sudo chronyc makestep                              # step the clock now
+sudo chronyc burst 5/10                            # poll 5 times in 10s
+                                                   # for faster lock
+
+
+# CONFIGURING NTP SERVERS
+
+# the default config uses fedora's pool:
+grep -E '^(pool|server)' /etc/chrony.conf
+# typically:
+#   pool 2.fedora.pool.ntp.org iburst
+
+# to use your own (corporate, internal, cloud-provider) servers:
+sudo vi /etc/chrony.conf
+# replace the `pool` line with:
+#   server time.example.com iburst
+#   server time2.example.com iburst
+# or use the popular global pools:
+#   pool pool.ntp.org iburst
+#   pool time.cloudflare.com iburst         # NTS-capable (encrypted)
+#   pool time.nist.gov iburst
+
+sudo systemctl restart chronyd
+chronyc sources -v                                 # verify new sources
+
+
+# CHRONY AS A SERVER (sharing time with your LAN)
+
+# add to /etc/chrony.conf:
+#   allow 192.168.1.0/24
+# open port 123 in firewalld:
+sudo firewall-cmd --add-service=ntp --permanent && \
+    sudo firewall-cmd --reload
+sudo systemctl restart chronyd
+chronyc clients                                    # see who's connecting
+
+# useful on a home server / NAS / router replacement — keeps every
+# device on your LAN syncing to one machine, which syncs to the
+# internet (lower jitter, fewer external queries).
+
+
+# NTS — NETWORK TIME SECURITY (encrypted NTP)
+
+# NTS authenticates time sources cryptographically, protecting against
+# someone tampering with NTP traffic. cloudflare runs an NTS server.
+# add to /etc/chrony.conf:
+#   server time.cloudflare.com iburst nts
+# verify:
+chronyc -N authdata
+
+
+# HARDWARE CLOCK vs SYSTEM CLOCK
+
+# the hardware clock (RTC) keeps time while the machine is off. on
+# linux it's traditionally set to UTC; on windows it's traditionally
+# set to LOCAL time. they disagree by your timezone offset.
+
+# inspect:
+timedatectl                                        # "RTC in local TZ" line
+hwclock --show                                     # current RTC value
+hwclock --systohc                                  # sync RTC FROM system
+hwclock --hctosys                                  # sync system FROM RTC
+
+
+# DUAL-BOOT WITH WINDOWS — THE RTC GOTCHA
+
+# the recurring frustration: boot windows, set the clock right, boot
+# linux, clock is 5/8/9 hours off. or vice versa. cause: linux assumes
+# UTC; windows assumes local. one of them has to give.
+#
+# THE FIX (recommended — tell linux to use local time for the RTC):
+sudo timedatectl set-local-rtc 1 --adjust-system-clock
+#    now linux treats the RTC as local time. windows is happy. no
+#    more drift.
+#
+# ALTERNATIVE (less common — tell windows to use UTC):
+#   on windows side, registry tweak:
+#     HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\TimeZoneInformation
+#     add DWORD: RealTimeIsUniversal = 1
+#   this is cleaner technically but you have to remember it on every
+#   windows install.
+
+
+# PTP — PRECISION TIME PROTOCOL (sub-microsecond LAN sync)
+
+# for HFT, scientific instruments, broadcast video, professional
+# audio — when NTP's millisecond precision isn't enough. PTP achieves
+# sub-microsecond synchronization across a LAN, assuming PTP-capable
+# switches.
+
+sudo dnf install linuxptp                          # ships ptp4l + phc2sys
+sudo systemctl enable --now ptp4l@<interface>      # configure to taste
+
+# requires hardware support in the NIC and in the LAN switches.
+# absolutely niche; almost no fedora workstation user needs PTP.
+
+
+# COMMON GOTCHAS
+
+# 1. CLOCK DRIFT AFTER SUSPEND. modern chrony handles this — it
+#    notices on resume and re-syncs. if you see drift:
+sudo chronyc makestep
+#    or check `chronyc tracking` immediately after resume.
+#
+# 2. "NTP IS DOWN" AFTER UPGRADING. fedora 41+ may move some defaults
+#    around with the dnf5 / chrony version bumps. verify:
+systemctl status chronyd
+sudo systemctl restart chronyd
+#
+# 3. CORPORATE FIREWALL BLOCKS NTP (UDP 123). chrony has no built-in
+#    HTTP fallback. some workarounds use NTS over TCP (port 4460);
+#    most corporate environments give you a permitted internal NTP
+#    server.
+#
+# 4. CLOUD INSTANCES PREFER VENDOR NTP. AWS / GCP / Azure each run
+#    their own NTP fleets on link-local addresses. on AWS:
+#       server 169.254.169.123 prefer iburst
+#    on GCP:
+#       server metadata.google.internal prefer iburst
+#
+# 5. RTC ALREADY DRIFTED BADLY (hours off). chrony's default policy
+#    refuses to step the clock by more than 1 second after startup.
+#    force a step:
+sudo chronyc makestep
+#    if even that fails, set the clock manually and let chrony
+#    re-sync:
+sudo timedatectl set-time '2026-06-17 14:00:00'
+#
+# 6. "STRATUM 16" IN tracking. means chrony is NOT synchronized.
+#    usually a network issue, a firewall, or no sources are responding.
+#    `chronyc sources -v` will show the connection state.
+
+
+# QUICK REFERENCE
+
+#   "what's my time situation"          → timedatectl
+#   "am i synced and how well"          → chronyc tracking
+#   "what servers am i using"           → chronyc sources -v
+#   "force resync now"                  → sudo chronyc makestep
+#   "change ntp servers"                → /etc/chrony.conf + restart
+#   "set local-time RTC for windows"    → timedatectl set-local-rtc 1
+#                                          --adjust-system-clock
+#   "share time with my LAN"            → `allow <subnet>` in
+#                                          chrony.conf, firewall, restart
 
 
 NVIDIA DRIVERS — RPM FUSION PATH
