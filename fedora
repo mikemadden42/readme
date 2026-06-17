@@ -1097,6 +1097,95 @@ sudo systemd-run --unit=backup-now \
 #   "see what's hogging RAM/CPU"       → systemd-cgtop
 
 
+TTYS — VIRTUAL TERMINALS (CTRL+ALT+F-KEYS)
+------------------------------------------
+
+# every linux system runs MULTIPLE virtual terminals (TTYs) by
+# default. you never see most of them — until your GUI breaks and
+# they become your only path back in.
+
+# on fedora workstation, the typical layout:
+#
+#   Ctrl+Alt+F1   — GDM (graphical login manager)
+#   Ctrl+Alt+F2   — your active wayland session (the desktop you
+#                   logged into)
+#   Ctrl+Alt+F3   — plain text-mode TTY (login from scratch)
+#   Ctrl+Alt+F4   — another text TTY
+#   Ctrl+Alt+F5   — another text TTY
+#   Ctrl+Alt+F6   — another text TTY
+#
+# the F1/F2 assignment shifts with the release and whether
+# auto-login is enabled. F3-F6 are always plain TTYs you can log
+# into independently.
+
+
+# THE RESCUE FLOW — WHEN GNOME WEDGES
+
+# 1. Ctrl+Alt+F3 — switch to a text TTY (the GUI is still running
+#    in the background but not in front)
+# 2. log in as your user
+# 3. diagnose:
+top                                            # what's hot
+journalctl -b -p err                           # recent boot errors
+journalctl -fu gdm                             # display manager logs
+journalctl --user -f                           # user-session logs
+# 4. fix it:
+sudo systemctl restart gdm                     # restart the display mgr
+# 5. Ctrl+Alt+F2 (or wherever GDM landed) — back to a fresh login
+
+
+# THE COMMANDS
+
+tty                                            # which TTY am I on
+who -a                                         # who's logged in where
+chvt 3                                         # switch to TTY 3 from
+                                                # a script (the CLI
+                                                # version of Ctrl+Alt+F3)
+fgconsole                                      # number of current
+                                                # foreground TTY
+sudo openvt -s -- bash                         # start a process on
+                                                # the next free TTY
+
+
+# WHEN TTY ACCESS IS YOUR ONLY OPTION
+
+# - GNOME / KDE wedged: switch to TTY → kill the wedged session →
+#   log back in
+# - GDM won't load: TTY → journalctl → fix → restart gdm
+# - NVIDIA broke after a kernel update: TTY → akmods --force → reboot
+#   (covered in NVIDIA section's failures list)
+# - Disk full and the desktop can't render dialogs: TTY → free space
+# - SELinux denial preventing graphical login: TTY → ausearch → fix
+# - Power-related lockup post-suspend: TTY → kill driver, modprobe
+
+
+# BOOTING DIRECTLY TO TEXT MODE
+
+# add `3` (the multi-user.target shorthand) to the kernel cmdline at
+# the GRUB menu — covered in the SYSTEMD targets section. drops you
+# to TTY login without starting GDM. handy when GDM itself is the
+# problem.
+
+
+# CONFIGURING THE TTY COUNT (rare)
+
+# default: 6 plain TTYs. change in logind.conf:
+sudo vi /etc/systemd/logind.conf
+# set NAutoVTs=N (default 6). restart systemd-logind.
+
+
+# AUTOLOGIN ON A TTY (for kiosks, embedded use cases)
+
+sudo mkdir -p /etc/systemd/system/getty@tty3.service.d
+sudo tee /etc/systemd/system/getty@tty3.service.d/autologin.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin myuser --noclear %I $TERM
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart getty@tty3
+
+
 GRUB — SHOWING THE MENU, MANAGING KERNELS
 -----------------------------------------
 
@@ -5652,6 +5741,153 @@ rpm -q gcc zsh gnome-boxes 2>&1
 # daily driver — it's the reference platform for new GNOME releases,
 # without the philosophical overhead of an immutable variant like
 # Silverblue.
+
+
+RUST REWRITES — THE MODERN USERLAND
+-----------------------------------
+
+# a real trend over the past decade: GNU / BSD core CLI tools (some
+# 50+ years old) are getting memory-safe replacements written in
+# rust. better defaults, faster, often safer. fedora ships most of
+# them in repos.
+
+
+# THE THESIS
+
+# the original GNU coreutils (1990s) and POSIX tools (1980s) are
+# remarkably reliable but they:
+#   - are written in C with manual memory management
+#   - have decades of UX accreted by historical accident (find's
+#     syntax, sed's escape rules, awk's quoting)
+#   - frequently sit at the heart of security incidents (sudo CVEs,
+#     bash shellshock, the openssl Heartbleed era)
+#
+# the rewrite thesis: REPLACE THE BUSIEST C TOOLS WITH RUST EQUIVALENTS,
+# starting where memory-safety matters most (sudo, coreutils) and
+# where UX improvements compound (find → fd, grep → ripgrep).
+
+
+# THE USERLAND MAPPING — DROP-IN-ISH REPLACEMENTS
+
+#   classic            rust replacement      install
+#   ──────────────     ──────────────────    ────────────────────────────
+#   grep               ripgrep (rg)          dnf install ripgrep
+#   find               fd                    dnf install fd-find
+#   cat                bat                   dnf install bat
+#   ls                 eza (was exa)         dnf install eza
+#   du                 dust                  dnf install dust
+#   df                 duf                   dnf install duf
+#   top                bottom (btm)          dnf install bottom
+#   ps                 procs                 dnf install procs
+#   sed                sd                    dnf install sd
+#   cd                 zoxide (z)            dnf install zoxide
+#   man                tealdeer (tldr)       dnf install tealdeer
+#   diff               difftastic            cargo install difftastic
+#   tar (compress)     ouch                  dnf install ouch
+#   time               hyperfine             dnf install hyperfine
+#   prompt             starship              dnf install starship
+#   bash (paradigm)    nushell               dnf install nushell
+
+
+# CORE-INFRASTRUCTURE REWRITES — THE BIG BETS
+
+# COREUTILS → UUTILS
+#   the canonical "rewrite GNU coreutils in rust" project. covers
+#   the GNU coreutils binaries (ls, cp, mv, rm, mkdir, cat, echo,
+#   etc.). UBUNTU 25.10 (Oct 2025) MADE UUTILS THE DEFAULT
+#   coreutils — a major signal that the technology is ready.
+#
+#   fedora's stance (mid-2026): packaged but not default. install
+#   explicitly:
+sudo dnf install uutils-coreutils
+#   it lands at /usr/bin/uu-* (uu-ls, uu-cp, etc.) to avoid
+#   clobbering the GNU binaries. you opt in per-tool by aliasing or
+#   adjusting PATH.
+
+# SUDO → SUDO-RS
+#   ISRG's Prossimo memory-safety project (same org behind let's
+#   encrypt). sudo has had several CVEs in C; sudo-rs is the strict
+#   subset rewrite focused on security. fedora packages it:
+sudo dnf install sudo-rs
+#   side-by-side install initially; you can symlink it as /usr/bin/sudo
+#   if you want it as the default. not yet the default but the
+#   direction of travel.
+
+
+# ALREADY-RUST FEDORA INFRASTRUCTURE (you didn't notice)
+
+# - librsvg — SVG rendering. converted to rust years ago. every time
+#   you view an SVG icon, it's rust.
+# - rustls — TLS implementation. used in increasingly many places
+#   instead of openssl.
+# - bootupd — the bootloader updater for atomic desktops.
+# - bcachefs / btrfs — userspace tools include rust components.
+# - asahi DRM driver — apple silicon GPU driver. mainline rust.
+# - rust-binary kernel modules — landing for NVMe and networking.
+
+
+# FEDORA'S PACKAGING POSTURE
+
+# the official policy (per the fedora packaging guidelines):
+#   - rust applications can be packaged as RPMs in the official repos
+#   - rust libraries are packaged as cargo-* RPMs (e.g. cargo-toml)
+#   - the cargo packaging team handles policy + builds
+#   - `cargo install <pkg>` works for end users but binaries land in
+#     ~/.cargo/bin/ — OUTSIDE the package manager
+#
+# practical guidance: PREFER `dnf install` over `cargo install`. you
+# get integrity verification, system-update integration, and clean
+# removal. reach for cargo only when a tool isn't in the repos AND
+# you actually need the latest version.
+
+
+# HONEST TRADEOFFS
+
+# 1. ECOSYSTEM FRAGMENTATION. you can now have both `grep` AND
+#    `ripgrep`. learning two tools for the same job is overhead. most
+#    users settle on the rust tool for interactive use and keep the
+#    GNU tool for script portability.
+#
+# 2. SCRIPT PORTABILITY. if your bash scripts parse `ls` or `find`
+#    output, GNU quirks are documented across 30 years of stack
+#    overflow. switching changes output formats and breaks parsing.
+#    DON'T USE RUST REPLACEMENTS IN SHIPPED SCRIPTS unless you're
+#    committing to them as deps.
+#
+# 3. COMPILE TIMES. rust compilation is famously slow. on fedora
+#    you `dnf install` precompiled binaries so it's invisible.
+#    source-build distros (gentoo, building from cargo) feel it.
+#
+# 4. BINARY SIZE. rust binaries are larger than C (~2-5x typically).
+#    on disk negligible; in container layers it adds up.
+#
+# 5. NOT EVERY TOOL BENEFITS. `wc` is 200 lines of C; there's no
+#    meaningful safety or perf win from rewriting it. the trend is
+#    targeted at busy / security-critical tools, not universal.
+
+
+# CONNECTION TO FEDORA'S BIGGER PICTURE
+
+# see THE NEXT 5-10 YEARS section, point 6 ("Rust in the kernel and
+# userspace"). the userland rewrites are the visible surface of a
+# deeper transition: memory-safe languages replacing C for new system
+# code. by 2030, expect rust to be the default for new fedora packages
+# targeting the system layer. you're watching a generational shift.
+
+
+# RECOMMENDED MODERN CLI SET (fedora install)
+
+# the rust toolkit most people end up with:
+sudo dnf install \
+    ripgrep fd-find bat eza dust duf bottom procs sd zoxide \
+    starship hyperfine tealdeer
+
+# add to your shell config:
+echo 'eval "$(starship init zsh)"' >> ~/.zshrc
+echo 'eval "$(zoxide init zsh)"' >> ~/.zshrc
+
+# optional but increasingly mainstream:
+sudo dnf install sudo-rs uutils-coreutils nushell
 
 
 COMMON POST-INSTALL CHECKLIST (Workstation)
