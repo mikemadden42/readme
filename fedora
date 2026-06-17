@@ -2038,17 +2038,249 @@ upower -i $(upower -e | grep -m1 BAT)          # battery state
 AUDIO — PIPEWIRE
 ----------------
 
-# TODO STUB — fedora's PipeWire stack (replaced PulseAudio as default
-# in F34). one of fedora's flagship contributions to modern linux.
-# expected content:
-#   - wpctl daily commands (status, set-default, set-volume, set-mute)
-#   - GNOME audio panel basics (Settings → Sound)
-#   - bluetooth audio codec selection (LDAC, aptX HD, SBC fallback)
-#   - microphone configuration + noise suppression via EasyEffects
-#   - JACK compatibility for music production (pipewire-jack)
-#   - PulseAudio compatibility shim (pipewire-pulse)
-#   - common: "audio gone after suspend", per-app volume sticking
-#   - low-latency tuning for music / streaming production
+# pipewire replaced pulseaudio as fedora's default audio server in
+# F34 (2021) — one of fedora's flagship contributions to modern linux.
+# the pitch: one daemon doing the job that three separate stacks
+# (PulseAudio for desktop, JACK for pro audio, ALSA for low-level) used
+# to share badly.
+
+
+# THE STACK
+
+#   PipeWire        — the core multimedia server. handles audio AND
+#                     video routing (screen capture for wayland flows
+#                     through here too).
+#   WirePlumber     — the session manager. policy, device routing,
+#                     "auto-switch to bluetooth when it connects".
+#                     swappable but the default everyone uses.
+#   pipewire-pulse  — compatibility shim. old `pactl`, `pavucontrol`,
+#                     and the PulseAudio API keep working transparently.
+#   pipewire-jack   — JACK compatibility. `pw-jack <app>` launches a
+#                     JACK client without a separate JACK daemon.
+#   pipewire-alsa   — ALSA compatibility. apps using the ALSA API still
+#                     work; their output flows into PipeWire's graph.
+#
+# all of the above are preinstalled on workstation. nothing to set up
+# unless you're customizing.
+
+
+# WPCTL — DAILY COMMANDS
+
+# `wpctl` is the modern CLI (ships with wireplumber). much cleaner than
+# the old `pactl`.
+
+wpctl status                                   # devices + default + clients
+wpctl get-volume @DEFAULT_AUDIO_SINK@         # current volume
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.6      # 60%
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+      # +5%
+wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+wpctl set-default <id>                         # change default sink
+
+# typical wpctl status output lists devices with numeric IDs in []
+# brackets. use those IDs with set-default and other commands.
+
+
+# PACTL / PAVUCONTROL — THE COMPATIBILITY PATH
+
+# old PulseAudio commands still work via pipewire-pulse. useful when
+# documentation or scripts assume PulseAudio:
+pactl list short sinks                         # the classic
+pactl set-sink-volume @DEFAULT_SINK@ 60%
+
+# pavucontrol — the GTK GUI mixer with per-app controls. essential for
+# "this app is going to the wrong output":
+sudo dnf install pavucontrol
+pavucontrol
+
+
+# PW-CLI AND PW-LINK — GRAPH INSPECTION
+
+# pipewire models audio as a NODE GRAPH (like JACK). nodes are sinks,
+# sources, apps, hardware. links connect them. inspect:
+pw-cli list-objects | grep -i node             # all nodes
+pw-cli info <id>                               # details for one
+pw-link --output --input                       # show every connection
+pw-link --linkable                             # what could be connected
+
+# manually link two nodes (e.g. route firefox to bluetooth headphones):
+pw-link "firefox:output_FL" "bluez_output.XX:playback_FL"
+pw-link -d "firefox:output_FL" "bluez_output.XX:playback_FL"  # disconnect
+
+# the graphical option for the same: qpwgraph or helvum.
+sudo dnf install qpwgraph                      # qt-based
+sudo dnf install helvum                        # gtk-based
+
+
+# GNOME SOUND PANEL — WHAT'S THERE
+
+# Settings → Sound. covers:
+#   - default output / input + volume
+#   - per-app volume (Applications section)
+#   - alerts sound
+#   - test speakers (left/right channel checker)
+#
+# what's NOT there: per-stream routing (use pavucontrol), bluetooth
+# codec selection (no GUI; CLI or WirePlumber config), JACK setup.
+
+
+# BLUETOOTH AUDIO — CODEC SELECTION
+
+# bluetooth audio quality depends on the CODEC negotiated between
+# device and host. ranked roughly best → worst:
+#
+#   LDAC          — sony's high-bitrate codec (~990 kbps). best for
+#                   sony headphones; supported on linux.
+#   aptX HD       — qualcomm's hi-res codec (576 kbps). many high-end
+#                   non-sony headphones.
+#   aptX          — qualcomm's standard codec (~352 kbps).
+#   AAC           — apple's standard codec (~256 kbps).
+#   SBC XQ        — high-bitrate SBC; widely compatible.
+#   SBC           — the lowest-common-denominator codec. what you get
+#                   if nothing else is negotiated.
+
+# pipewire negotiates the best mutually-supported codec automatically.
+# verify what you got:
+pw-dump | grep -A2 'codec'                    # look for codec name
+wpctl status                                   # bluetooth sink line
+
+# force a specific codec for a device — edit wireplumber config:
+sudo mkdir -p /etc/wireplumber/wireplumber.conf.d
+sudo tee /etc/wireplumber/wireplumber.conf.d/51-bluez-codecs.conf <<'EOF'
+monitor.bluez.properties = {
+  bluez5.enable-sbc-xq        = true
+  bluez5.enable-msbc          = true
+  bluez5.enable-hw-volume     = true
+  bluez5.codecs               = [ ldac aptx_hd aptx aac sbc_xq sbc ]
+}
+EOF
+systemctl --user restart wireplumber pipewire pipewire-pulse
+
+# common: "my $400 headphones sound terrible." 90% of the time the
+# codec is SBC because bluez or wireplumber didn't enable the higher
+# codecs. the above config fixes it.
+
+
+# MICROPHONE CONFIGURATION
+
+# default input
+wpctl set-default <id>                         # find ID via wpctl status
+wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 80%
+
+# test:
+arecord -d 5 test.wav && aplay test.wav        # 5-second mic test
+
+
+# EASYEFFECTS — NOISE SUPPRESSION + EQ + PRESETS
+
+# the GTK app for real-time audio processing. modern replacement for
+# PulseEffects. install + run:
+flatpak install flathub com.github.wwmm.easyeffects
+flatpak run com.github.wwmm.easyeffects
+
+# what it gives you:
+#   - input chain (microphone): noise suppression (RNNoise), gate,
+#     compressor, EQ. the "i sound professional on zoom" toolkit.
+#   - output chain (speakers/headphones): equalizer, loudness, bass
+#     enhancement, room correction
+#   - presets community: github.com/wwmm/easyeffects/wiki/Community-Presets
+#
+# the noise-suppression preset alone is worth the install — RNNoise
+# is genuinely impressive on noisy environments.
+
+
+# JACK COMPATIBILITY — MUSIC PRODUCTION
+
+# old workflow: stop pulseaudio, start jackd, route apps. terrible.
+# pipewire workflow: launch any JACK app via pw-jack, get JACK semantics
+# (low latency, exact routing) without any daemon switching.
+sudo dnf install pipewire-jack-audio-connection-kit
+pw-jack ardour                                 # launch ardour as a JACK client
+pw-jack qpwgraph                               # visual routing
+
+# professional audio production: ardour, reaper (native linux), bitwig,
+# carla. all work via pw-jack out of the box.
+
+
+# LOW-LATENCY TUNING
+
+# pipewire uses QUANTUM (buffer size in samples) and RATE (sample
+# rate Hz). lower quantum = lower latency = more CPU.
+#
+# inspect / change at runtime:
+pw-metadata -n settings 0 clock.force-quantum 256       # 256 samples
+pw-metadata -n settings 0 clock.force-rate 48000        # 48 kHz
+pw-metadata -n settings 0 clock.force-quantum 0         # back to auto
+
+# persistent config — drop in /etc/pipewire/pipewire.conf.d/:
+sudo tee /etc/pipewire/pipewire.conf.d/99-lowlatency.conf <<'EOF'
+context.properties = {
+  default.clock.rate          = 48000
+  default.clock.quantum       = 512
+  default.clock.min-quantum   = 256
+  default.clock.max-quantum   = 1024
+}
+EOF
+systemctl --user restart pipewire pipewire-pulse
+
+# typical latencies:
+#   quantum 1024 / 48k = ~21ms — desktop, browsers, video
+#   quantum 512 / 48k  = ~10ms — gaming, general production
+#   quantum 256 / 48k  = ~5ms  — live performance, vocals
+#   quantum 64 / 48k   = ~1ms  — pro audio (needs RT kernel realistically)
+
+
+# COMMON GOTCHAS
+
+# 1. AUDIO GONE AFTER SUSPEND. usually wireplumber lost the device.
+#    fix:
+systemctl --user restart wireplumber pipewire pipewire-pulse
+#    if persistent, check `journalctl --user -u pipewire -b -1` for
+#    the suspend / resume transition.
+#
+# 2. PER-APP VOLUME STICKS AT WRONG VALUE. state lives in
+#    ~/.local/state/wireplumber/. delete the relevant restore file
+#    and reset:
+rm -rf ~/.local/state/wireplumber/
+systemctl --user restart wireplumber
+#
+# 3. HDMI AUDIO MISSING. HDMI sink only appears when a display is
+#    attached at pipewire start. plug HDMI, then:
+systemctl --user restart wireplumber
+#
+# 4. BLUETOOTH HEADPHONES KEEP DISCONNECTING. usually BlueZ +
+#    PipeWire ordering issue or power-save on the bluetooth radio.
+#    workaround:
+sudo tee /etc/modprobe.d/bluetooth-powersave.conf <<'EOF'
+options btusb enable_autosuspend=0
+EOF
+sudo dracut --force
+#
+# 5. THE WRONG SINK BECAME DEFAULT after plugging in USB headphones.
+#    wireplumber should auto-switch but doesn't always. force:
+wpctl set-default <new-id>
+#    persistent: WirePlumber's "default-policy" config controls auto-
+#    switch behavior. in /etc/wireplumber/main.lua.d/.
+#
+# 6. PIPEWIRE VS ALSA LOOPBACK for recording system audio. the modern
+#    way is pavucontrol → Recording tab → pick "Monitor of <output>"
+#    for an app like OBS. or pw-link the output's monitor port to
+#    OBS's input.
+#
+# 7. APPS USING "snd_aloop" KERNEL MODULE WON'T SEE PIPEWIRE STREAMS.
+#    they're talking to raw ALSA. either redirect via pw-link or
+#    configure the app to use the pulseaudio API.
+
+
+# DECISION MATRIX — WHICH TOOL FOR WHAT
+
+#   "set my volume / mute / default"           → wpctl
+#   "GUI mixer with per-app control"           → pavucontrol
+#   "visualize the audio graph"                → qpwgraph / helvum
+#   "noise-cancel my mic for calls"            → EasyEffects
+#   "low-latency for music production"         → pw-jack + tuned quantum
+#   "force a bluetooth codec"                  → wireplumber config
+#   "route firefox to bluetooth manually"      → pw-link
+#   "old pulseaudio script needs to work"      → pactl (still works)
 
 
 PRINTING AND SCANNING
