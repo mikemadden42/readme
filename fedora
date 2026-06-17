@@ -215,6 +215,263 @@ sudo dnf system-upgrade reboot
 #   not a reinstall.
 
 
+BACKUPS — SNAPSHOTS ARE NOT BACKUPS
+-----------------------------------
+
+# the most-skipped section of any setup primer, and the one that
+# matters most the first time something goes wrong. before any tools:
+# get the mental model right.
+
+
+# THE MENTAL MODEL — WHY SNAPSHOTS DON'T COUNT
+
+# btrfs snapshots (covered in UPGRADE STRATEGY) protect you against
+# a software-level mistake: a bad upgrade, an `rm -rf` you ran in the
+# wrong directory and noticed within hours. they DO NOT protect you
+# against:
+#   - the disk physically failing (snapshot and original on same disk)
+#   - the controller eating the filesystem (same fs)
+#   - ransomware encrypting your files (snapshot can be deleted too)
+#   - theft / fire (the laptop is gone)
+#   - a sync mistake that propagates the delete to the snapshot
+#
+# the 3-2-1 rule, modernized: 3 copies of your data, on 2 different
+# storage technologies, with 1 of them PHYSICALLY OFFSITE. snapshots
+# count as zero of those.
+
+
+# WHAT TO BACK UP
+
+# CRITICAL (irreplaceable):
+#   - ~/.gnupg, ~/.ssh — losing these is recovery hell
+#   - ~/.local/share/keyrings, ~/.config/{1Password,bitwarden} — passwords
+#   - your /home in general — documents, projects, browser profiles
+#   - /etc — your edited configs (small but precious)
+#   - /var/lib/<service> for anything you self-host (postgres, mysql,
+#     docker / podman volumes, gitea, nextcloud...)
+#   - the "user-installed package" list (treat as a regenerator, not data):
+sudo dnf repoquery --userinstalled --queryformat '%{name}\n' \
+    | sort > ~/backup-userinstalled.txt
+flatpak list --columns=application > ~/backup-flatpaks.txt
+
+# REGENERATABLE (skip):
+#   - /var/cache, /tmp, /var/tmp
+#   - ~/.cache
+#   - container images (re-pull)
+#   - build artifacts (target/, node_modules/, .venv/, __pycache__/)
+#   - /usr, /boot — package manager rebuilds these
+
+
+# TOOLS — IN ORDER OF SOPHISTICATION
+
+# 1. RSYNC — the foundation. simple, reliable. NOT a backup tool on its
+#    own because it has no versioning — if you sync after a `rm -rf`
+#    you've propagated the disaster. fine for "copy /home to USB" once.
+rsync -aHAX --delete /home/ /run/media/$USER/backup/home/
+
+# 2. BTRFS SEND / RECEIVE — incremental cross-machine snapshot
+#    transfer. zero parsing of files, exact, fast. requires btrfs on
+#    BOTH ends. great for "back up snapshots to a NAS over ssh".
+#    see [[btrfs]] SEND / RECEIVE section.
+
+# 3. BORG (borgbackup) — the most-recommended Linux backup tool.
+#    deduplicated, encrypted, compressed. CLI-driven, mature.
+#    repository can be local, USB, or remote over SSH. mountable for
+#    browsing past states.
+sudo dnf install borgbackup
+borg init --encryption=repokey-blake2 /run/media/$USER/borg-repo
+borg create --stats --compression zstd,3 \
+    /run/media/$USER/borg-repo::"home-$(date +%F)" \
+    /home/$USER \
+    --exclude='/home/*/.cache' \
+    --exclude='/home/*/.local/share/Trash' \
+    --exclude='**/node_modules' \
+    --exclude='**/target' \
+    --exclude='**/.venv'
+borg list /run/media/$USER/borg-repo                    # past archives
+borg mount /run/media/$USER/borg-repo::home-2026-06-14 /mnt/r
+borg prune --keep-daily 7 --keep-weekly 4 --keep-monthly 12 \
+    /run/media/$USER/borg-repo
+borg compact /run/media/$USER/borg-repo                 # reclaim space
+
+# 4. RESTIC — borg's newer rival. similar feature set, written in go,
+#    crucial difference: native support for many cloud backends
+#    (S3, B2, Wasabi, Azure, GCS, OneDrive, SFTP, rclone) without
+#    wrappers. pick this if you want cloud-native backups.
+sudo dnf install restic
+export RESTIC_REPOSITORY="b2:my-bucket:fedora-backup"
+export RESTIC_PASSWORD_FILE="$HOME/.restic-password"
+restic init
+restic backup /home/$USER \
+    --exclude="$HOME/.cache" \
+    --exclude="**/node_modules" \
+    --exclude="**/target"
+restic snapshots
+restic mount /mnt/r
+restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+
+# 5. DEJA-DUP (gnome backups GUI) — wraps duplicity. easy "back up
+#    /home to external drive" for non-CLI users. less capable than
+#    borg/restic. ships in fedora workstation:
+sudo dnf install deja-dup
+
+
+# DESTINATIONS — THE 3-2-1 BREAKDOWN
+
+# COPY 1 — your live filesystem on the laptop (doesn't count as a
+#          backup; it's the original).
+#
+# COPY 2 — local fast storage. external USB SSD, internal second drive,
+#          or NAS on the LAN. fast restore, easy to verify, cheap.
+#          weak point: same physical location as the original.
+#
+# COPY 3 — offsite. options in 2026:
+#   - cloud object storage: backblaze B2 (~$5/TB/mo), wasabi, S3,
+#     hetzner storage box (european-priced)
+#   - rsync.net (SSH-accessible, borg-friendly, $1.50/TB/mo at scale,
+#     popular with borg users)
+#   - friend's house with a NAS, swap drives quarterly
+#   - work backup if your employer allows it (check policy)
+#
+# the offsite copy is what saves you from fire, theft, and ransomware.
+# don't skip it.
+
+
+# ENCRYPTION & KEY MANAGEMENT — THE WHOLE GAME
+
+# borg and restic encrypt by default. that's good. but:
+#
+#   - LOSING THE PASSPHRASE = BACKUPS GONE. no recovery, no support
+#     desk, no "i forgot my password" link.
+#   - don't store the passphrase in ~/.config/borg/passwd on the same
+#     machine you're backing up. obvious chicken-and-egg.
+#
+# acceptable passphrase-storage strategies:
+#   - print it, store in a fire safe at home + a duplicate at a
+#     trusted location (parents' house, safety deposit box)
+#   - put it in a password manager whose vault you can recover via
+#     a different path (e.g. 1Password / Bitwarden recovery key
+#     printed and stored physically)
+#   - cryptsetup luksHeaderBackup-style: a small file you keep on
+#     multiple USB sticks geographically separated
+
+
+# RECOMMENDED SETUP FOR A DAILY DRIVER
+
+# a layered approach that won't burn you:
+#
+#   - btrfs snapshots BEFORE every -Syu via timeshift or manual
+#     (rolling-release safety net; see UPGRADE STRATEGY)
+#   - borg or restic to a LOCAL external SSD, WEEKLY (fast restore,
+#     cheap)
+#   - restic to a CLOUD backend (B2 or rsync.net), NIGHTLY
+#     (the offsite leg)
+#   - QUARTERLY restore drill: actually pull one file back from cloud
+#     to confirm the backup works
+
+
+# AUTOMATION — SYSTEMD TIMERS, NOT CRON
+
+# don't use cron for backups on fedora. systemd timers integrate with
+# the journal (you can see failures with journalctl), respect
+# OnFailure= for notification hooks, and survive reboots cleanly.
+
+# example: nightly restic backup as a user service.
+
+mkdir -p ~/.config/systemd/user
+cat >~/.config/systemd/user/restic-backup.service <<'EOF'
+[Unit]
+Description=Nightly restic backup to B2
+
+[Service]
+Type=oneshot
+Environment="RESTIC_REPOSITORY=b2:my-bucket:fedora-backup"
+EnvironmentFile=%h/.config/restic/env
+ExecStart=/usr/bin/restic backup %h --exclude=%h/.cache
+ExecStart=/usr/bin/restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+EOF
+
+cat >~/.config/systemd/user/restic-backup.timer <<'EOF'
+[Unit]
+Description=Nightly restic backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now restic-backup.timer
+systemctl --user list-timers
+# verify it ran:
+journalctl --user -u restic-backup.service -n 50
+
+# user services don't run when you're logged out unless lingering
+# is enabled. for a laptop that's usually fine; for a desktop that
+# runs unattended:
+loginctl enable-linger "$USER"
+
+
+# THE QUARTERLY RESTORE DRILL
+
+# untested backups are not backups. once a quarter:
+#
+#   1. pick a file you care about from the last week
+#   2. restore it from your CLOUD backup (not the local SSD — the
+#      cloud copy is the one whose health matters most)
+#   3. diff against the live version. confirm contents identical.
+#   4. for bonus points: do a full restore to a VM, confirm boot
+#
+# 90% of "my backups don't work" stories are from people who never
+# tested.
+
+
+# COMMON GOTCHAS
+
+# 1. DATABASES NEED DUMPS, NOT FILE-LEVEL BACKUPS. backing up a live
+#    postgres data directory often produces unrestorable garbage.
+#    dump first, then back up the dump:
+sudo -u postgres pg_dumpall -f /backup/postgres-dump.sql
+#    same for mysql (mysqldump), influxdb (influxd backup), etc.
+#
+# 2. ACTIVE VMs — shut down before file-level backup, or use libvirt
+#    snapshot capture (see VIRTUAL MACHINES section).
+#
+# 3. DOCKER / PODMAN VOLUMES live under /var/lib/<engine>/. for
+#    podman, `podman volume export` produces a tarball you can back up.
+#
+# 4. BACKING UP /home INCLUDES BROWSER PROFILES. firefox / chrome
+#    while RUNNING hold open SQLite files — back up while the
+#    browser is closed, or accept some files will be corrupt-at-rest
+#    in the backup (recoverable via journal but not pretty).
+#
+# 5. DON'T BACK UP YOUR PASSWORD MANAGER VAULT TO A CLOUD YOU NEED
+#    THE PASSWORD MANAGER TO ACCESS. circular. keep at least one
+#    out-of-band copy.
+#
+# 6. SNAP'S AUTO-REFRESH WILL CHANGE FILES MID-BACKUP. not a fedora
+#    problem but worth knowing if you have any snaps (you shouldn't
+#    on fedora; this is one of the reasons people leave ubuntu —
+#    see WHY UBUNTU USERS MIGRATE section).
+#
+# 7. RSYNC --DELETE WILL PROPAGATE ACCIDENTAL DELETIONS. if you use
+#    rsync as your "backup" you have no protection against `rm -rf`.
+#    this is exactly why borg / restic are real backup tools and
+#    rsync isn't.
+
+
+# IF YOU NEED ONE LINE OF GUIDANCE
+#
+#   `sudo dnf install restic` → point it at backblaze B2 → systemd
+#   timer at 02:30 nightly → print the passphrase → put it in a safe.
+#
+# that's a real backup. everything else is optimization.
+
+
 GRUB — SHOWING THE MENU, MANAGING KERNELS
 -----------------------------------------
 
