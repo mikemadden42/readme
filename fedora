@@ -3359,6 +3359,242 @@ RESILIENCE — WHY FEDORA SURVIVED THE DISRUPTIONS
 # many of its 2003 peers are gone.
 
 
+THE NEXT 5-10 YEARS — TRENDS SHAPING FEDORA
+-------------------------------------------
+
+# this section was written in mid-2026 looking forward to ~2031-2036.
+# distinguishing trends fedora is well-positioned for from ones that
+# could disrupt it. some predictions are confident; some are guesses
+# explicitly flagged as such. future readers: judge the accuracy.
+
+
+# 1. AI / LOCAL INFERENCE — the biggest near-term change
+
+# already happening, not in 5 years. the shape it takes on fedora:
+#
+#   - LOCAL LLMs AS A DESKTOP PRIMITIVE. ollama, llama.cpp, vLLM.
+#     GNOME's been exploring AI features (search, draft replies) since
+#     GNOME 47-ish. by 2028, expect this to be as integrated as fwupd:
+#     a system service, configurable, off-by-default but easily turned on.
+#   - NPU SUPPORT. intel meteor lake+, AMD ryzen AI, qualcomm snapdragon
+#     X — every laptop CPU shipping now has a neural processing unit.
+#     kernel support upstreaming 2025-2026. by fedora 50-ish, expect
+#     "your NPU automatically runs local Whisper, local LLM inference,
+#     image upscaling" to be a checkbox.
+#   - AI IN SYSADMIN TOOLING. Cockpit + LLM for "explain what's failing".
+#     dnf + LLM for conflict explanations. Anaconda + LLM for installer
+#     guidance. likely optional, not default, through 2028.
+#
+# where fedora is well-positioned: kernel + userspace integration is its
+# strength. atomic desktops (silverblue family) make shipping AI runtimes
+# safely much easier — atomic updates can include model updates without
+# breaking layers.
+#
+# the risk: if integration is too cautious, users will install third-
+# party tooling (ollama via curl, claude code via npm, cursor via
+# flatpak) and the distro adds no value beyond hosting it.
+
+
+# 2. ATOMIC / IMMUTABLE AS THE DEFAULT DESKTOP MODEL
+
+# this is the trend most likely to redefine what "fedora workstation"
+# MEANS by 2030.
+#
+# silverblue family has been growing for 6+ years. project bluefin and
+# bazzite show atomic fedora can be optimized for specific use cases
+# (developers, gamers) with sensible defaults traditional workstation
+# can't match.
+#
+# REALISTIC PREDICTION: by fedora 50 (~2030), atomic might be the
+# RECOMMENDED default for new installs, with traditional workstation
+# kept as "I want full mutability". the decisive factor: when
+# toolbox/distrobox + flatpak + layered packages becomes universally
+# smoother than `dnf install`, the case for mutable Workstation as
+# default weakens.
+#
+# SPECULATIVE: by fedora 55, traditional workstation may be reclassified
+# as "server / sysadmin track". or this happens slowly enough that
+# both coexist 10+ years.
+#
+# why it's real: image-based deployments (bootc, ostree, systemd-sysext)
+# are how modern OSes evolve. ChromeOS, Android, macOS, even Windows
+# are moving atomic. linux desktop follows.
+
+
+# 3. ARM LAPTOPS BECOMING MAINSTREAM
+
+# already happening: apple silicon (asahi), qualcomm snapdragon X,
+# mediatek ARM laptops, NVIDIA grace/hopper for workstations.
+#
+# PREDICTION: by 2028-2030, "fedora workstation on ARM" is a first-class
+# platform alongside x86_64. fedora groundwork: ARM as primary
+# architecture since F20 (2013), workstation ARM landed in F41.
+#
+# what this changes: AppImages, proprietary games, vendor binaries
+# (zoom, slack, 1password) need to ship ARM. fedora's package coverage
+# strong; third-party software lag will be the pain point.
+#
+# wildcard: if a major OEM (system76, framework, even lenovo) ships an
+# ARM laptop with fedora preinstalled, transition accelerates by years.
+
+
+# 4. CONFIDENTIAL COMPUTING & SUPPLY CHAIN SECURITY
+
+# the post-XZ-attack world has shifted the security posture. XZ was
+# the wake-up call — a sophisticated supply chain attack that nearly
+# got into RHEL/fedora through maintainer takeover.
+#
+# what's coming:
+#   - SBOMs everywhere (Software Bill of Materials) embedded in RPMs.
+#     fedora already moving here.
+#   - sigstore-style transparent signing. dnf may eventually verify
+#     against transparency logs, not just package signatures.
+#   - TPM2-backed everything: sudo via TPM, ssh keys in TPM, FDE auto-
+#     unlock. already a stub in this primer. table stakes by 2028.
+#   - confidential VMs (AMD SEV-SNP, intel TDX, ARM CCA). memory-
+#     encrypted VMs for cloud. fedora's kernel + userspace work
+#     ongoing. normal for cloud by 2028.
+#   - FIDO2 for sudo. YubiKey-tap authenticates sudo instead of password.
+#     plumbing exists; will be a default.
+#
+# fedora's position: extremely good. red hat's security investment is
+# huge, fedora gets first crack at the new tooling. the 2024 XZ response
+# was rapid + disciplined — institutional muscle memory.
+
+
+# 5. THE WAYLAND COMPLETION
+
+# X11 deprecation is in progress. fedora 41 dropped the GNOME X11
+# session by default. by 2028 (fedora 48-49):
+#   - X11 sessions gone from GNOME entirely (XWayland still for app compat)
+#   - plasma X11 deprecated, possibly gone
+#   - most desktop apps wayland-native
+#   - the "X11 holdouts" (automation, niche tools) via XWayland
+#
+# interesting question: what happens to XWayland's long tail? some apps
+# will never port. wine/proton for X11-era apps becomes the model.
+# fedora benefits from being on the leading edge — the cleanup happens
+# here first.
+
+
+# 6. RUST IN THE KERNEL AND USERSPACE
+
+# rust kernel modules mergeable since 6.1 (2022). ramp slower than
+# enthusiasts hoped, faster than skeptics expected.
+#
+# REALISTIC 5-YEAR PICTURE: rust becomes a significant minority of the
+# kernel, focused on new drivers (asahi GPU, some NVMe, some networking).
+# userspace shifts faster — systemd exploring rust components, GNOME
+# starting to ship rust apps (loupe), KDE has rust work.
+#
+# where fedora plays: ships kernel + userspace, strong rust packaging
+# already. rust + atomic desktop is naturally synergistic — both about
+# smaller, more isolated, more verifiable components.
+
+
+# 7. FEDORA IoT AND EDGE
+
+# fedora IoT (image-based, atomic, AArch64-focused) has been growing
+# quietly. official answer for "fedora on a raspberry pi running my
+# home automation".
+#
+# 5-10 year picture:
+#   - more industrial adoption (competing with yocto/buildroot)
+#   - smart home: home assistant on fedora IoT becomes a pattern
+#   - edge AI: NPU + fedora IoT + locally-running models
+#   - fleet management: GitOps-style edge deployments
+#
+# the risk: yocto / buildroot have deeper industrial penetration.
+# fedora IoT will struggle to break in beyond hobbyists / RH partners
+# unless RHEL Edge gets serious uptake.
+
+
+# 8. NETWORKING — eBPF AND MESH VPNS
+
+# eBPF becoming the canonical way to observe + modify the network stack
+# (cilium, bpftrace, tetragon, pixie). fedora ships strong eBPF already.
+#
+# mesh VPNs (tailscale, netbird, openziti) replacing site-to-site VPNs.
+# already in this primer's NETWORKING section. by 2028, expect mesh
+# to be how most distributed work happens — even within companies.
+#
+# HTTP/3 / QUIC finally getting userspace adoption. nothing
+# fedora-specific; ships the libraries.
+
+
+# 9. DEVELOPER EXPERIENCE — TOOLBOX, DEVCONTAINERS, PROJECT BLUEFIN
+
+# the "workstation as substrate, dev work in containers" pattern is
+# already mature on fedora. project bluefin (fedora-based, atomic,
+# devcontainer-optimized) shows where this goes.
+#
+# 5-YEAR PREDICTION: toolbox + devcontainers convergence. microsoft's
+# devcontainers spec gets implemented as a toolbox backend or alternative.
+# fedora becomes the natural host OS for polyglot development without
+# polluting the host.
+#
+# webAssembly system runtimes (wasmtime, WASI, component model) likely
+# a real story by 2028. fedora positioned to be where Wasm system
+# tooling is most usable.
+
+
+# 10. WILDCARDS (less certain, could matter)
+
+# - EU DIGITAL SOVEREIGNTY: german government, french DINUM, EU
+#   institutions adopting linux desktop. fedora/RHEL could benefit.
+# - IBM/RED HAT STRATEGIC SHIFTS: RHEL source code changes (2023)
+#   suggested IBM willing to disrupt the ecosystem. structure
+#   protects fedora; funding may not.
+# - A NEW MAJOR DESKTOP ENVIRONMENT: GNOME + KDE dominated since 2010.
+#   COSMIC (system76, rust) could emerge as a third option by 2030,
+#   splitting attention.
+# - STEAM DECK SUCCESSOR: valve's hardware/OS work has elevated linux
+#   gaming. SteamOS being arch-based is a real long-term challenge to
+#   fedora's gaming positioning.
+# - AI ASSISTANTS IN ADMIN TOOLS: massive UX win or trust-eroding
+#   feature. could go either way.
+
+
+# THE FEDORA-SHAPED THROUGHLINES
+
+# across all these trends, what makes fedora well-positioned:
+#
+# 1. upstream-first development means fedora benefits from every
+#    red hat investment in AI, security, kernel, atomic OS.
+# 2. atomic OS is the long-term direction; silverblue's 7-year head
+#    start is real. by 2030 atomic looks prescient.
+# 3. hardware enablement (fwupd, LVFS, akmod, libfprint) is the long
+#    game. each new wave (ARM laptops, NPUs, hardware security)
+#    requires this patient infrastructure work. fedora's been at it
+#    a decade.
+# 4. the 6-month cadence is the right speed for an AI-driven decade.
+#    fast enough to integrate; slow enough to ship working software.
+# 5. red hat's commercial incentives align with fedora's user
+#    incentives more than most company-distro pairs. confidential
+#    computing, supply chain security, AI infra — RH selling these
+#    to enterprises means fedora users get them upstream. this wasn't
+#    true for canonical/ubuntu (consumer focus) or mandriva (also
+#    consumer focus).
+
+
+# THE SINGLE BIGGEST PREDICTION
+
+# by 2030, "fedora" will primarily mean "atomic fedora" for new users.
+# mutable workstation will still exist but feel anachronistic. the
+# default install of fedora 50-ish will be image-based, toolbox-centric,
+# atomic. AI integration will be a checkbox. dev workflow containerized
+# by default.
+#
+# the traditional `dnf install` workstation will be where it is now:
+# the "I know what I'm doing, don't take that away" path. like
+# `apt install` still works on ubuntu but most new users go through
+# snap or flatpak.
+#
+# if this prediction is right, the most strategically important section
+# to deepen in this primer over the next year is SILVERBLUE / IMMUTABLE
+# FEDORA (currently a stub).
+
+
 MIGRATION FROM WINDOWS / MACOS
 ------------------------------
 
