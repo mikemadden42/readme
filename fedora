@@ -1325,31 +1325,196 @@ cat /etc/kernel/cmdline                             # default cmdline for new ke
 KERNEL CMDLINE — A CHEATSHEET
 -----------------------------
 
-# TODO STUB — kernel boot parameters are scattered across NVIDIA,
-# POWER MANAGEMENT, and TPM2 LUKS sections. collect them into a
-# single reference.
-# expected content:
-#   - inspect current cmdline: cat /proc/cmdline
-#   - modify: sudo grubby --update-kernel=ALL --args="..."
-#   - remove: sudo grubby --update-kernel=ALL --remove-args="..."
-#   - common parameters with one-line explanations:
-#       quiet rhgb                          — default fedora boot
-#       systemd.unit=multi-user.target / 3 — boot to text mode
-#       systemd.unit=emergency.target       — single-user rescue
-#       nomodeset                           — disable KMS (broken GPU rescue)
-#       nouveau.modeset=0                   — disable nouveau (nvidia)
-#       nvidia-drm.modeset=1                — enable nvidia DRM modeset
-#       mitigations=off                     — disable CPU mitigations
-#                                             (perf at security cost)
-#       intel_iommu=on / amd_iommu=on       — enable IOMMU for passthrough
-#       resume=UUID=... resume_offset=N     — hibernation resume target
-#       rd.luks.uuid=... / rd.luks.options  — LUKS unlock at boot
-#       systemd.unified_cgroup_hierarchy=0  — disable cgroups v2 (rare)
-#       i915.enable_psr=0                   — disable intel PSR (display
-#                                             flicker fix)
-#       acpi_osi=Linux                      — workaround broken ACPI
-#   - forward references to NVIDIA, POWER MANAGEMENT, TPM2 LUKS,
-#     SYSTEMD targets, GRUB sections.
+# kernel boot parameters tune everything from GPU drivers to security
+# mitigations to early boot debugging. they're scattered across this
+# primer (NVIDIA, POWER MANAGEMENT, TPM2 LUKS, SYSTEMD targets, TTYs).
+# this section is the unified reference.
+
+
+# WHERE THE CMDLINE LIVES
+
+# on fedora, kernel arguments are configured per-kernel via the
+# BootLoaderSpec entries (covered in GRUB section). also tracked in
+# /etc/kernel/cmdline for future kernels.
+#
+# inspect what's currently in effect:
+cat /proc/cmdline                              # this boot's actual args
+sudo grubby --info=DEFAULT                     # default entry's args
+sudo grubby --info=ALL | grep args             # every entry's args
+cat /etc/kernel/cmdline                        # default for new kernels
+
+
+# MODIFYING — grubby IS THE TOOL
+
+# DON'T edit /etc/default/grub for argument changes on fedora. that
+# file controls grub-mkconfig output but isn't consulted by
+# BootLoaderSpec. use grubby.
+
+# add args persistently to every kernel:
+sudo grubby --update-kernel=ALL --args="mitigations=off"
+sudo grubby --update-kernel=ALL --args="nvidia-drm.modeset=1"
+
+# remove an arg:
+sudo grubby --update-kernel=ALL --remove-args="quiet"
+
+# add to just the DEFAULT kernel (not future ones):
+sudo grubby --update-kernel=DEFAULT --args="acpi_osi=Linux"
+
+# combine add + remove in one command:
+sudo grubby --update-kernel=ALL \
+    --args="mitigations=auto,nosmt" \
+    --remove-args="mitigations=off"
+
+
+# ONE-SHOT EDIT AT THE GRUB MENU
+
+# you don't have to persist changes. at the GRUB menu (visible after
+# the changes in the GRUB section):
+#   1. highlight the kernel entry
+#   2. press `e` to edit
+#   3. find the `linux` line; edit the args
+#   4. Ctrl+X or F10 to boot ONCE with the modified args
+# next reboot reverts to the saved config. ideal for rescue: try a
+# parameter, see if it helps, then make it permanent with grubby.
+
+
+# COMMON PARAMETERS — BY CATEGORY
+
+# BOOT MODE
+#   quiet rhgb                       — fedora default (suppress most
+#                                      output, Plymouth animation)
+#   3                                — boot to multi-user.target (text
+#                                      mode, no GDM). same as
+#                                      systemd.unit=multi-user.target
+#   1 / S / single                   — single-user rescue (root shell)
+#   systemd.unit=emergency.target    — emergency target (most minimal)
+#   systemd.unit=rescue.target       — rescue target (one step up
+#                                      from emergency)
+
+# GRAPHICS / DISPLAY
+#   nomodeset                        — disable KMS entirely. last-resort
+#                                      rescue for broken GPU drivers
+#                                      (booting to a glitched display).
+#   nouveau.modeset=0                — disable nouveau (do this before
+#                                      installing nvidia proprietary)
+#   nvidia-drm.modeset=1             — enable nvidia DRM modeset
+#                                      (required for clean wayland)
+#   i915.enable_psr=0                — disable intel Panel Self Refresh
+#                                      (fixes display flicker on some
+#                                      laptops)
+#   i915.enable_fbc=0                — disable intel framebuffer
+#                                      compression
+#   video=eDP-1:1920x1080@60         — force a display mode (debug)
+#   fbcon=rotate:1                   — rotate the framebuffer console
+
+# POWER MANAGEMENT
+#   intel_idle.max_cstate=1          — limit intel CPU C-states (rare;
+#                                      kills battery, used for some
+#                                      buggy chipsets)
+#   processor.max_cstate=1           — same idea, broader scope
+#   mem_sleep_default=deep           — prefer S3 over s2idle on
+#                                      supporting hardware
+#   pcie_aspm=off                    — disable PCIe Active State Power
+#                                      Management (rare; fixes some
+#                                      wifi card crashes)
+
+# STORAGE / BOOT / LUKS
+#   root=UUID=...                    — the root filesystem UUID
+#   rootfstype=btrfs                 — explicit fs type
+#   rootflags=subvol=root            — mount the @ subvolume
+#   resume=UUID=...                  — hibernation resume target
+#   resume_offset=N                  — for swapfile-on-btrfs hibernate
+#   rd.luks.uuid=...                 — LUKS UUID to unlock at boot
+#   rd.luks.options=tpm2-device=auto — TPM2 unlock (see TPM2 LUKS section)
+
+# SECURITY / CPU MITIGATIONS
+#   mitigations=off                  — disable ALL CPU mitigations
+#                                      (Spectre / Meltdown / etc.).
+#                                      ~5-30% perf wins on some
+#                                      workloads. security cost is
+#                                      real. only for trusted boxes.
+#   mitigations=auto,nosmt           — auto-pick mitigations + disable
+#                                      SMT/HT for stronger isolation
+#   spectre_v2=off / nopti           — disable specific mitigations
+#                                      individually
+
+# VIRTUALIZATION / IOMMU
+#   intel_iommu=on                   — enable Intel VT-d (for VFIO /
+#                                      GPU passthrough)
+#   amd_iommu=on                     — AMD equivalent
+#   iommu=pt                         — passthrough mode (less overhead
+#                                      for the host)
+#   vfio-pci.ids=10de:1234,10de:5678 — bind specific PCI IDs to VFIO
+#                                      (the GPU passthrough recipe)
+
+# CGROUPS
+#   systemd.unified_cgroup_hierarchy=0 — DISABLE cgroups v2 (revert to
+#                                        v1). rare; needed for some
+#                                        ancient docker setups (modern
+#                                        docker / podman handle v2)
+
+# ACPI WORKAROUNDS
+#   acpi_osi=Linux                   — claim "Linux" identity in ACPI
+#                                      tables (fixes some firmware
+#                                      that gate-keep features on
+#                                      OS detection)
+#   acpi_osi='!Windows 2012'         — pretend to be older windows
+#   acpi_backlight=vendor / video    — force backlight handler
+#   acpi=off                         — disable ACPI entirely (NEVER
+#                                      use as anything but last-resort
+#                                      diagnostic)
+
+# DEBUG / TROUBLESHOOTING
+#   debug                            — verbose kernel logs
+#   loglevel=7                       — show debug messages (0-7)
+#   earlyprintk=vga                  — print early boot logs to VGA
+#   console=tty0 console=ttyS0,115200n8  — also log to serial (useful
+#                                          for remote diagnosis)
+#   initcall_debug                   — log every init function called
+
+
+# WORKFLOW PATTERNS
+
+# 1. "MY GPU IS BROKEN; I CAN'T REACH GUI"
+#    at GRUB: press `e`, add `nomodeset 3`, Ctrl+X. you'll boot to
+#    text mode with no graphics drivers. fix from there.
+#
+# 2. "I WANT MAXIMUM PERF AND ACCEPT THE SECURITY TRADE"
+#    sudo grubby --update-kernel=ALL --args="mitigations=off"
+#    reboot. typical wins: 5-15% on database workloads, more on heavily
+#    syscall-bound code.
+#
+# 3. "I NEED TO DEBUG AN EARLY BOOT HANG"
+#    at GRUB: press `e`, remove `quiet rhgb`, add `debug loglevel=7`.
+#    boot, see the wall of dmesg as it happens.
+#
+# 4. "I WANT GPU PASSTHROUGH TO A VM"
+#    sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
+#    plus vfio-pci.ids= with the IDs of your passthrough GPU. see
+#    VIRTUAL MACHINES section.
+#
+# 5. "HIBERNATE BROKE AFTER A CHANGE"
+#    verify the resume= arg matches your swap:
+cat /proc/cmdline | grep -o 'resume=[^ ]*'
+#    fix with grubby if wrong. see POWER MANAGEMENT section.
+#
+# 6. "WAYLAND TEARING / FLICKER ON NVIDIA OR INTEL"
+#    nvidia: ensure `nvidia-drm.modeset=1` (default in modern drivers
+#    but verify).
+#    intel: try `i915.enable_psr=0` if you see flicker around video
+#    playback.
+
+
+# CROSS-REFERENCES
+
+# - GRUB section: how to make the menu visible so you can use `e` to
+#   edit one-shot
+# - SYSTEMD section: the targets (`3`, `multi-user.target`, etc.)
+# - TTYs section: pairs with this for rescue scenarios
+# - NVIDIA section: drm.modeset, nouveau.modeset, gpu-specific tuning
+# - POWER MANAGEMENT section: resume=, mem_sleep_default
+# - TPM2 LUKS section: rd.luks.options=tpm2-device=auto
+# - VIRTUAL MACHINES section: iommu / vfio-pci passthrough setup
 
 
 REPOS — OFFICIAL, RPM FUSION, COPR, FLATHUB
