@@ -1428,6 +1428,126 @@ sudo usermod -aG docker "$USER"      # log out and back in
 #   "i want to inspect a registry image"      → skopeo inspect
 
 
+WHAT FEDORA WORKSTATION SHIPS BY DEFAULT
+----------------------------------------
+
+# fedora workstation curates its default install: enough to be a
+# usable desktop OS, not so much that the ISO is bloated. assumption
+# is you'll install your specific tools via dnf or flatpak.
+
+
+# LANGUAGES & RUNTIMES (preinstalled)
+
+# python 3        — `python` IS python 3. python 2 is gone.
+# perl            — system tooling still depends on it
+# bash            — default login shell
+# ruby            — interpreter (some system tools need it)
+# gawk, sed       — POSIX text-processing tools
+# C / C++ compilers — NOT installed by default. come in via
+#                   `@development-tools` or transitively from any
+#                   `-devel` package install. verify:
+rpm -q gcc gcc-c++ make
+sudo dnf groupinstall "Development Tools"      # if missing
+
+
+# SHELLS
+
+# bash            — preinstalled (default)
+# zsh, fish, etc. — NOT preinstalled. install on demand.
+
+
+# CONTAINERS / VMs (preinstalled)
+
+# podman, toolbox — preinstalled, blessed defaults (see CONTAINERS above)
+# GNOME Boxes    — removed from the default install around F38. install
+#                  via GNOME Software or `sudo dnf install gnome-boxes`.
+# virt-manager   — not preinstalled. see VIRTUAL MACHINES section.
+
+
+# GNOME APP SUITE (preinstalled)
+
+# browser:        firefox
+# core shell:     Files (Nautilus), Settings, Software, Tour, Help
+# editor:         gnome-text-editor (replaced gedit in F42)
+# terminal:       ptyxis (replaced gnome-terminal in F41)
+# productivity:   Calculator, Calendar, Clocks, Weather, Maps
+# system:         Disks, Disk Usage Analyzer (baobab), System Monitor,
+#                 Logs, Software, Connections (RDP/VNC client)
+# media:          Image Viewer (Loupe, replaced eog in F40),
+#                 Videos (Totem), Snapshot (replaced Cheese for webcam)
+
+
+# SYSTEM / NETWORK PLUMBING (preinstalled)
+
+# init:           systemd
+# networking:     NetworkManager, firewalld, OpenSSH client
+# audio:          PipeWire + WirePlumber
+# bluetooth:      BlueZ
+# display:        GNOME Shell + Mutter, gdm (login manager)
+# firmware:       fwupd (LVFS — see HARDWARE section)
+# CLI:            nano, vim-minimal (`vi`, NOT full vim), less, curl, wget
+
+
+# QUIETLY ABSENT — common installs
+
+# most users add these within an hour of first boot:
+
+# CLI productivity:
+sudo dnf install ripgrep fd-find bat fzf jq htop tmux neovim
+
+# dev toolchains beyond C / Python / Perl:
+sudo dnf install golang rust cargo nodejs npm java-latest-openjdk \
+    clang cmake ninja-build
+
+# desktop apps not shipped by default:
+#   - LibreOffice (removed from default ~F33; flatpak or dnf)
+#   - Chrome (RPM Fusion or chrome's own repo)
+#   - VS Code, JetBrains IDEs (Microsoft repo / flatpak / vendor)
+#   - Slack, Zoom, Discord (flathub)
+#   - Steam (RPM Fusion + multilib enabled via dnf groupinstall)
+
+# multimedia codecs:
+#   - H.264 / H.265 / AAC need RPM Fusion's ffmpeg swap (see REPOS).
+#   - without it, video playback / hardware-accel encode is limited.
+
+# proprietary nvidia driver:
+#   - nouveau ships; akmod-nvidia is in RPM Fusion (see NVIDIA section).
+
+
+# VERIFY WHAT'S ON YOUR BOX
+
+# list every installed package
+rpm -qa | wc -l                                # how many packages
+rpm -qa | sort > ~/fedora-installed.txt
+
+# what's USER-installed (not pulled in as a dep) — closest to a
+# "what did I add" list:
+sudo dnf repoquery --userinstalled --queryformat '%{name}\n' | sort
+
+# what groups are installed
+sudo dnf group list --installed
+
+# is a specific package installed?
+rpm -q gcc zsh gnome-boxes 2>&1
+
+
+# WHY FEDORA WORKSTATION FEELS "MOSTLY THERE"
+
+# the default install is deliberately curated for the system-level
+# user — someone who'll bring their own toolchain, terminal, and
+# editor preferences. that's why C devs, sysadmins, and SREs often
+# find fedora "has most of what i need" without configuration:
+# the things you'd want to install yourself anyway aren't preinstalled
+# (because preferences differ), and the things everyone needs
+# (firefox, file manager, terminal, image viewer, network tools)
+# are there.
+#
+# this is also why GNOME developers themselves tend to use it as a
+# daily driver — it's the reference platform for new GNOME releases,
+# without the philosophical overhead of an immutable variant like
+# Silverblue.
+
+
 COMMON POST-INSTALL CHECKLIST (Workstation)
 -------------------------------------------
 
