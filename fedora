@@ -3011,20 +3011,297 @@ sudo systemctl reboot
 SHELL AND DEV-ENVIRONMENT PHILOSOPHY
 ------------------------------------
 
-# TODO STUB — tie together CONTAINERS, VIRTUAL MACHINES, CLAUDE CODE,
-# and language toolchains into a coherent fedora-native workflow.
-# expected content:
-#   - the pattern: workstation host as substrate; toolbox/distrobox for
-#     distro-specific tooling; per-project venvs + per-tool version
-#     managers (mise, asdf, pyenv, nvm, rustup) for language versions
-#   - why this pattern: keeps host clean, makes onboarding reproducible,
-#     supports multiple language versions side-by-side without conflict
-#   - mise / asdf comparison
-#   - dotfiles management: chezmoi, yadm, gnu stow
-#   - per-project secrets: direnv + age, sops
-#   - silverblue users: where this pattern is mandatory not optional
-#   - editor-agnostic: works for neovim, vscode, jetbrains, ghostty +
-#     terminal multiplexers
+# fedora workstation (or silverblue) is a great dev machine. but HOW
+# to arrange your tools is a recurring question. the answers scattered
+# across CONTAINERS, VIRTUAL MACHINES, GHOSTTY, and CLAUDE CODE don't
+# add up to a coherent picture. this section is the unified workflow.
+
+
+# THE PATTERN — FOUR LAYERS
+
+# the fedora-native dev workflow has four conceptual layers:
+#
+#   PROJECT    — per-project: venv, .tool-versions, devcontainer.json,
+#                .envrc
+#   TOOLS      — mise / asdf / rustup / nvm / pyenv managing language
+#                versions
+#   CONTAINER  — toolbox / distrobox (when you need distro-specific
+#                tools)
+#   HOST       — fedora itself, minimal, stable, unconcerned with
+#                project specifics
+#
+# discipline: push each concern down to the lowest appropriate layer.
+# tools that vary by project belong at PROJECT; tools that vary by
+# language ecosystem at TOOLS; distro-specific tooling at CONTAINER;
+# only genuinely cross-project tools (editor, terminal, git, version
+# manager) live on HOST.
+
+
+# WHY THIS PATTERN — vs the obvious alternatives
+
+# obvious alternative 1: "install everything on the host". works until
+# you need python 3.9 for one project and 3.13 for another; until a
+# dependency upgrade breaks an old script; until rebuilding from
+# scratch takes a day.
+#
+# obvious alternative 2: "everything in a full VM". works but slow,
+# eats RAM, friction discourages experimentation.
+#
+# layered pattern: keeps the FAST path fast (host) and the ISOLATED
+# parts isolated (containers + per-project envs). most everyday work
+# is at the project layer (cheap, instant). only distro-specific or
+# radically different stacks reach into containers.
+#
+# bonus: the entire setup is REPRODUCIBLE. onboarding a new machine =
+# clone dotfiles + mise install in each project + done. no "i forgot
+# what i installed" drift.
+
+
+# LAYER 1 — HOST: KEEP IT MINIMAL
+
+# only install on the host what you use IRRESPECTIVE of project:
+sudo dnf install --needed \
+    git neovim tmux ghostty zsh \                  # editor, mux, shell
+    ripgrep fd-find bat fzf jq htop \              # cross-project CLI
+    podman toolbox distrobox \                     # container tooling
+    direnv mise                                    # env switching
+
+# rationale: tools whose VERSION rarely matters across projects. you
+# want them current; a major version bump rarely breaks workflows.
+
+# what NOT to install on the host: language runtimes (python, node,
+# go, rust). those go through mise. unless you're on silverblue,
+# where the choice is forced (see below).
+
+
+# LAYER 2 — CONTAINER: TOOLBOX / DISTROBOX
+
+# when do you reach for a container?
+#
+#   - you need a different distro (apt, pacman, etc.) for one task
+#   - you're testing software targeting a specific distro version
+#   - you're on SILVERBLUE and need to `dnf install` something
+#   - you want a sandbox to test unsafe scripts
+#   - you're juggling multiple incompatible stacks
+
+# toolbox vs distrobox quick decision:
+#   - TOOLBOX   — simpler. fedora-ecosystem-native. /home shared. GUI
+#                 apps work but with friction. default for "fedora
+#                 version of fedora".
+#   - DISTROBOX — more flexible. any image (arch, ubuntu, opensuse).
+#                 more init systems. GUI apps clean via distrobox-export.
+
+toolbox create -c f44                              # default: matches host
+toolbox enter f44
+
+distrobox create -n ubuntu24 -i docker.io/library/ubuntu:24.04
+distrobox enter ubuntu24
+
+# common pattern: one long-lived toolbox/distrobox per language stack
+# or per test target (rust-box, go-box, rhel9-test-box). short-lived
+# ones for one-off experiments.
+
+
+# LAYER 3 — TOOLS: MISE (formerly rtx)
+
+# mise is the runtime version manager that's winning the consolidation
+# race. one tool managing python, node, go, rust, ruby, java, deno,
+# terraform, awscli, kubectl, etc. replaces nvm + pyenv + rustup +
+# rbenv + tfenv + ... with one binary + one config format.
+
+# install
+sudo dnf install mise                              # repo install
+# OR
+curl https://mise.run | sh                         # always-current
+
+# add to your shell (zsh shown; bash similar)
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+exec zsh
+
+# install runtimes
+mise install python@3.13
+mise install python@3.11 node@22 go@1.23 rust@stable
+mise list                                          # what's installed
+mise list-all python                               # what versions exist
+
+# project-scoped versions — drop a .tool-versions in your repo:
+cd ~/projects/myapp
+mise use python@3.13 node@22
+cat .tool-versions
+#   python 3.13
+#   node 22
+# cd into the directory → mise auto-switches via the shell hook
+
+# global defaults
+mise use -g python@3.13 node@22 go@1.23
+
+# update / install all per-project
+mise upgrade
+mise install                                       # installs project's
+                                                   # .tool-versions
+
+
+# MISE vs ASDF vs LANGUAGE-SPECIFIC (pyenv / nvm / rustup)
+
+#   - MISE    — modern, fast, all-in-one. polyglot. recommended default.
+#               compatible with asdf's .tool-versions format.
+#   - ASDF    — earlier polyglot tool. mise was created as a replacement;
+#               if asdf works for you, no need to switch.
+#   - PYENV   — python-only. solid; mise covers it.
+#   - NVM     — node-only. mature; mise covers it.
+#   - RUSTUP  — rust-only. the canonical rust toolchain manager; mise
+#               wraps it. EXCEPTION: if you need cross-compile targets
+#               or fine-grained component control, use rustup directly.
+#
+# consolidation argument: one config, one tool, per-directory auto-
+# switch, direnv integration. one fewer thing to learn per language.
+
+
+# LAYER 4 — PROJECT: VENVS, devcontainer.json, .envrc
+
+# per-project state lives in the project directory. typical files:
+#
+#   .tool-versions      — mise / asdf runtime versions
+#   .venv/              — python venv (mise creates this automatically)
+#   .envrc              — direnv environment overlays
+#   devcontainer.json   — microsoft's spec for containerized dev envs
+#   .editorconfig       — editor preferences
+#   .pre-commit-config  — pre-commit hooks
+#   Justfile / Makefile — task automation
+#
+# none of this lives on the host. clone the repo → mise install →
+# direnv allow → start working.
+
+# DIRENV — auto-load .envrc on cd
+sudo dnf install direnv
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+
+cat > .envrc <<'EOF'
+export DATABASE_URL="postgres://localhost/myapp_dev"
+export ANTHROPIC_API_KEY="$(pass api/anthropic)"
+layout python
+PATH_add bin
+EOF
+direnv allow                                       # one-time approval
+
+# DEVCONTAINERS — microsoft's spec for "this project's dev env is a
+# container". more structured than toolbox/distrobox. supported by
+# vscode, jetbrains, neovim (via plugins), and gradually by toolbox.
+cat > .devcontainer/devcontainer.json <<'EOF'
+{
+  "image": "mcr.microsoft.com/devcontainers/python:3.13",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "customizations": {
+    "vscode": { "extensions": ["ms-python.python"] }
+  }
+}
+EOF
+
+
+# DOTFILES MANAGEMENT
+
+# you want shell / editor / tool configs synced across machines.
+# three main approaches:
+#
+#   - CHEZMOI  — go-based, templates (different content per machine).
+#                recommended for modern multi-machine setups. encrypts
+#                secrets via age. handles templating cleanly. in repos.
+#   - YADM     — git-based, simpler. wraps git with per-host alternates.
+#                simpler conceptual model.
+#   - GNU STOW — symlink farm. zero magic. the original. fine if your
+#                dotfiles are simple and don't need machine variants.
+
+sudo dnf install chezmoi
+chezmoi init https://github.com/yourname/dotfiles.git
+chezmoi apply
+
+# update on changes
+chezmoi edit ~/.zshrc
+chezmoi apply
+
+
+# SECRETS — direnv + age / sops, not env vars in shell config
+
+# stop pasting api keys into ~/.zshrc. patterns that work:
+#
+#   - DIRENV + .envrc.local       — gitignored per-project secrets
+#   - PASS                        — gpg-encrypted password store
+#   - AGE                         — modern minimal encryption tool
+#   - SOPS                        — mozilla's secrets-in-encrypted-yaml
+#   - GNOME KEYRING / 1PASSWORD   — system keyring + CLI integration
+
+# example: direnv + age for project secrets
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
+age -r age1... -o .env.local.age .env.local       # encrypt
+rm .env.local                                     # delete plaintext
+
+# in .envrc:
+#   set +a; eval "$(age -d -i ~/.age-key .env.local.age)"; set -a
+
+
+# EDITOR + MULTIPLEXER — DELIBERATELY AGNOSTIC
+
+# the layered pattern is editor-AGNOSTIC. works for neovim, vscode,
+# jetbrains, helix, zed, emacs. they all read .tool-versions /
+# direnv / devcontainer.json correctly.
+
+# the pattern that works regardless of editor:
+#   - GHOSTTY or PTYXIS as the terminal
+#   - TMUX or ZELLIJ as the multiplexer (one session per project)
+#   - editor of choice attached to the multiplexer session
+#   - LSP servers installed per-project via mise (not host-wide)
+
+
+# SILVERBLUE — WHERE THIS PATTERN IS MANDATORY
+
+# on workstation this layered pattern is RECOMMENDED but optional.
+# you can still `sudo dnf install python3.13` on the host.
+#
+# on silverblue (see SILVERBLUE section), this pattern is REQUIRED:
+#   - host can't `dnf install` trivially (layering slows upgrades)
+#   - the OS assumes exactly this layered model
+#   - toolbox/distrobox isn't optional for dev work
+#
+# silverblue users essentially HAVE to learn this pattern. silver
+# lining: once learned, it's the cleanest dev workflow on any linux.
+# many users coming from silverblue back to workstation keep the
+# pattern because it's simply better.
+
+
+# HONEST TRADEOFFS
+
+# 1. STARTUP OVERHEAD. entering a toolbox / starting a devcontainer
+#    is slower than running on the host. usually <2 seconds; in a
+#    fast iteration loop you'll notice.
+#
+# 2. "WHICH CONTAINER AM I IN" cognitive load. your shell prompt
+#    should show this. most defaults handle toolbox; double-check
+#    distrobox setup.
+#
+# 3. DUPLICATED RESOURCES. each toolbox is a full container image —
+#    a couple GB. disk gets fragmented if you go overboard.
+#    `podman system prune` periodically.
+#
+# 4. GUI APPS IN CONTAINERS work but with friction. browsers and
+#    editors usually live on the HOST and attach to container-side
+#    workspaces (via ssh, mount, or LSP-over-stdio).
+#
+# 5. WAYLAND SOCKET SHARING IS CONFIGURED, NOT MAGIC. toolbox /
+#    distrobox set this up; if a GUI app misbehaves, that's where
+#    to look first.
+
+
+# DECISION MATRIX — WHICH LAYER OWNS WHAT
+
+#   "i need git / neovim / ripgrep"                 → HOST
+#   "i need a different python per project"         → MISE
+#   "i need to test against ubuntu's apt"           → DISTROBOX
+#   "i need a database for one project"             → PODMAN (quadlet
+#                                                     or in a devcontainer)
+#   "vendor tooling i don't want polluting host"    → TOOLBOX
+#   "whole project reproducible across machines"    → DEVCONTAINER
+#   "i need secrets per project"                    → DIRENV + AGE/SOPS
+#   "i'm onboarding a new machine"                  → CHEZMOI + mise install
 
 
 GAMING
