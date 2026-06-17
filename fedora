@@ -472,6 +472,19 @@ sudo -u postgres pg_dumpall -f /backup/postgres-dump.sql
 # that's a real backup. everything else is optimization.
 
 
+DISK MANAGEMENT (LVM, SWAP, PARTITIONING)
+-----------------------------------------
+
+# TODO STUB — disk management on fedora beyond what's in [[btrfs]].
+# expected content:
+#   - LVM basics (pvcreate / vgcreate / lvcreate); when to pick LVM vs btrfs
+#   - swap configuration: partition vs swapfile, on-btrfs caveats, zram-swap
+#   - lsblk / blkid / df / smartctl quick reference
+#   - filesystem layout choices in anaconda (default vs custom)
+#   - extending / shrinking partitions and filesystems
+#   - smartmontools schedule for disk health
+
+
 SYSTEMD — THE FOUNDATIONAL GLUE
 -------------------------------
 
@@ -986,6 +999,20 @@ sudo setenforce 0
 # requires an autorelabel boot.
 
 
+SELINUX — GOING DEEPER
+----------------------
+
+# TODO STUB — extend the SELinux section above for "I got an AVC denial
+# I can't restorecon away" use cases.
+# expected content:
+#   - audit2allow workflow (read AVC, generate policy module, install)
+#   - useful booleans: getsebool -a; setsebool -P
+#   - file context cheatsheet (semanage fcontext / chcon / restorecon)
+#   - port labeling (semanage port) for services on non-standard ports
+#   - permissive domains: one process without dropping global enforcement
+#   - third-party software gotchas (docker, nvidia, nfs, samba)
+
+
 FIREWALLD — ZONE-BASED FIREWALL
 -------------------------------
 
@@ -1289,6 +1316,18 @@ sudo systemctl edit tailscaled
 #    rootless podman uses a different netns. on the host it works.
 
 
+TIME / NTP — CHRONY
+-------------------
+
+# TODO STUB — fedora's default time-sync stack (chrony, not ntpd).
+# expected content:
+#   - chronyc tracking / sources / clients
+#   - configuring custom NTP servers in /etc/chrony.conf
+#   - hardware clock vs system clock; timedatectl set-local-rtc
+#   - dual-boot with windows hardware-clock gotcha (and the fix)
+#   - PTP for nanosecond-precision LAN sync (niche)
+
+
 NVIDIA DRIVERS — RPM FUSION PATH
 --------------------------------
 
@@ -1532,6 +1571,23 @@ SECURE BOOT — NOTES
 # verify state:
 mokutil --sb-state                                  # SecureBoot enabled / disabled
 mokutil --list-enrolled
+
+
+TPM2-BACKED LUKS UNLOCK
+-----------------------
+
+# TODO STUB — hands-off LUKS unlock via TPM2. referenced from
+# FINGERPRINT READER and the LUKS section in [[fedora-to-endeavouros]];
+# never actually documented end-to-end here.
+# expected content:
+#   - what TPM2 measurement protects against (evil maid; NOT OS theft)
+#   - prerequisites: TPM2 chip, UEFI, measured boot, fedora's signed shim
+#   - systemd-cryptenroll workflow with --tpm2-pcrs
+#   - which PCRs to bind to (0, 2, 7, 12) and what each commits you to
+#   - recovery: passphrase still works as fallback
+#   - what triggers re-prompts (firmware update, secure-boot toggle,
+#     kernel cmdline change)
+#   - rolling the key after a firmware update
 
 
 HARDWARE / FIRMWARE — fwupd
@@ -1979,6 +2035,37 @@ journalctl -b -g -E 'suspend|hibernate|resume' # recent transitions
 upower -i $(upower -e | grep -m1 BAT)          # battery state
 
 
+AUDIO — PIPEWIRE
+----------------
+
+# TODO STUB — fedora's PipeWire stack (replaced PulseAudio as default
+# in F34). one of fedora's flagship contributions to modern linux.
+# expected content:
+#   - wpctl daily commands (status, set-default, set-volume, set-mute)
+#   - GNOME audio panel basics (Settings → Sound)
+#   - bluetooth audio codec selection (LDAC, aptX HD, SBC fallback)
+#   - microphone configuration + noise suppression via EasyEffects
+#   - JACK compatibility for music production (pipewire-jack)
+#   - PulseAudio compatibility shim (pipewire-pulse)
+#   - common: "audio gone after suspend", per-app volume sticking
+#   - low-latency tuning for music / streaming production
+
+
+PRINTING AND SCANNING
+---------------------
+
+# TODO STUB — CUPS + SANE on fedora. boring but ubiquitous.
+# expected content:
+#   - default CUPS daemon + system-config-printer
+#   - IPP-Everywhere driverless printing (most printers since 2018)
+#   - hp-setup (hplip) for HP printers specifically
+#   - network printer discovery via Avahi / mDNS
+#   - SANE for scanning (sane-utils, simple-scan, document-scanner)
+#   - SELinux booleans for printer / scanner access
+#   - common: LAN print server, AirPrint compatibility, double-sided
+#     defaults, color management
+
+
 GNOME TIPS (Workstation default)
 --------------------------------
 
@@ -2271,6 +2358,38 @@ gsettings reset org.gnome.desktop.interface color-scheme
 # nuke the entire GNOME config back to defaults (RUNS IN YOUR SESSION,
 # logs you out cleanly):
 dconf reset -f /org/gnome/
+
+
+WAYLAND — WHAT'S STILL DIFFERENT
+--------------------------------
+
+# TODO STUB — practical guide to fedora's wayland-first reality.
+# fedora has been wayland-default since F25 (GNOME); plasma is
+# wayland-default in F42+.
+# expected content:
+#   - what migrated names: xdotool → ydotool, xrandr → wlr-randr
+#   - screen recording: gnome's built-in (Ctrl+Shift+Alt+R), OBS via
+#     PipeWire portal
+#   - browser screen sharing (PipeWire portals — works on chrome+ff)
+#   - color pickers and automation tools that still don't work
+#   - global hotkeys / clipboard managers that need extra config
+#   - falling back to "GNOME on Xorg" at GDM (and when worth it)
+#   - electron apps + wayland (Ozone, --enable-features=...)
+#   - nvidia + wayland status (and cross-link to NVIDIA section)
+
+
+LOCALE / FONTS / INPUT METHODS
+------------------------------
+
+# TODO STUB — international users + font config.
+# expected content:
+#   - locale / timezone: localectl set-locale, timedatectl set-timezone
+#   - input methods: fcitx5 vs ibus; when to pick each
+#   - CJK input setup (mozc, sunpinyin, hangul)
+#   - emoji input (gnome's Ctrl+. picker, ibus-typing-booster)
+#   - fontconfig: ~/.config/fontconfig/, fc-list, font preference
+#     ordering for CJK fallback
+#   - hinting and antialiasing tweaks
 
 
 CLAUDE CODE — INSTALL ON FEDORA
@@ -2636,6 +2755,44 @@ sudo usermod -aG docker "$USER"      # log out and back in
 #   "i want to inspect a registry image"      → skopeo inspect
 
 
+SILVERBLUE / IMMUTABLE FEDORA
+-----------------------------
+
+# TODO STUB — the immutable Workstation variant and its siblings
+# (Kinoite for KDE, Sericea for Sway, Onyx for Budgie). flagged in the
+# editions list at the top but never explained in depth.
+# expected content:
+#   - the model: /usr read-only, atomic rpm-ostree deployments, A/B
+#     updates with automatic rollback on failure
+#   - rpm-ostree daily: status, upgrade, rollback, deploy
+#   - layering packages on top: rpm-ostree install (vs flatpak / toolbox)
+#   - toolbox as the mandatory dev environment
+#   - homed and overlays for /var
+#   - when to pick silverblue over workstation (and when NOT to)
+#   - gotchas: kernel modules, akmod-nvidia layering, system-wide configs
+#   - philosophical alignment with vanillaOS, blendOS, project bluefin
+#     (the broader atomic-linux trend)
+
+
+SHELL AND DEV-ENVIRONMENT PHILOSOPHY
+------------------------------------
+
+# TODO STUB — tie together CONTAINERS, VIRTUAL MACHINES, CLAUDE CODE,
+# and language toolchains into a coherent fedora-native workflow.
+# expected content:
+#   - the pattern: workstation host as substrate; toolbox/distrobox for
+#     distro-specific tooling; per-project venvs + per-tool version
+#     managers (mise, asdf, pyenv, nvm, rustup) for language versions
+#   - why this pattern: keeps host clean, makes onboarding reproducible,
+#     supports multiple language versions side-by-side without conflict
+#   - mise / asdf comparison
+#   - dotfiles management: chezmoi, yadm, gnu stow
+#   - per-project secrets: direnv + age, sops
+#   - silverblue users: where this pattern is mandatory not optional
+#   - editor-agnostic: works for neovim, vscode, jetbrains, ghostty +
+#     terminal multiplexers
+
+
 WHAT FEDORA WORKSTATION SHIPS BY DEFAULT
 ----------------------------------------
 
@@ -2786,6 +2943,28 @@ sudo dnf install jetbrains-mono-fonts cascadia-code-fonts \
 # 9. firewall — usually fine as-is. open ports only as needed.
 
 # 10. fwupd metadata refresh (see HARDWARE above)
+
+
+MIGRATION FROM WINDOWS / MACOS
+------------------------------
+
+# TODO STUB — on-ramp content for users coming from non-linux. pairs
+# with the WHY UBUNTU MIGRATES and WHY ARCH/NIX RETURN sections to
+# complete the migration narrative arc.
+# expected content:
+#   - filesystem mental model: no C:\, no Program Files, /home is your
+#     world, package manager replaces installers
+#   - DE mapping: GNOME Activities vs Win11 Start vs macOS Mission Control
+#   - keyboard shortcut translations (Super = Cmd / Win)
+#   - app equivalents: office, mail, calendar, screen sharing, RDP,
+#     photo library, music, video editing
+#   - what NOT to install (no antivirus, no driver-downloader)
+#   - terminal-first sysadmin: dnf instead of "next next finish"
+#   - dual-boot setup with windows (briefly — most don't need it)
+#   - migrating files from time machine / windows backups
+#   - the "things that just work better on linux" list to recognize wins
+#   - things that are genuinely worse and how to cope (creative suite,
+#     some games, vendor-specific tooling)
 
 
 WHY UBUNTU USERS MIGRATE TO FEDORA
@@ -3068,6 +3247,25 @@ WHY FEDORA — A NOTE ON THE LINUS PERSPECTIVE
 # this is exactly the test that turned [[arch-distros]] and the
 # [[fedora-to-endeavouros]] migration into a "stay on fedora" decision:
 # rolling-release maintenance demands attention; fedora doesn't.
+
+
+WHERE TO GO WHEN STUCK
+----------------------
+
+# TODO STUB — community resources for when documented fixes don't apply.
+# expected content:
+#   - bugzilla.redhat.com — file bugs against fedora
+#   - discussion.fedoraproject.org — the modern forum (replaces the old
+#     fedoraforum.org)
+#   - ask.fedoraproject.org — Q&A
+#   - matrix: #fedora:fedoraproject.org and topic-specific rooms
+#   - IRC: #fedora on libera.chat (still active)
+#   - fedoramagazine.org — articles, "what's new" posts
+#   - mailing lists: devel, users, test
+#   - per-release Common Issues threads (see UPGRADE STRATEGY)
+#   - reading the source: pkgs.fedoraproject.org for spec files
+#   - escalation discipline: triage the problem; isolate the change;
+#     produce a minimal reproducer before filing
 
 
 SEE ALSO
