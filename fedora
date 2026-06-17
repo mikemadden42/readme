@@ -1688,6 +1688,126 @@ WHY UBUNTU USERS MIGRATE TO FEDORA
 # acceptable. for many ex-ubuntu users, the line has been crossed.
 
 
+WHY PEOPLE TRY ARCH / NIX AND COME BACK
+---------------------------------------
+
+# one of the most common patterns in linux desktop life: a fedora user
+# gets curious about a trending distro, takes the detour, and returns
+# 6-12 months later. the shapes are different for arch and nix; the
+# underlying lesson is the same.
+
+
+# WHY PEOPLE LEAVE ARCH AFTER TRYING IT
+
+# 1. MAINTENANCE BECOMES THE HOBBY. reading archlinux.org/news before
+#    every -Syu, merging .pacnew files, the "never pacman -Sy without
+#    -u" landmine, keyring expiry after a vacation. small individually;
+#    cumulatively a part-time job. the realization "i could be writing
+#    code instead" is the actual exit point.
+#
+# 2. AUR BREAKAGE AT THE WRONG MOMENT. a dep you rely on builds against
+#    a library that just bumped — now you're patching a PKGBUILD on a
+#    tuesday afternoon when you needed to ship.
+#
+# 3. THE NOVELTY WEARS OFF. installing arch is a rite of passage you
+#    only need to pass once. the second time it's just chores. the
+#    pride doesn't survive iteration.
+#
+# 4. BLEEDING-EDGE BITES HARDWARE. a kernel bump regresses nvidia,
+#    suspend/resume on your laptop, an audio quirk. the fix arrives
+#    in a week — you needed the laptop yesterday.
+#
+# 5. THE DOTFILE-DRIFT PROBLEM. every arch install ends up slightly
+#    different from your last one. minimalism sells the install; it
+#    doesn't sell the maintenance.
+
+
+# WHY PEOPLE LEAVE NIXOS AFTER TRYING IT
+
+# 1. THE NIX LANGUAGE IS HARD. a custom DSL, lazy-evaluated, notoriously
+#    poor error messages, weird scoping. you wanted a config file; you
+#    got a programming language. months in, you're an amateur nix
+#    programmer instead of using your computer.
+#
+# 2. DOCUMENTATION IS FRAGMENTED AND AGES FAST. wiki, manual,
+#    nixos-options, search.nixos.org, discourse, blog posts — no
+#    canonical source, and the language moves faster than the docs.
+#    every problem requires triangulating three sources, two outdated.
+#
+# 3. IMPERATIVE ESCAPE HATCHES EVERYWHERE. when something doesn't fit
+#    nix's model — proprietary binaries, vendor SDKs, anything compiled
+#    for "normal" linux — you end up in steam-run, nix-ld, patchelf, or
+#    FHS environments. the clean abstraction leaks constantly.
+#
+# 4. LONG, SLOW REBUILDS. `nixos-rebuild switch` on a meaningful config
+#    takes minutes; on flake setups often more. compare with `dnf
+#    install foo` finishing in seconds.
+#
+# 5. REPRODUCIBILITY PROMISE VS PRACTICE. flakes vs channels, impure
+#    evaluation, IFD, pinning strategies — five different ways to do
+#    everything and the community disagrees on which is canonical. the
+#    "just works" property hides a thicket of decisions.
+#
+# 6. DISK BALLOONS. every config change is a new generation; without
+#    aggressive garbage collection, /nix/store grows to hundreds of GB.
+#
+# 7. COMMUNITY FROUGHT. governance disputes, moderation controversies,
+#    the nix/nixos foundation drama (2024). the social environment
+#    hasn't been as calm as the technical concept.
+
+
+# WHAT PULLS PEOPLE BACK
+
+# the same thing that kept linus there — the distro becomes invisible.
+# specifically:
+#
+#   - SENSIBLE DEFAULTS YOU DON'T HAVE TO ARGUE WITH. GNOME, systemd,
+#     NetworkManager, firewalld. you CAN change them but don't HAVE to
+#     think about them.
+#   - POLISHED TOOLING. anaconda, GNOME settings, cockpit, GNOME
+#     software. not minimal but works without config.
+#   - PREDICTABLE CADENCE. 6-month releases on a calendar vs a continuous
+#     trickle (arch) vs every-config-change rebuild (nix).
+#   - YOU CAN IMPERATIVELY CHANGE THINGS. install nvidia? `sudo dnf
+#     install akmod-nvidia`. not "edit configuration.nix, rebuild,
+#     reboot, hope". most computer tasks ARE imperative; matching that
+#     is a feature.
+#   - CALM COMMUNITY. fedora has very little drama. governance is
+#     boring. nobody is shouting on reddit about a forced migration.
+#   - HARDWARE WITHOUT EFFORT. fwupd, kernel curation, akmod-nvidia,
+#     libfprint — all the things you'd otherwise spend weekends on.
+#   - CONTAINERS AS THE ESCAPE HATCH. when you want a different distro
+#     for a task, toolbox / distrobox give you it without committing
+#     the host. the features nix sells you (isolated environments)
+#     are available cheaply (see CONTAINERS section).
+#   - TRANSFERABLE SKILLS. fedora knowledge transfers to RHEL, which
+#     transfers to half the corporate linux world. nixos skills
+#     transfer to nixos.
+
+
+# THE DEEPER PATTERN
+
+# arch and nix sell you the SYSTEM as the interesting object. fedora
+# sells the system as the SUBSTRATE — its job is to disappear so you
+# can focus on what runs on top.
+#
+# both arch and nix promise that the visibility is worth it: that
+# hand-tuning or precisely declaring your system will pay dividends.
+# for a small minority of users, it genuinely does. for most, it turns
+# out the system being INVISIBLE is the actual desirable property. you
+# don't realize that's what you wanted until you've tried the
+# alternative and felt the weight of system-as-hobby.
+#
+# coming back to fedora isn't admitting defeat. it's discovering what
+# you actually need a computer FOR — which is usually not "be a nix
+# programmer" or "be an arch maintainer". it's whatever you cared
+# about before you got pulled into distro-tinkering.
+#
+# this is the same realization that drove the [[arch-distros]]
+# exploration and the [[fedora-to-endeavouros]] migration plan
+# captured elsewhere in this repo. not unique — a well-worn path.
+
+
 WHY FEDORA — A NOTE ON THE LINUS PERSPECTIVE
 --------------------------------------------
 
