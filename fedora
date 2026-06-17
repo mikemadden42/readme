@@ -1065,6 +1065,68 @@ gsettings reset org.gnome.desktop.interface color-scheme
 dconf reset -f /org/gnome/
 
 
+CLAUDE CODE — INSTALL ON FEDORA
+-------------------------------
+
+# anthropic's CLI agent. not in fedora repos. three install paths,
+# ordered by simplicity. see also [[claude-code]] for the ptyxis
+# shift+enter workaround.
+
+
+# 1. NATIVE INSTALLER (recommended)
+# self-contained binary. no Node.js dep, no system-wide JS toolchain.
+# canonical URL is on claude.com/claude-code — check there if the
+# script URL below has rotated:
+curl -fsSL https://claude.ai/install.sh | bash
+which claude && claude --version
+#
+# lands in ~/.local/bin (already on fedora's user PATH). no sudo.
+# updates: `claude update` or just re-run the installer.
+# uninstall: rm -rf ~/.local/share/claude ~/.local/bin/claude
+
+
+# 2. NPM (traditional path)
+# works fine but you're now maintaining a global Node install just
+# for one CLI. preferred only if you already use npm for other tools.
+sudo dnf install nodejs npm
+npm install -g @anthropic-ai/claude-code
+#
+# avoid sudo for global installs by setting a per-user prefix:
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.zshrc
+exec zsh
+#
+# update: `npm update -g @anthropic-ai/claude-code`
+
+
+# 3. HOMEBREW ON LINUX (only if already using brew)
+brew install anthropic/claude/claude-code
+
+
+# AUTH — two modes
+
+# subscription (Pro / Max) — usual choice for individual use:
+claude login
+
+# API key — billable per token; right choice for CI / scripted use:
+export ANTHROPIC_API_KEY=sk-ant-...
+# put it in ~/.zshrc or a per-project .envrc (direnv) rather than
+# typing it interactively.
+
+
+# PTYXIS NOTE
+# claude code's shift+enter (insert newline mid-prompt) does NOT work
+# in ptyxis out of the box — ptyxis sends the same byte sequence as
+# plain enter. workarounds (covered in [[claude-code]]):
+#   - run `/terminal-setup` inside claude code (works for kitty, iterm2,
+#     vs code; ptyxis support is partial)
+#   - use Ctrl+J to insert a newline
+#   - end the line with a backslash before pressing enter
+# the cleanest fix is to use a different terminal — see GHOSTTY above
+# (its keybinding for shift+enter is configurable and works cleanly).
+
+
 COMMON POST-INSTALL CHECKLIST (Workstation)
 -------------------------------------------
 
