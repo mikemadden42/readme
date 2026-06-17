@@ -1097,6 +1097,154 @@ sudo systemd-run --unit=backup-now \
 #   "see what's hogging RAM/CPU"       → systemd-cgtop
 
 
+PERIODIC MAINTENANCE — DO I HAVE TO RUN ANYTHING?
+-------------------------------------------------
+
+# short answer: almost never. fedora ships a stack of systemd
+# timers that handle the recurring chores. the right move is to
+# AUDIT what's already running rather than write cron jobs.
+
+
+# THE ONE COMMAND THAT TELLS YOU EVERYTHING
+
+systemctl list-timers --all
+# columns: NEXT | LEFT | LAST | PASSED | UNIT | ACTIVATES
+
+# typical fedora 44 workstation timers you'll see:
+#
+#   dnf-makecache.timer           — refresh dnf metadata cache (hourly)
+#   fstrim.timer                  — TRIM SSDs (weekly)
+#   logrotate.timer               — rotate /var/log files (daily)
+#   man-db-cache-update.timer     — rebuild apropos index after man changes
+#   unbound-anchor.timer          — refresh DNSSEC root anchor
+#   systemd-tmpfiles-clean.timer  — clean /tmp, /var/tmp per rules
+#   plocate-updatedb.timer        — only if plocate is installed
+#   sysstat-*.timer               — only if sysstat is installed
+#   raid-check.timer              — md array integrity, only if RAID exists
+
+
+# THINGS PEOPLE THINK THEY NEED TO RUN BY HAND (BUT DON'T)
+
+# fstrim — discard unused SSD blocks
+sudo fstrim -av
+# fstrim.timer runs this weekly. AND, on the default btrfs root,
+# `discard=async` is in the mount options — continuous async
+# discard at the filesystem level. manual fstrim is harmless but
+# redundant.
+systemctl status fstrim.timer
+findmnt -no OPTIONS /        # look for discard=async
+
+# updatedb — rebuild the locate database
+sudo updatedb
+# only meaningful if `plocate` (fedora's mlocate replacement) is
+# installed. if it is, plocate-updatedb.timer runs it daily.
+# workstation does NOT install plocate by default; many folks
+# default to `fd` / `rg` / `find` and never miss it.
+rpm -q plocate
+systemctl status plocate-updatedb.timer
+
+# dnf makecache — refresh repo metadata
+sudo dnf makecache
+# dnf-makecache.timer fires hourly with a random delay. only run
+# manually right before a planned upgrade if you can't wait.
+
+# journal cleanup
+sudo journalctl --vacuum-size=500M
+sudo journalctl --vacuum-time=2weeks
+# journald already enforces SystemMaxUse (10% of /var/log, capped
+# at 4 GiB). only run manually if you tightened the limits or
+# need to free space NOW.
+
+
+# THINGS YOU SHOULD ACTUALLY DO PERIODICALLY (HANDS-ON)
+
+# 1. upgrade across releases — every ~6-13 months
+#    (see UPGRADE STRATEGY)
+sudo dnf upgrade --refresh
+sudo dnf system-upgrade download --releasever=NN
+sudo dnf system-upgrade reboot
+
+# 2. trim orphans + old kernels — every few months
+sudo dnf autoremove
+# fedora keeps the 3 newest kernels by default (installonly_limit=3
+# in /etc/dnf/dnf.conf). lower it to 2 if /boot is tight.
+
+# 3. firmware updates — monthly is plenty
+#    (see HARDWARE / FIRMWARE — fwupd)
+sudo fwupdmgr refresh
+sudo fwupdmgr get-updates
+sudo fwupdmgr update
+
+# 4. flatpak housekeeping — occasionally
+flatpak update
+flatpak uninstall --unused
+
+# 5. btrfs balance — only on actual symptoms
+sudo btrfs filesystem usage /
+sudo btrfs balance start -dusage=50 -musage=50 /
+# DO NOT schedule blanket scrubs or balances. scrub is heavy;
+# balance rewrites blocks. let problems prompt you, not the clock.
+
+# 6. SMART health glance — every few months
+#    (smartd handles alerts automatically — see DISK MANAGEMENT)
+sudo smartctl -H /dev/nvme0n1
+sudo smartctl -a /dev/nvme0n1
+
+
+# WRITING YOUR OWN TIMER (THE FEDORA WAY)
+
+# full .service + .timer template lives in SYSTEMD — THE
+# FOUNDATIONAL GLUE. quick version:
+
+sudo tee /etc/systemd/system/my-maint.service >/dev/null <<'EOF'
+[Unit]
+Description=My maintenance task
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/my-script
+EOF
+
+sudo tee /etc/systemd/system/my-maint.timer >/dev/null <<'EOF'
+[Unit]
+Description=Run my maintenance task weekly
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now my-maint.timer
+
+# Persistent=true catches up after a missed run (laptop was off).
+# RandomizedDelaySec spreads load when many hosts share the timer.
+
+
+# HONEST TRADEOFFS
+
+# don't layer your own cron jobs on top of fedora's timer stack.
+# you'll get duplicate work, journald loses unified visibility,
+# and troubleshooting takes twice as long.
+
+# resist scheduling "preventive" scrubs, autoremoves, or vacuums.
+# fedora's defaults are well-tuned; meddling tends to cost more
+# than it saves. add a timer when you have a real recurring need,
+# not because "weekly cleanup sounds responsible."
+
+
+# QUICK REFERENCE
+
+#   what's running periodically?      → systemctl list-timers --all
+#   trim my SSD?                      → already automated, ignore
+#   rebuild locate db?                → install plocate; timer handles it
+#   free /var/log space?              → journalctl --vacuum-size=500M
+#   delete old kernels?               → dnf autoremove + installonly_limit
+#   update firmware?                  → fwupdmgr refresh && update
+#   schedule my own task?             → .service + .timer (see SYSTEMD)
+
+
 TTYS — VIRTUAL TERMINALS (CTRL+ALT+F-KEYS)
 ------------------------------------------
 
