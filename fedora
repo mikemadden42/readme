@@ -1580,6 +1580,114 @@ sudo dnf install jetbrains-mono-fonts cascadia-code-fonts \
 # 10. fwupd metadata refresh (see HARDWARE above)
 
 
+WHY UBUNTU USERS MIGRATE TO FEDORA
+----------------------------------
+
+# a recurring driver of fedora adoption is friction with canonical's
+# commercial layer on ubuntu. some of this is "proprietary" in the
+# strict sense (closed-source); some is "intrusive" (ads + nags inside
+# an open distro). the honest taxonomy of what people object to:
+
+
+# THE BIG ONES (most-cited in migration posts)
+
+# 1. SNAP STORE BACKEND IS PROPRIETARY. snap as a packaging format is
+#    open source, but snapcraft.io — the ONLY place snaps come from —
+#    is a closed canonical-run service. you can't host your own. compare
+#    with flatpak: flathub is one of many possible remotes. single-
+#    vendor lock-in inside an "open" distro is the core objection.
+#
+# 2. `apt install firefox` SILENTLY INSTALLS THE SNAP. on ubuntu,
+#    certain packages (firefox, chromium, thunderbird in some versions)
+#    are no longer real .debs — apt redirects to snap under the hood.
+#    no prompt, no opt-out at the apt level. this broke the "deb on
+#    ubuntu" mental model and lit a fire under the migration crowd.
+#
+# 3. MANDATORY SNAP AUTO-UPDATES. snapd updates installed snaps on its
+#    own schedule. delay (`snap refresh --hold`) but you can't disable
+#    cleanly. for a desktop user editing a file when firefox restarts
+#    itself, this is a genuine grievance.
+
+
+# THE INTRUSIVE ADVERTISING LAYER
+
+# 4. APT NEWS. canonical promotional messages injected into `apt update`
+#    output, mostly recommending ubuntu pro. disable:
+#         sudo pro config set apt_news=false
+#    (see [[ubuntu]] for the one-liner.)
+#
+# 5. MOTD ADVERTISING. ssh or local TTY login on ubuntu server prints
+#    canonical promotional text — pro encouragement, blog links,
+#    surveys. lives in /etc/update-motd.d/; chmod -x the offenders.
+#
+# 6. `pro security-status` NAGS. apt output and motd periodically
+#    report on "expired security updates" ubuntu pro would cover.
+#    technically informational; reads like a paywall warning.
+
+
+# UBUNTU PRO ITSELF
+
+# 7. UBUNTU PRO IS A PAID CANONICAL SUBSCRIPTION (free for personal
+#    use up to 5 machines; paid otherwise). it provides "esm-apps"
+#    and "esm-infra" — extended security maintenance for packages
+#    ubuntu's free tier doesn't get past their support window. the
+#    implication: parts of the package set get patched only for
+#    paying customers. the most contentious change for shops running
+#    ubuntu LTS in production.
+#
+# 8. EVEN WITHOUT SUBSCRIBING, ubuntu-advantage-tools is INSTALLED
+#    and the `pro` CLI phones home to check entitlements. removable
+#    but on by default.
+
+
+# OTHER COMMERCIALLY-TIED BITS
+
+# 9.  LIVEPATCH (kernel live patching) requires ubuntu pro. marketed
+#     heavily.
+# 10. LANDSCAPE — canonical's commercial fleet-management product.
+#     mentioned in motd / pro outputs even if you don't use it.
+# 11. SNAPD PHONE-HOME. snapd contacts canonical periodically for
+#     refresh checks. standard PM behavior, but combined with the
+#     lock-in story it gets called out.
+
+
+# HISTORICAL BAGGAGE (mostly gone but stains the reputation)
+
+# 12. AMAZON SEARCH LENS (2012-2016). unity dash sent your search
+#     terms to amazon for affiliate revenue. removed by 16.04. the
+#     "original sin" that taught users to scrutinize canonical
+#     product decisions.
+# 13. MIR (canonical's NIH display server vs wayland), UNITY (insular
+#     DE), UPSTART (init before systemd). examples of canonical
+#     fragmenting linux through NIH. all irrelevant today, but
+#     contribute to the long-tail trust deficit.
+
+
+# WHAT FEDORA EXPLICITLY DOESN'T DO
+
+# - no paid subscription tier (RHEL is the paid product, a separate
+#   distro entirely)
+# - no proprietary store backend (RPM Fusion and COPR are community-run;
+#   flathub is the default flatpak remote, you can add others)
+# - no advertising in dnf output or motd
+# - no `pro`-equivalent nag tool
+# - no silent `dnf install` redirects to a different package format
+
+
+# THE FAIR CAVEAT
+
+# fedora is sponsored by red hat (now IBM), and red hat has made its
+# own controversial decisions in recent years (RHEL source code access
+# changes in 2023). the meaningful difference: those decisions
+# affect the COMMERCIAL product, not the upstream community distro.
+# fedora the experience hasn't been monetized.
+#
+# this isn't a "canonical bad, red hat good" story. canonical has a
+# business model; companies need revenue. the question is whether the
+# line where commercial intent intrudes on user experience is
+# acceptable. for many ex-ubuntu users, the line has been crossed.
+
+
 WHY FEDORA — A NOTE ON THE LINUS PERSPECTIVE
 --------------------------------------------
 
