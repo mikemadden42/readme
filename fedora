@@ -1576,18 +1576,208 @@ mokutil --list-enrolled
 TPM2-BACKED LUKS UNLOCK
 -----------------------
 
-# TODO STUB — hands-off LUKS unlock via TPM2. referenced from
-# FINGERPRINT READER and the LUKS section in [[fedora-to-endeavouros]];
-# never actually documented end-to-end here.
-# expected content:
-#   - what TPM2 measurement protects against (evil maid; NOT OS theft)
-#   - prerequisites: TPM2 chip, UEFI, measured boot, fedora's signed shim
-#   - systemd-cryptenroll workflow with --tpm2-pcrs
-#   - which PCRs to bind to (0, 2, 7, 12) and what each commits you to
-#   - recovery: passphrase still works as fallback
-#   - what triggers re-prompts (firmware update, secure-boot toggle,
-#     kernel cmdline change)
-#   - rolling the key after a firmware update
+# fedora's LUKS root encryption is excellent, but typing a passphrase
+# at every boot is friction. on hardware with a TPM2 chip + secure
+# boot, you can have the kernel unlock LUKS automatically — provided
+# the boot chain is intact. tamper with the firmware, bootloader, or
+# kernel and the auto-unlock fails (passphrase falls back).
+#
+# this is the modern "TPM-backed disk encryption" model that windows
+# bitlocker, macos filevault, and silverblue have been using for years.
+# on fedora it's a `systemd-cryptenroll` command.
+
+
+# WHAT THIS PROTECTS AGAINST — THREAT MODEL
+
+# PROTECTS:
+#   - EVIL MAID attacks (someone replaces your bootloader to capture
+#     the LUKS passphrase). the TPM won't release the key to a
+#     tampered boot chain.
+#   - laptop theft with the disk pulled — the disk is still encrypted
+#     with LUKS; without the TPM chip the data is unreadable.
+#
+# DOES NOT PROTECT:
+#   - laptop theft with the WHOLE machine — the TPM is on the
+#     motherboard. boot the laptop, you get to the gdm login screen,
+#     attacker still needs your user password to actually log in.
+#     this is why screen lock + strong user password still matter.
+#   - rogue OS attacks while you're logged in. TPM unlock happens at
+#     boot; everything past that point is unchanged.
+#   - cold-boot attacks on RAM (extremely niche).
+#
+# this is the same threat model as bitlocker's "PIN-less" mode.
+# accept it knowingly; don't treat TPM unlock as a free upgrade.
+
+
+# PREREQUISITES
+
+# 1. TPM2 chip (almost every modern laptop and motherboard has one)
+#    check:
+ls /dev/tpm0 /dev/tpmrm0                       # devices present
+sudo dnf install tpm2-tools
+sudo tpm2_getcap properties-fixed | head -20   # responds: TPM2 alive
+
+# 2. UEFI (not BIOS)
+mokutil --sb-state                             # SecureBoot enabled or not
+
+# 3. Secure Boot ideally enabled — this is what binds PCR 7 to a
+#    known-good boot chain. you CAN bind without it but the security
+#    model is weaker.
+
+# 4. LUKS-encrypted root partition (Workstation install with the
+#    "Encrypt my data" anaconda checkbox; you should have entered a
+#    passphrase at install time). verify:
+sudo cryptsetup luksDump /dev/nvme0n1p3        # adjust device
+# look for key slots; "PBKDF2" or "argon2" indicates passphrase slot 0.
+
+
+# THE ENROLLMENT — ONE COMMAND
+
+# enroll the TPM as an additional LUKS key, bound to specific PCRs:
+sudo systemd-cryptenroll \
+    --tpm2-device=auto \
+    --tpm2-pcrs=0+2+7+12 \
+    /dev/nvme0n1p3
+
+# the command prompts for an existing passphrase (to authorize the
+# new enrollment), then writes a new key slot bound to the TPM with
+# the specified PCRs.
+
+
+# PCR SELECTION — WHAT EACH BINDS TO
+
+# PCRs (Platform Configuration Registers) are TPM measurements of
+# specific boot-chain components. binding to a PCR means "if THIS
+# component changes, the TPM refuses to release the key."
+#
+#   PCR 0   — firmware code (UEFI / coreboot). changes on BIOS update.
+#   PCR 2   — extended firmware code (option ROMs, etc.). changes on
+#             hardware swaps or PCIe / GPU firmware updates.
+#   PCR 4   — bootloader (grub / shim / systemd-boot). changes on
+#             package upgrades that touch shim or grub.
+#   PCR 7   — secure boot policy + keys. changes if you toggle secure
+#             boot or re-enroll MOK keys. THE KEY ONE for evil-maid
+#             defense.
+#   PCR 11  — initramfs + kernel cmdline (systemd-stub specifically).
+#             changes on every dracut rebuild — usually too brittle.
+#   PCR 12  — kernel command line. changes if `grubby --update-kernel
+#             --args` was run.
+#   PCR 14  — MOK (Machine Owner Key) — third-party signed module
+#             tracking.
+#
+# RECOMMENDED for fedora workstation: --tpm2-pcrs=0+2+7+12
+#   - tight enough to defeat evil-maid (PCR 7)
+#   - tolerates kernel updates (PCR 11 not included)
+#   - re-prompts on firmware update (PCR 0/2)
+#   - re-prompts on kernel-cmdline change (PCR 12)
+#
+# MOST PARANOID: add 4 (catches bootloader tampering at the cost of
+# re-enrolling on every shim/grub update). usually overkill.
+
+
+# VERIFY ENROLLMENT
+
+# inspect the LUKS slots — should now show two: passphrase + tpm2:
+sudo cryptsetup luksDump /dev/nvme0n1p3 | grep -A2 'tpm2-'
+# or:
+sudo systemd-cryptenroll /dev/nvme0n1p3        # lists slots
+
+# tell systemd to use the TPM at boot. edit /etc/crypttab and add
+# `tpm2-device=auto` to the options column for your encrypted device:
+sudo vi /etc/crypttab
+# example line:
+#   luks-XXXX UUID=YYYY none tpm2-device=auto,tpm2-pcrs=0+2+7+12,discard
+
+# regenerate the initramfs so systemd-cryptsetup is rebuilt with the
+# tpm2 support:
+sudo dracut --force
+
+# reboot. you should be NOT prompted for a passphrase. if you ARE
+# prompted, see "WHAT TRIGGERS RE-PROMPTS" below.
+
+
+# RECOVERY — THE PASSPHRASE STILL WORKS
+
+# CRITICAL: the original LUKS passphrase remains a valid key slot.
+# anything that breaks TPM unlock (firmware update, PCR change, TPM
+# chip failure, motherboard replacement) just falls back to the
+# passphrase prompt. you're never locked out by enrolling the TPM.
+#
+# don't lose the passphrase. write it somewhere physical. the TPM
+# is an additive convenience, not a replacement for the passphrase.
+
+
+# WHAT TRIGGERS RE-PROMPTS
+
+# under PCR 0+2+7+12 binding, you'll fall back to passphrase prompt
+# on:
+#   - firmware (BIOS / UEFI) updates                    — PCR 0
+#   - GPU / PCIe firmware updates                       — PCR 2
+#   - secure boot enable / disable / key re-enroll      — PCR 7
+#   - kernel command-line changes via grubby            — PCR 12
+#
+# after the change, type the passphrase to boot, then re-enroll the
+# TPM with the new measurements:
+sudo systemd-cryptenroll --wipe-slot=tpm2 /dev/nvme0n1p3
+sudo systemd-cryptenroll --tpm2-device=auto \
+    --tpm2-pcrs=0+2+7+12 /dev/nvme0n1p3
+
+# alternative: systemd-pcrlock automates re-binding on expected
+# changes (firmware updates that come through fwupd). still maturing
+# in 2026; worth checking if it fits your workflow.
+
+
+# COMMON GOTCHAS
+
+# 1. "TPM IS BUSY" / ENROLL FAILS. another tool (sometimes clevis or
+#    a stale dracut module) is holding the TPM. reboot fresh and
+#    retry. avoid running tpm2_* commands as a user while enrolling.
+#
+# 2. PROMPTED FOR PASSPHRASE EVEN THOUGH NOTHING CHANGED. usually
+#    PCR 11 binding (initramfs) — dracut rebuilds it. don't include
+#    PCR 11 in your binding set unless you're certain about your
+#    initramfs workflow.
+#
+# 3. ENCRYPTED /BOOT WITH TPM UNLOCK. fedora's default is unencrypted
+#    /boot — TPM unlock kicks in at initramfs after grub loads the
+#    kernel. if you have encrypted /boot too, GRUB has to decrypt
+#    /boot via a separate passphrase, and TPM unlock only helps with
+#    the root partition. usually not worth the complexity.
+#
+# 4. MOTHERBOARD REPLACEMENT INVALIDATES THE TPM. the new TPM is a
+#    different chip; your enrolled key won't unlock. you'll fall
+#    back to passphrase. enroll the new TPM after the swap.
+#
+# 5. TPM2 + SECURE BOOT DISABLED. PCR 7 is meaningless without secure
+#    boot — you're still protected against passphrase capture (since
+#    the TPM enforces the boot chain measurement) but the evil-maid
+#    threat model is much weaker. enable secure boot if at all
+#    possible.
+#
+# 6. FACTORY RESET YOUR TPM. if you ever do this from firmware, all
+#    enrolled keys are gone. re-enroll after.
+
+
+# DISABLING / REMOVING TPM UNLOCK
+
+# wipe the TPM slot from the LUKS header:
+sudo systemd-cryptenroll --wipe-slot=tpm2 /dev/nvme0n1p3
+
+# remove tpm2-device=auto from /etc/crypttab, then:
+sudo dracut --force
+
+# next boot will use passphrase only.
+
+
+# QUICK REFERENCE
+
+#   first-time enrollment       → systemd-cryptenroll --tpm2-device=auto
+#                                   --tpm2-pcrs=0+2+7+12 <device>
+#   add to /etc/crypttab        → options column: tpm2-device=auto
+#   rebuild initramfs           → dracut --force
+#   re-enroll after firmware    → wipe-slot=tpm2 + re-enroll
+#   recovery if it breaks       → original passphrase still works
+#   list current slots          → cryptsetup luksDump <device>
 
 
 HARDWARE / FIRMWARE — fwupd
