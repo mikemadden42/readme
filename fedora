@@ -1127,6 +1127,307 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # (its keybinding for shift+enter is configurable and works cleanly).
 
 
+VIRTUAL MACHINES
+----------------
+
+# fedora has good libvirt + KVM + QEMU support out of the box. the
+# "which tool" question depends on how much control you want:
+#
+#   gnome-boxes           — easiest. fewest clicks, OS catalog, minimal
+#                           config. great for "try this ISO for an
+#                           afternoon". no snapshots / custom networks /
+#                           passthrough in the GUI.
+#   virt-manager          — full libvirt GUI. snapshots, custom networks,
+#                           USB / PCI passthrough, NUMA, complex storage.
+#                           the power-user default.
+#   cockpit + cockpit-machines — web UI at https://localhost:9090. best
+#                           for headless hosts or browser-driven mgmt.
+#   virsh / virt-install  — canonical CLI. scriptable, reproducible. the
+#                           right answer for "define this VM in a file
+#                           i can commit to git".
+#   vagrant + vagrant-libvirt — declarative Vagrantfile, `vagrant up`.
+#                           great for reproducible dev environments.
+#                           see [[vagrant]].
+#   distrobox / toolbox   — NOT VMs. containers that look like a full
+#                           alternate linux userspace. share your /home,
+#                           GPU, network. usually the right answer when
+#                           the real question is "i want a different
+#                           distro environment for a task", not "i need
+#                           full isolation".
+
+
+# RECOMMENDED INSTALL — both GUIs share the libvirt backend, VMs
+# created in one show up in the other:
+sudo dnf install gnome-boxes virt-manager libvirt qemu-kvm virt-viewer \
+    libguestfs-tools libosinfo
+
+# permissions: enable libvirtd, add yourself to the libvirt group so
+# you don't need sudo for per-user operations:
+sudo systemctl enable --now libvirtd
+sudo usermod -aG libvirt "$USER"
+# log out and back in (or `newgrp libvirt`) for the group to take effect.
+
+
+# KVM HARDWARE CHECK — confirm hardware virt is on
+lscpu | grep -E 'Virtualization|vmx|svm'      # vmx = intel, svm = amd
+ls -l /dev/kvm                                # should exist + be readable
+                                              # by your user (via the kvm group)
+
+# if /dev/kvm is missing, virt is disabled in firmware (Intel VT-x /
+# AMD-V). enable it in BIOS/UEFI and reboot.
+
+# nested virt (run VMs inside VMs — useful for testing virt-stacks):
+cat /sys/module/kvm_intel/parameters/nested   # should be Y
+# enable persistently if N:
+echo 'options kvm_intel nested=1' | sudo tee /etc/modprobe.d/kvm.conf
+sudo modprobe -r kvm_intel && sudo modprobe kvm_intel
+
+
+# virsh — DAILY COMMANDS
+
+virsh list --all                              # every VM, running or off
+virsh start fedora-test
+virsh shutdown fedora-test                    # graceful (ACPI)
+virsh destroy fedora-test                     # power off (force, no save)
+virsh reboot fedora-test
+virsh suspend fedora-test                     # pause to RAM
+virsh resume fedora-test
+virsh console fedora-test                     # serial console (Ctrl+] to exit)
+virsh edit fedora-test                        # edit the libvirt XML
+virsh dumpxml fedora-test > fedora-test.xml   # back up the config
+virsh net-list --all                          # libvirt networks
+
+
+# virt-install — scripted VM creation from an ISO
+
+sudo virt-install \
+    --name fedora-test \
+    --memory 4096 \
+    --vcpus 4 \
+    --disk size=40,format=qcow2 \
+    --cdrom ~/Downloads/Fedora-Workstation-Live-x86_64-44.iso \
+    --os-variant fedora44 \
+    --graphics spice \
+    --network network=default
+
+# list known --os-variant values
+osinfo-query os | grep -i fedora
+
+
+# SNAPSHOTS — only on qcow2 disks, not raw
+
+# external (preferred for production) — disk file shared, RAM separate.
+virsh snapshot-create-as fedora-test pre-experiment \
+    --description "before kernel test" --atomic
+virsh snapshot-list fedora-test
+virsh snapshot-revert fedora-test pre-experiment
+virsh snapshot-delete fedora-test pre-experiment
+
+
+# WINDOWS GUESTS — virtio drivers
+
+# windows doesn't ship virtio drivers natively. install with the
+# fedoraproject virtio-win ISO mounted as a second cdrom:
+sudo dnf install virtio-win
+ls /usr/share/virtio-win/                     # the ISO + per-driver dirs
+# inside the windows installer, "load driver" → point at the virtio-win
+# CD → pick viostor (storage) and netkvm (network).
+# the spice-guest-tools msi installs everything else (clipboard, display
+# resize, etc.).
+
+
+# DISTROBOX / TOOLBOX — when you don't actually need a full VM
+
+# toolbox is fedora's own (uses podman + fedora-toolbox image):
+toolbox create -c f44-tools                   # default: matches host fedora
+toolbox enter f44-tools
+toolbox rm f44-tools
+
+# distrobox is the more flexible tool — any distro image, with home /
+# audio / x / wayland passthrough configured automatically:
+sudo dnf install distrobox
+distrobox create -n ubuntu24 -i docker.io/library/ubuntu:24.04
+distrobox enter ubuntu24
+distrobox list
+distrobox rm ubuntu24
+
+# common pattern: distrobox for "I want pacman / apt for this one
+# task" without giving up your fedora host. the host's gpu, /home,
+# and pulse/pipewire are already there.
+
+
+# GPU PASSTHROUGH (advanced)
+
+# single-GPU passthrough on linux is doable but messy (you give up the
+# GPU to the VM and use a second one or ssh in). dual-GPU + IOMMU is
+# the supportable path. the fedora wiki and arch wiki both have
+# extensive guides — start there rather than improvising.
+# preconditions: VT-d / AMD-Vi enabled in firmware, distinct iommu
+# groups for the GPU, vfio-pci binding.
+lscpu | grep -i 'virtualization'
+dmesg | grep -i iommu                         # look for "IOMMU enabled"
+ls /sys/kernel/iommu_groups/                  # one dir per group
+
+
+# WHICH ONE SHOULD YOU INSTALL?
+#
+#   "i want to try this ISO"                 → gnome-boxes
+#   "i want to run a windows VM long-term"   → virt-manager
+#   "i want a reproducible dev env"          → distrobox, then vagrant
+#   "i want to run apt for one task"         → distrobox / toolbox
+#   "i want to script VM provisioning"       → virsh + virt-install
+#   "i want browser-driven VM mgmt"          → cockpit-machines
+#   "i want GPU passthrough"                 → virt-manager + reading
+
+
+CONTAINERS — PODMAN FIRST
+-------------------------
+
+# fedora ships PODMAN as the blessed container engine, not docker.
+# docker was removed from fedora repos in F31 (cgroups v2 conflict at
+# the time; long since resolved, but red hat moved to podman). podman
+# is daemonless and rootless-by-default — two real wins over docker on
+# a personal machine:
+#
+#   - no `dockerd` running as root, no socket to secure, no `docker`
+#     group with effective-root power.
+#   - containers run as YOUR user via user namespaces. the classic
+#     "added myself to the docker group and now my container can mount
+#     /" escalation doesn't exist.
+#
+# podman's CLI is docker-compatible — every `docker <verb>` has a
+# matching `podman <verb>`. most tutorials work verbatim.
+
+
+# DAY-ONE INSTALL
+sudo dnf install podman podman-compose podman-docker buildah skopeo
+#   - podman           — the engine + CLI
+#   - podman-compose   — python wrapper that reads docker-compose.yml
+#   - podman-docker    — installs /usr/bin/docker as a symlink to podman
+#                        so copy-pasted `docker ...` commands work
+#   - buildah          — image builder (more flexible than `podman build`)
+#   - skopeo           — inspect / copy images across registries without
+#                        pulling them locally
+
+# verify rootless works:
+podman info | grep -iE 'rootless|graphRoot'
+podman run --rm hello-world
+
+
+# DAILY COMMANDS (docker-compatible)
+
+podman run -it --rm -v "$PWD":/work fedora:44 bash   # one-off interactive
+podman run -d --name web -p 8080:80 nginx           # detached, name + port
+podman ps                                           # running containers
+podman ps -a                                        # all (including stopped)
+podman images                                       # local image cache
+podman logs -f web                                  # follow container logs
+podman exec -it web bash                            # shell into a container
+podman stop web && podman rm web                    # stop + remove
+podman rmi nginx                                    # remove an image
+podman system prune -af                             # nuke unused (CAREFUL)
+
+
+# BUILDING IMAGES
+
+# from a Containerfile (or Dockerfile — podman accepts either name):
+podman build -t myapp:dev .
+
+# multi-arch build (useful with cross-platform deploys):
+podman build --platform linux/amd64,linux/arm64 -t myapp:dev .
+
+# buildah for fine-grained / scripted image construction:
+buildah from fedora:44
+# (returns a working container; modify it with `buildah run`, then
+#  `buildah commit` to produce the image. cleaner than Containerfile
+#  for highly-conditional builds.)
+
+
+# COMPOSE — three options
+
+# 1. podman-compose (python wrapper, simplest path):
+podman-compose -f docker-compose.yml up -d
+
+# 2. `podman compose` (subcommand, since 4.1) — finds podman-compose or
+#    docker-compose and wraps it. one less command to remember:
+podman compose up -d
+
+# 3. QUADLET — podman's native systemd integration, no compose at all.
+#    write a .container unit file in ~/.config/containers/systemd/
+#    and systemd manages the lifecycle. cleanest path for long-running
+#    services.
+
+mkdir -p ~/.config/containers/systemd
+cat >~/.config/containers/systemd/web.container <<'EOF'
+[Unit]
+Description=nginx via podman quadlet
+
+[Container]
+Image=docker.io/library/nginx:latest
+PublishPort=8080:80
+Volume=%h/www:/usr/share/nginx/html:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload
+systemctl --user enable --now web.service        # quadlet derives the unit name
+
+
+# REGISTRIES — fedora's default search list
+
+# podman searches multiple registries by default. config at
+# /etc/containers/registries.conf — fedora preconfigures registry.fedoraproject.org,
+# registry.access.redhat.com, docker.io, and quay.io. that's why bare
+# image names (e.g. `nginx`) just work without the docker.io/ prefix.
+podman search nginx                              # tries all configured registries
+
+# disable a registry temporarily by using the fully-qualified name:
+podman run docker.io/library/nginx               # explicit
+
+
+# WHEN TO REACH FOR DOCKER INSTEAD
+
+# - a workflow REQUIRES the docker daemon socket (testcontainers, some
+#   IDE integrations, docker-in-docker CI runners that hard-code
+#   `unix:///var/run/docker.sock`).
+# - shared docker-compose.yml using docker-specific extensions you
+#   can't change.
+# - team / corp standardization on docker.
+#
+# install path (note: external repo, extra trust surface):
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"      # log out and back in
+# don't install both podman and docker as root daemons casually —
+# they'll fight over /var/lib/cni and iptables rules. if you need
+# both, run docker rootless or pick one.
+
+
+# CONTAINER-AS-DEV-SHELL (covered in VMs section)
+
+# distrobox and toolbox both run on podman. when you want "I need apt
+# for this one task" without giving up your fedora host, use those
+# rather than spinning up a long-lived podman container — they handle
+# /home, GPU, audio, x/wayland passthrough for you.
+
+
+# WHICH ONE FOR WHAT
+#
+#   "i want to run nginx as a service"        → podman + quadlet
+#   "i want to follow a docker tutorial"      → podman + podman-docker
+#   "i have a docker-compose.yml"             → podman-compose
+#   "i need testcontainers / DinD CI"         → docker
+#   "i want a long-lived dev environment"     → distrobox (see VMs)
+#   "i want to build multi-arch images"       → podman build --platform
+#   "i want to inspect a registry image"      → skopeo inspect
+
+
 COMMON POST-INSTALL CHECKLIST (Workstation)
 -------------------------------------------
 
