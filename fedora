@@ -691,6 +691,283 @@ sudo firewall-cmd --reload
 sudo firewall-cmd --zone=trusted --change-interface=virbr0 --permanent
 
 
+NETWORKING — NMCLI, DNS, VPNs, REMOTE ACCESS
+--------------------------------------------
+
+# the stack on fedora workstation:
+#
+#   NetworkManager   — the canonical network daemon. settings → wi-fi
+#                      and settings → network drive it. nmcli is its CLI.
+#   systemd-resolved — local DNS resolver. owns /etc/resolv.conf as a
+#                      symlink. per-link DNS, DNS-over-TLS optional.
+#   firewalld        — covered above. zones map to NM connections.
+#   Avahi (mDNS)     — preinstalled, handles .local hostnames on LAN.
+#
+# the older `ifconfig` / `netstat` / `route` tools are NOT installed by
+# default — they're considered legacy. use `ip`, `ss`, `nstat` from the
+# iproute2 package (also preinstalled).
+
+
+# NMCLI — THE EVERYDAY CLI
+
+# overview
+nmcli                                       # short summary
+nmcli device status                         # interfaces + state
+nmcli connection show                       # saved profiles
+nmcli connection show --active              # currently in use
+
+# wi-fi
+nmcli device wifi list                      # scan
+nmcli device wifi connect "SSID" password "pass"
+nmcli device wifi connect "SSID" --ask      # prompt for password
+nmcli connection up "SSID"                  # reconnect a saved profile
+nmcli connection down "SSID"
+nmcli radio wifi off                        # toggle wifi
+nmcli radio wifi on
+
+# ethernet
+nmcli device connect enp3s0                 # bring up an interface
+nmcli device disconnect enp3s0
+
+# delete a saved profile
+nmcli connection delete "old-network"
+
+# show every detail about a connection
+nmcli connection show "home-wifi"
+
+
+# STATIC IP / DNS OVERRIDES (per connection)
+
+# switch a profile to manual IPv4 with static address + DNS:
+nmcli connection modify "home-wifi" \
+    ipv4.method manual \
+    ipv4.addresses 192.168.1.42/24 \
+    ipv4.gateway 192.168.1.1 \
+    ipv4.dns "1.1.1.1 9.9.9.9" \
+    ipv4.dns-search "lan"
+
+# revert to DHCP (the default):
+nmcli connection modify "home-wifi" ipv4.method auto ipv4.addresses "" \
+    ipv4.gateway "" ipv4.dns "" ipv4.dns-search ""
+
+# changes apply on the next `nmcli connection up` of the profile.
+
+
+# DNS — systemd-resolved
+
+# /etc/resolv.conf is a SYMLINK to /run/systemd/resolve/stub-resolv.conf.
+# editing it directly does nothing useful. all DNS config goes through
+# NetworkManager (per-link) or systemd-resolved (global).
+
+# inspect current state:
+resolvectl status                           # per-link + global DNS
+resolvectl statistics                       # cache hits, queries
+resolvectl flush-caches                     # clear the DNS cache
+
+# query (faster than dig + uses your actual resolver):
+resolvectl query example.com
+resolvectl query --type=MX example.com
+
+# enable DNS-over-TLS globally:
+sudo mkdir -p /etc/systemd/resolved.conf.d
+sudo tee /etc/systemd/resolved.conf.d/dot.conf <<'EOF'
+[Resolve]
+DNS=1.1.1.1#cloudflare-dns.com 9.9.9.9#dns.quad9.net
+DNSOverTLS=yes
+DNSSEC=allow-downgrade
+EOF
+sudo systemctl restart systemd-resolved
+
+
+# MDNS — .LOCAL HOSTNAMES ON THE LAN
+
+# Avahi is preinstalled. find printers, NAS boxes, raspberry pis,
+# anything advertising via mDNS:
+avahi-browse -ar | head -50                 # all services
+avahi-browse -ar | grep -i printer
+ping fileserver.local                       # resolves via mDNS
+
+# advertise this machine's services for others to find:
+sudo dnf install nss-mdns                   # already on workstation
+hostnamectl set-hostname mybox              # mybox.local will resolve
+
+
+# SSH CLIENT — ~/.ssh/config IS THE TOOL
+
+# the file most people don't realize they need. saves immense typing.
+cat >>~/.ssh/config <<'EOF'
+# global defaults
+Host *
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    HashKnownHosts no
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%r@%h:%p
+    ControlPersist 10m
+
+# per-host shortcuts — `ssh prod` instead of full hostname
+Host prod
+    HostName prod.example.com
+    User deploy
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_work
+
+# jump host (ProxyJump) — multi-hop in one command
+Host internal-db
+    HostName 10.0.5.12
+    User postgres
+    ProxyJump prod
+EOF
+chmod 600 ~/.ssh/config
+
+# ControlMaster + ControlPath multiplexing means subsequent connections
+# to the same host reuse the existing TCP socket — instant. huge speed
+# win for ansible / scp / repeated commands.
+
+# ssh-agent is auto-started by GNOME (gnome-keyring). add keys:
+ssh-add ~/.ssh/id_ed25519                   # caches until logout
+ssh-add -l                                  # currently cached
+ssh-add -D                                  # forget all
+
+
+# WIREGUARD — THE MODERN VPN PRIMITIVE
+
+# kernel module is in fedora's kernel; tools are a one-line install.
+sudo dnf install wireguard-tools
+
+# NetworkManager has a built-in WireGuard backend. easiest path: get a
+# .conf file from your VPN provider (or wireguard server) and import:
+nmcli connection import type wireguard file ~/Downloads/wg0.conf
+nmcli connection up wg0
+
+# OR the wg-quick CLI path (no NetworkManager involvement):
+sudo cp ~/Downloads/wg0.conf /etc/wireguard/
+sudo wg-quick up wg0
+sudo systemctl enable --now wg-quick@wg0     # autostart at boot
+
+# inspect:
+sudo wg show                                 # peers, handshake times
+ip addr show wg0                             # local IP
+
+
+# TAILSCALE — THE "JUST WORKS" VPN
+
+# wireguard under the hood + a coordination server. zero NAT-traversal
+# config, magic-DNS hostnames, exit nodes. fedora has it via COPR or
+# the official repo:
+sudo dnf config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+sudo dnf install tailscale
+sudo systemctl enable --now tailscaled
+sudo tailscale up                            # browser-driven login
+
+# day-to-day:
+tailscale status                             # peer list + IPs
+tailscale ip                                 # this machine's tailscale IP
+ssh username@laptop                          # MagicDNS — no IP needed
+tailscale ssh username@laptop                # built-in ssh with tailscale auth
+
+# advanced:
+sudo tailscale up --exit-node=other-machine  # route all traffic via peer
+sudo tailscale up --advertise-exit-node      # offer this machine as an exit
+sudo tailscale up --advertise-routes=192.168.1.0/24   # subnet router
+
+
+# DIAGNOSTIC COMMANDS — THE MODERN STACK
+
+# iproute2 (preinstalled) replaces ifconfig / netstat / route:
+ip addr                                      # all interface addresses
+ip -br addr                                  # brief, columnar
+ip route                                     # routing table
+ip -br link                                  # interface up/down state
+ip neighbor                                  # ARP cache
+
+# open ports / listening sockets (replaces netstat):
+ss -tlnp                                     # TCP listening, with proc
+ss -ulnp                                     # UDP listening
+ss -tap                                      # all TCP, with proc
+ss -s                                        # socket summary
+
+# bandwidth / packet counters (replaces netstat -i):
+nstat                                        # interface stats since boot
+ip -s link                                   # per-interface counters
+
+# connectivity / path:
+ping -c 4 1.1.1.1
+mtr 1.1.1.1                                  # interactive traceroute + ping
+mtr -rwzc 10 example.com                     # report mode
+
+# DNS troubleshooting:
+resolvectl query example.com                 # uses your resolver
+dig example.com                              # bypasses systemd-resolved
+sudo dnf install bind-utils                  # if dig is missing
+
+# capture packets (need sudo):
+sudo dnf install wireshark-cli               # tshark + capture filters
+sudo tshark -i wlan0 -f 'port 53'            # DNS traffic on wifi
+sudo dnf install wireshark                   # the GUI
+
+
+# FIREWALLD + NETWORKMANAGER ZONES
+
+# every NM connection is assigned a firewalld zone. that's why your
+# laptop's firewall is loose on home wifi (FedoraWorkstation zone) and
+# stricter on public networks — the zone is per-profile.
+
+# see current zone assignments:
+sudo firewall-cmd --get-active-zones
+
+# change a connection's zone (persists with the NM profile):
+nmcli connection modify "coffee-shop-wifi" connection.zone public
+nmcli connection up "coffee-shop-wifi"
+
+# the FedoraWorkstation zone is intentionally permissive (libvirt,
+# mdns, ssh, samba-client are all open by default). don't use it on
+# untrusted networks.
+
+
+# COMMON GOTCHAS
+
+# 1. NETWORKMANAGER OVERRIDES YOUR /ETC/RESOLV.CONF EDITS. it's a
+#    symlink; edits don't survive a reconnect. use per-connection
+#    DNS via `nmcli connection modify` (above) or set DNS globally
+#    in /etc/systemd/resolved.conf.d/.
+#
+# 2. VPN ROUTES ALL TRAFFIC WHEN YOU JUST WANTED LAN ACCESS. wg-quick
+#    sets AllowedIPs=0.0.0.0/0 by default. for split-tunnel, edit
+#    the .conf to list only your VPN subnet:
+#       AllowedIPs = 10.0.0.0/8, 192.168.42.0/24
+#
+# 3. SSH FROZEN MID-SESSION. fix by setting ServerAliveInterval in
+#    ~/.ssh/config (above) so the client probes periodically.
+#
+# 4. CAN'T REACH SAMBA / NFS SHARE. firewalld zone is too strict, OR
+#    SELinux booleans aren't set. for samba client:
+sudo setsebool -P use_samba_home_dirs on
+#    for nfs:
+sudo setsebool -P virt_use_nfs on
+#
+# 5. WIFI SLOW AFTER SUSPEND. NetworkManager + driver power-save
+#    interaction. disable wifi power-save permanently:
+sudo tee /etc/NetworkManager/conf.d/wifi-powersave.conf <<'EOF'
+[connection]
+wifi.powersave = 2
+EOF
+sudo systemctl restart NetworkManager
+#    (powersave values: 0=use default, 2=disable, 3=enable)
+#
+# 6. TAILSCALE + SYSTEMD-RESOLVED ORDERING. on some installs the
+#    tailscale interface comes up before systemd-resolved is ready
+#    and DNS breaks until restart. fix:
+sudo systemctl edit tailscaled
+#    add:
+#       [Unit]
+#       After=systemd-resolved.service
+#       Wants=systemd-resolved.service
+#
+# 7. mDNS / .local DOESN'T RESOLVE FROM A CONTAINER. expected —
+#    rootless podman uses a different netns. on the host it works.
+
+
 NVIDIA DRIVERS — RPM FUSION PATH
 --------------------------------
 
