@@ -472,6 +472,327 @@ sudo -u postgres pg_dumpall -f /backup/postgres-dump.sql
 # that's a real backup. everything else is optimization.
 
 
+SYSTEMD — THE FOUNDATIONAL GLUE
+-------------------------------
+
+# fedora is the systemd REFERENCE platform — it's where systemd is
+# tested first and adopted earliest. nearly every operational task on
+# fedora goes through it: services, schedules, log access, mount
+# management, boot, suspend, lid handling. this section is the
+# minimum mental model + daily commands.
+
+
+# MENTAL MODEL
+
+# everything systemd does is modeled as a UNIT. unit TYPES are
+# distinguished by file suffix:
+#
+#   .service   — a process (daemon, oneshot script, etc.)
+#   .timer     — a schedule that activates another unit
+#   .socket    — a socket that starts a service on connect
+#   .mount     — a filesystem mount point
+#   .automount — auto-mount on access
+#   .target    — a grouping of other units (analogous to runlevels)
+#   .path      — a filesystem-watching trigger
+#   .slice     — a cgroup branch (resource limits)
+#   .scope     — externally-launched processes adopted into a cgroup
+#
+# units have a DEPENDENCY GRAPH (After=, Wants=, Requires=, etc.) and
+# systemd parallelizes startup based on it. boot is "reach
+# default.target via its dependency tree."
+#
+# there are TWO instances on every system:
+#
+#   SYSTEM instance (--system, the default for `systemctl ...`)
+#       runs as PID 1. shared resources, network, daemons.
+#   USER instance (--user, per-login-user)
+#       runs as your user. background apps, user services / timers.
+#       no sudo. config in ~/.config/systemd/user/.
+
+
+# SYSTEMCTL — DAILY COMMANDS
+
+# status of a service
+systemctl status sshd                       # current state + last logs
+systemctl is-active sshd                    # one-word answer
+systemctl is-enabled sshd                   # will it start at boot?
+systemctl is-failed sshd
+
+# lifecycle
+sudo systemctl start sshd
+sudo systemctl stop sshd
+sudo systemctl restart sshd
+sudo systemctl reload sshd                  # reload config, don't restart
+sudo systemctl enable sshd                  # start at boot
+sudo systemctl enable --now sshd            # enable AND start now
+sudo systemctl disable sshd
+
+# mask (refuse to start, even by dep) — heavier than disable
+sudo systemctl mask suspend.target          # disable suspend entirely
+sudo systemctl unmask suspend.target
+
+# listing
+systemctl                                   # every active unit
+systemctl list-units --type=service
+systemctl list-units --state=failed         # what's currently broken
+systemctl list-unit-files                   # every unit FILE (not just active)
+systemctl list-unit-files --state=enabled
+
+# inspect dependencies
+systemctl list-dependencies sshd            # what sshd needs
+systemctl list-dependencies sshd --reverse  # what needs sshd
+systemctl show sshd                         # every property
+
+# reload systemd's view of unit files (after editing them)
+sudo systemctl daemon-reload
+
+
+# JOURNALCTL — LOG ACCESS
+
+# fedora ships systemd-journald as the canonical log destination.
+# /var/log/journal/ is persistent across reboots by default on F44.
+
+# basics
+journalctl                                  # all logs, paged
+journalctl -e                               # jump to end
+journalctl -f                               # follow (like tail -f)
+journalctl --since "2 hours ago"
+journalctl --since today
+journalctl --until "2026-06-16 14:00"
+
+# scoped to a unit (the most-used form)
+journalctl -u sshd                          # all sshd logs
+journalctl -u sshd -f                       # follow sshd
+journalctl -u sshd --since today -p err     # only errors
+
+# scoped to a boot
+journalctl -b                               # current boot
+journalctl -b -1                            # previous boot
+journalctl --list-boots                     # what boot IDs exist
+
+# user-instance logs (for ~/.config/systemd/user/ services)
+journalctl --user -u my-app
+
+# priority filter (0=emerg .. 7=debug)
+journalctl -p warning..err                  # warning OR err
+journalctl -p err -b                        # errors this boot
+
+# pid / command-line filters (less-known, very useful)
+journalctl _PID=1234
+journalctl _COMM=sshd
+journalctl _UID=1000
+
+# output format
+journalctl -u sshd -o cat                   # raw messages only
+journalctl -u sshd -o json                  # full structured output
+journalctl -u sshd -o short-iso             # ISO timestamps
+
+# disk usage / rotation
+journalctl --disk-usage
+sudo journalctl --vacuum-time=2weeks        # delete entries older than
+sudo journalctl --vacuum-size=2G            # cap journal at 2 GiB
+
+
+# WRITING A SERVICE FILE
+
+# system service (root-owned daemon). path: /etc/systemd/system/foo.service
+sudo tee /etc/systemd/system/myapp.service <<'EOF'
+[Unit]
+Description=My App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple                                 # most apps
+ExecStart=/usr/local/bin/myapp --port 8080
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+User=myapp                                  # run as a dedicated user
+Group=myapp
+
+# security hardening — apply unless you have a reason not to
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# write paths the service NEEDS access to (carve out from ProtectSystem)
+ReadWritePaths=/var/lib/myapp
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now myapp.service
+journalctl -u myapp -f
+
+# Type= values worth knowing:
+#   simple     — process is the daemon (no daemonize step)
+#   exec       — like simple but waits until exec() succeeds
+#   forking    — old-school: parent forks, child is the daemon
+#   oneshot    — run, exit, that's normal. used with timers.
+#   notify     — daemon notifies systemd when it's ready (sd_notify)
+
+# USER SERVICE (no root needed, runs as you):
+mkdir -p ~/.config/systemd/user
+cat >~/.config/systemd/user/myapp.service <<'EOF'
+[Unit]
+Description=My user app
+
+[Service]
+ExecStart=%h/bin/myapp                       # %h = $HOME
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload
+systemctl --user enable --now myapp.service
+
+
+# WRITING A TIMER
+
+# timers fire .service units on a schedule. they are the systemd
+# replacement for cron. ALWAYS paired: a foo.timer plus a foo.service.
+
+cat >~/.config/systemd/user/cleanup.service <<'EOF'
+[Unit]
+Description=Cleanup task
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find %h/Downloads -mtime +30 -delete
+EOF
+
+cat >~/.config/systemd/user/cleanup.timer <<'EOF'
+[Unit]
+Description=Weekly cleanup
+
+[Timer]
+OnCalendar=Sun 03:00                        # every sunday at 3am
+Persistent=true                             # catch up if missed
+RandomizedDelaySec=600                      # 0-10min jitter
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now cleanup.timer
+
+# list / debug timers
+systemctl --user list-timers                # next + last fire times
+systemctl --user status cleanup.timer
+
+# OnCalendar syntax — the most common forms:
+#   *-*-* 03:30:00      — every day at 03:30
+#   Mon..Fri 09:00      — weekdays at 9am
+#   *-*-01 00:00:00     — first of every month at midnight
+#   hourly / daily / weekly / monthly       — convenient aliases
+#   minutely / *:0/15   — every 15 minutes
+
+
+# LINGER — USER SERVICES WITHOUT BEING LOGGED IN
+
+# user services and timers only run while you're logged in. for a
+# laptop that's usually fine. for a desktop or server, enable linger:
+loginctl enable-linger "$USER"
+# now user-instance units run from boot to shutdown regardless of
+# logins. backups, agents, etc. work unattended.
+
+
+# DROP-INS / systemctl edit — MODIFY UNITS THE RIGHT WAY
+
+# DON'T edit /usr/lib/systemd/system/foo.service. it'll be overwritten
+# on package upgrade. use a drop-in instead:
+sudo systemctl edit sshd
+# editor opens an empty file under /etc/systemd/system/sshd.service.d/
+# called override.conf. anything you put there OVERLAYS the original.
+
+# example: add MaxConnectionsPerSource to sshd:
+#   [Service]
+#   Environment=MAX_PER_SOURCE=10
+
+# to edit the FULL unit (start with current contents instead of empty):
+sudo systemctl edit --full sshd
+
+# revert a drop-in:
+sudo systemctl revert sshd
+
+
+# TARGETS — WHAT BOOT IS REACHING
+
+# the SysV "runlevels" replacement. fedora's default targets:
+#
+#   default.target          — symlink to one of:
+#     multi-user.target     — text login, no GUI
+#     graphical.target      — gdm + GUI session (workstation default)
+#
+# switch on the fly without rebooting:
+sudo systemctl isolate multi-user.target     # drop to text mode (kills GUI)
+sudo systemctl isolate graphical.target      # back to GUI
+
+# permanent default:
+sudo systemctl set-default multi-user.target
+sudo systemctl get-default
+
+# emergency / rescue (single-user, for repair):
+#   add `systemd.unit=emergency.target` to kernel cmdline at GRUB.
+
+
+# BOOT ANALYSIS
+
+systemd-analyze                              # boot time summary
+systemd-analyze blame                        # which units took longest
+systemd-analyze critical-chain               # the boot critical path
+systemd-analyze critical-chain sshd          # critical path for one unit
+systemd-analyze plot > /tmp/boot.svg         # graphical boot timeline
+
+# verify a unit file (catches typos before you reload):
+systemd-analyze verify ~/.config/systemd/user/myapp.service
+
+
+# RESOURCE LIMITS — CGROUPS WITHOUT FUSS
+
+# every service runs in a cgroup. inspect:
+systemctl status myapp                       # shows cgroup tree
+systemd-cgls                                 # cgroup hierarchy
+systemd-cgtop                                # top-like, by cgroup
+
+# set limits on a running service (transient, until reload):
+sudo systemctl set-property myapp MemoryMax=512M
+sudo systemctl set-property myapp CPUQuota=200%       # 2 cores
+sudo systemctl set-property myapp IOWeight=50
+
+# persistent: add to a drop-in via `systemctl edit`.
+
+# AD-HOC sandboxing — run a one-off command in its own cgroup:
+systemd-run --user --pty --tty -p MemoryMax=256M htop
+sudo systemd-run --unit=backup-now \
+    -p MemoryMax=1G -p CPUQuota=50% \
+    /usr/local/bin/my-backup-script
+
+
+# QUICK REFERENCE — WHAT TO REACH FOR
+
+#   "what's broken right now"          → systemctl --failed
+#   "why did X fail"                   → journalctl -u X -n 100
+#   "make this start at boot"          → systemctl enable --now X
+#   "run my script weekly"             → write .service + .timer
+#   "boot is slow"                     → systemd-analyze blame
+#   "change a setting on a packaged service" → systemctl edit
+#   "drop to text mode"                → systemctl isolate multi-user.target
+#   "see what's hogging RAM/CPU"       → systemd-cgtop
+
+
 GRUB — SHOWING THE MENU, MANAGING KERNELS
 -----------------------------------------
 
