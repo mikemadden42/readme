@@ -3713,21 +3713,214 @@ sudo cupsctl --share-printers --remote-any
 TUNED PROFILES — PERFORMANCE / LATENCY TUNING
 ---------------------------------------------
 
-# TODO STUB — fedora ships `tuned`, the system-tunable framework used
-# heavily on RHEL. complements POWER MANAGEMENT's power-profiles-daemon
-# by exposing per-workload profiles for latency / throughput /
-# virtualization / etc.
-# expected content:
-#   - tuned-adm list / active / profile / recommend
-#   - shipped profiles: balanced, throughput-performance, latency-
-#     performance, virtual-host, virtual-guest, network-throughput,
-#     network-latency, powersave, hpc-compute
-#   - custom profiles: /etc/tuned/<name>/tuned.conf
-#   - cpu-partitioning / realtime profiles for low-latency workloads
-#   - how tuned and power-profiles-daemon coexist (or don't)
-#   - workloads where tuned matters: databases, HFT, video encoding,
-#     pro audio, kvm hosts
-#   - cross-link to POWER MANAGEMENT
+# tuned is fedora's system-tuning daemon: declarative performance
+# profiles that adjust kernel sysctls, CPU governors, IO schedulers,
+# network buffers, transparent hugepages, vm dirty ratios, and more.
+# shipped since F8; the canonical perf-knob manager on RHEL.
+#
+# how it fits next to POWER MANAGEMENT's power-profiles-daemon (PPD):
+# PPD is desktop-oriented (Performance / Balanced / Power Saver,
+# UI-driven, GNOME integrated). tuned is workload-oriented (latency-
+# performance, network-throughput, virtual-host, etc., CLI-driven,
+# RHEL heritage). they CAN coexist on workstation but generally one
+# should be in charge of CPU governor at a time.
+
+
+# INSTALL + DAILY
+
+# tuned is preinstalled on workstation / server / atomic. enable:
+sudo systemctl enable --now tuned
+
+# core CLI:
+tuned-adm active                                # current profile
+tuned-adm list                                  # all shipped profiles
+tuned-adm recommend                             # auto-pick based on
+                                                # platform detection
+sudo tuned-adm profile latency-performance      # apply a profile
+sudo tuned-adm verify                           # check applied vs current
+sudo tuned-adm off                              # stop tuning (revert)
+
+
+# THE SHIPPED PROFILES — BY CATEGORY
+
+# DESKTOP / GENERAL
+#   balanced              — sensible default; mild power saving.
+#                           default on workstation if PPD isn't owning
+#                           the governor.
+#   desktop               — derives from balanced; more interactive
+#                           weights.
+#   powersave             — aggressive power saving; longer battery,
+#                           lower perf. similar to PPD's "Power Saver".
+#
+# PERFORMANCE
+#   throughput-performance — max throughput; performance governor,
+#                           no power saving. databases, batch jobs,
+#                           build farms.
+#   latency-performance   — minimize latency over throughput. HFT,
+#                           pro audio, real-time response.
+#   network-throughput    — large TCP buffers, conservative CPU; ideal
+#                           for sustained network transfers.
+#   network-latency       — low-latency network tuning; sysctl tweaks
+#                           for tail-latency-sensitive apps.
+#   accelerator-performance — for GPU / NPU compute workloads.
+#
+# VIRTUALIZATION
+#   virtual-host          — KVM hypervisor host; transparent hugepages,
+#                           CPU isolation for guests.
+#   virtual-guest         — running INSIDE a VM; disables host-side
+#                           tuning (paravirt aware).
+#
+# SPECIALIZED
+#   realtime              — strict realtime kernel tuning; pairs with
+#                           `kernel-rt`. for industrial control,
+#                           studio audio.
+#   realtime-virtual-host — both at once.
+#   hpc-compute           — supercomputing / parallel workloads.
+#   optimize-serial-console — for headless server install with serial
+#                           console primary.
+#
+# ATOMIC / IoT
+#   atomic-host           — fedora CoreOS host tuning.
+#   atomic-guest          — coreOS guest.
+
+
+# CUSTOM PROFILES
+
+# create your own based on a shipped one:
+sudo mkdir -p /etc/tuned/my-profile
+sudo tee /etc/tuned/my-profile/tuned.conf <<'EOF'
+[main]
+summary=My workload-specific tuning
+include=throughput-performance
+
+[sysctl]
+vm.swappiness=1
+vm.dirty_ratio=10
+net.core.netdev_max_backlog=300000
+net.ipv4.tcp_congestion_control=bbr
+
+[cpu]
+governor=performance
+energy_perf_bias=performance
+
+[disk]
+elevator=mq-deadline
+readahead=>4096
+
+[vm]
+transparent_hugepages=always
+EOF
+
+sudo tuned-adm profile my-profile
+sudo tuned-adm verify
+
+
+# CPU PARTITIONING — ISOLATING CORES FOR LATENCY-CRITICAL APPS
+
+# the `cpu-partitioning` profile (or a custom one with the
+# `cpu-partitioning` plugin) reserves specific cores for your latency-
+# critical workload, leaving the kernel + housekeeping on the others.
+# pair with `nohz_full=` and `isolcpus=` on the kernel cmdline (see
+# KERNEL CMDLINE section).
+
+# example custom config:
+sudo tee /etc/tuned/no-housekeeping/tuned.conf <<'EOF'
+[main]
+summary=Isolate cores 2-7 for app, leave 0-1 for kernel
+include=cpu-partitioning
+
+[variables]
+isolated_cores=2-7
+not_isolated_cores=0-1
+EOF
+
+
+# HOW TUNED AND POWER-PROFILES-DAEMON COEXIST
+
+# fedora workstation ships BOTH by default. both can adjust the CPU
+# governor; running both unconstrained can fight.
+#
+# common arrangements:
+#   - DESKTOP USE: let PPD drive (GNOME UI integration is the win),
+#     mask tuned:
+#         sudo systemctl mask tuned
+#   - SERVER USE: tuned drives, no PPD installed.
+#   - WORKLOAD-AWARE DESKTOP (rare): tuned drives, mask PPD:
+#         sudo systemctl mask power-profiles-daemon
+
+
+# WORKLOADS WHERE TUNED MATTERS
+
+#   - DATABASES (postgres, mysql, redis, mongo) → throughput-performance
+#     plus dirty-ratio tuning. measurable wins on write-heavy workloads.
+#   - HFT / LOW-LATENCY TRADING → realtime or custom latency-performance
+#     plus cpu-partitioning, RT kernel, IRQ pinning.
+#   - VIDEO ENCODING (ffmpeg, handbrake) → throughput-performance.
+#     5-15% wall-clock improvement on long jobs.
+#   - PRO AUDIO (ardour, jack-based) → latency-performance plus
+#     pipewire low-latency tuning (see AUDIO).
+#   - KVM HOSTS → virtual-host. essential for production.
+#   - HOMELAB NAS → balanced (most files at rest); throughput-performance
+#     during large rsync / borg runs.
+#   - DPDK / HIGH-PPS NETWORKING → network-latency plus cpu-partitioning.
+
+
+# PLUGINS — WHAT TUNED CAN TWEAK
+
+# tuned profiles use plugins to actually apply changes. the common ones:
+#
+#   sysctl              — kernel parameters via /proc/sys
+#   cpu                 — governor, energy_perf_bias, idle states
+#   disk                — IO scheduler, readahead, alpm
+#   net                 — wake-on-lan, ring buffers, coalescing
+#   vm                  — transparent hugepages, swappiness, dirty_*
+#   scheduler           — CPU isolation, IRQ pinning, polling
+#   selinux             — booleans (for very narrow tuning needs)
+#   script              — run arbitrary shell on profile switch
+#   sysfs               — write arbitrary /sys files
+#   modules             — load / unload kernel modules
+#   bootloader          — add kernel args (modifies grub config)
+#
+# full reference: man tuned.conf, /usr/lib/tuned/profiles/
+
+
+# VERIFICATION AND DEBUGGING
+
+tuned-adm verify                                # current vs applied
+sudo journalctl -u tuned -b                    # tuned logs this boot
+sudo journalctl -u tuned -f                    # follow
+ls /usr/lib/tuned/                              # shipped profiles
+ls /etc/tuned/                                  # your overrides
+cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor   # confirm
+                                                # governor change
+
+
+# CROSS-REFERENCES
+
+# - POWER MANAGEMENT: power-profiles-daemon (the desktop counterpart)
+# - GAMING: gamemode (which is essentially an ad-hoc, per-launch
+#   throughput-performance applier)
+# - AUDIO: pro audio + pipewire low-latency tuning pairs with the
+#   latency-performance profile
+# - KERNEL CMDLINE: isolcpus, nohz_full, mitigations work hand in hand
+#   with cpu-partitioning
+
+
+# DECISION MATRIX
+
+#   "default fedora workstation"                  → balanced (or PPD)
+#   "long laptop battery life"                    → powersave / PPD saver
+#   "database server"                             → throughput-performance
+#   "real-time audio production"                  → latency-performance
+#                                                    + RT kernel
+#   "HFT / low-latency trading"                   → realtime + cpu-
+#                                                    partitioning
+#   "video encoding farm"                         → throughput-performance
+#   "KVM host"                                    → virtual-host
+#   "running INSIDE a vm"                         → virtual-guest
+#   "DPDK / high-PPS networking"                  → network-latency +
+#                                                    cpu-partitioning
+#   "i don't know"                                → tuned-adm recommend
 
 
 GNOME TIPS (Workstation default)
