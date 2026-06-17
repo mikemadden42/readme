@@ -472,6 +472,33 @@ sudo -u postgres pg_dumpall -f /backup/postgres-dump.sql
 # that's a real backup. everything else is optimization.
 
 
+BTRFS SNAPSHOTS — THE ROLLBACK WORKFLOW
+---------------------------------------
+
+# TODO STUB — the operational complement to BACKUPS.
+# BACKUPS established "snapshots aren't backups"; this section
+# covers what snapshots ARE useful for: cheap, instant rollback
+# of a borked system.
+# expected content:
+#   - mental model: subvolumes vs snapshots, CoW semantics, why
+#     a snapshot is free until you diverge
+#   - manual snapshots: btrfs subvolume snapshot / list / delete
+#   - the pre/post pattern around risky operations (rpm upgrades,
+#     config edits, ML driver swaps)
+#   - snapper: install, set up @ and @home configs, automatic
+#     pre/post hooks for dnf via libdnf5-plugin-snapper or
+#     dnf-plugin-snapper, timeline cleanup tuning
+#   - btrfs-assistant GUI for browsing/restoring
+#   - rolling back: rename current subvol, promote snapshot,
+#     update grubenv / BLS entry, reboot
+#   - boot-time recovery from grub: the read-only snapshot mount
+#     trick when the running system won't boot
+#   - quota / qgroup overhead and why some folks disable it
+#   - what snapshots DON'T protect against (drive failure,
+#     encryption-key loss, ransomware that touches every block)
+#   - cross-references: BACKUPS, GRUB, DISK MANAGEMENT
+
+
 DISK MANAGEMENT (LVM, SWAP, PARTITIONING)
 -----------------------------------------
 
@@ -1245,6 +1272,33 @@ sudo systemctl enable --now my-maint.timer
 #   schedule my own task?             → .service + .timer (see SYSTEMD)
 
 
+USERS, GROUPS, AND SUDO
+-----------------------
+
+# TODO STUB — the basics of multi-user admin on fedora. surprising
+# omission given how much of the rest of the primer leans on
+# `sudo` working correctly.
+# expected content:
+#   - useradd / usermod / userdel / passwd basics
+#   - the `wheel` group: how fedora wires it to sudo via
+#     /etc/pam.d/su and the default sudoers `%wheel` rule
+#   - groups that gate hardware: dialout (serial), video, render,
+#     input, kvm, libvirt, docker (and why "just add me to docker"
+#     is effectively root)
+#   - id / groups / getent passwd / getent group
+#   - sudoers.d drop-ins (NEVER edit /etc/sudoers directly —
+#     use `sudo visudo -f /etc/sudoers.d/<name>`)
+#   - passwordless sudo for specific commands (NOPASSWD: pattern,
+#     when it's reasonable, when it isn't)
+#   - polkit (pkexec) vs sudo: when GUI auth uses polkit
+#   - service accounts and `nologin` shells
+#   - chage / faillock / pam_tally2 for password aging + lockout
+#   - sssd / freeipa / AD join (one-paragraph pointer; out of
+#     scope for a workstation primer but worth naming)
+#   - cross-references: SELINUX (user contexts), SYSTEMD (User=
+#     directive), SHELL section
+
+
 TTYS — VIRTUAL TERMINALS (CTRL+ALT+F-KEYS)
 ------------------------------------------
 
@@ -1663,6 +1717,37 @@ cat /proc/cmdline | grep -o 'resume=[^ ]*'
 # - POWER MANAGEMENT section: resume=, mem_sleep_default
 # - TPM2 LUKS section: rd.luks.options=tpm2-device=auto
 # - VIRTUAL MACHINES section: iommu / vfio-pci passthrough setup
+
+
+BOOT TROUBLESHOOTING AND RESCUE
+-------------------------------
+
+# TODO STUB — the "something just broke, what now?" section.
+# pairs with GRUB, KERNEL CMDLINE, and TTYs for the full
+# break-glass toolkit.
+# expected content:
+#   - the GRUB boot menu: showing it, picking an older kernel,
+#     `e` to edit one boot's cmdline (covered in GRUB but
+#     worth cross-referencing)
+#   - rd.break — drop into a shell during early initramfs
+#   - rd.shell, rd.debug, systemd.debug-shell
+#   - emergency.target (systemctl emergency) vs rescue.target
+#     vs multi-user.target — when to pick each
+#   - init=/bin/bash for a single-user-ish shell with read-only /
+#   - the live-USB chroot recovery pattern:
+#       mount / + /boot, bind /dev /proc /sys /run, chroot in,
+#       fix /etc/fstab or regenerate initramfs (dracut --force)
+#   - regenerating GRUB config from inside the chroot
+#   - LUKS unlock during recovery (cryptsetup open + mount)
+#   - reinstalling the bootloader: grub2-install (BIOS) +
+#     grub2-mkconfig; UEFI shim/grub via dnf reinstall grub2-efi
+#     shim-x64
+#   - SELinux relabel from rescue: touch /.autorelabel
+#   - read-only / due to btrfs errors: usebackuproot mount option,
+#     btrfs check (and when NOT to run --repair)
+#   - fsck from rescue media (ext4 / xfs)
+#   - "I can't ssh in but the machine boots" — sshd via emergency.target
+#   - cross-references: GRUB, KERNEL CMDLINE, TTYS, BTRFS SNAPSHOTS
 
 
 REPOS — OFFICIAL, RPM FUSION, COPR, FLATHUB
@@ -2291,6 +2376,65 @@ sudo systemctl edit tailscaled
 #    rootless podman uses a different netns. on the host it works.
 
 
+FILE SHARING — NFS AND SAMBA ON A LAN
+-------------------------------------
+
+# TODO STUB — sharing files with other machines on your LAN.
+# NETWORKING covered routing/DNS/VPN; this is the "I want my
+# media server / family laptop to see this drive" layer.
+# expected content:
+#   - SMB (samba) — the right default for mixed mac/windows/linux
+#     households. server: install samba, samba-common; smb.conf
+#     basics; smbpasswd; firewalld --add-service=samba; SELinux
+#     booleans (samba_export_all_rw, samba_enable_home_dirs);
+#     SELinux file context (samba_share_t)
+#   - SMB client: gvfs-smb auto in Files; smbclient -L //host;
+#     mount.cifs in /etc/fstab with credentials= file
+#   - NFS — the lighter-weight all-linux option. server: nfs-utils,
+#     /etc/exports; exportfs -ra; firewalld --add-service=nfs;
+#     SELinux booleans (nfs_export_all_rw, use_nfs_home_dirs)
+#   - NFS client: showmount -e <server>; mount -t nfs4; fstab
+#     entries with _netdev,noauto,x-systemd.automount
+#   - NFSv4 vs v3 (use v4 unless you can't)
+#   - autofs vs systemd automount units for on-demand mounts
+#   - sshfs as the "no server needed" option
+#   - mDNS / Avahi discovery (firewalld --add-service=mdns)
+#   - performance: rsize/wsize, async, version negotiation
+#   - cross-references: FIREWALLD, SELINUX, NETWORKING
+
+
+CORPORATE VPN — OPENVPN, IPSEC, AND FRIENDS
+-------------------------------------------
+
+# TODO STUB — for when your job's VPN isn't WireGuard or Tailscale.
+# NETWORKING covered the modern stack; this covers the legacy
+# corporate stack you'll probably be forced to use at some point.
+# expected content:
+#   - NetworkManager VPN plugins: which exist, what they cover
+#       NetworkManager-openvpn (+ -gnome)
+#       NetworkManager-vpnc (Cisco IPSec)
+#       NetworkManager-libreswan (strongSwan/Libreswan IPSec/IKEv2)
+#       NetworkManager-openconnect (Cisco AnyConnect, GlobalProtect,
+#         Pulse Secure — via openconnect's protocol support)
+#       NetworkManager-l2tp (L2TP/IPSec, Microsoft VPN)
+#       NetworkManager-sstp (Microsoft SSTP)
+#       NetworkManager-fortisslvpn (Fortinet)
+#   - install + nmcli usage for each
+#   - GUI: gnome-control-center → Network → VPN → +
+#   - GlobalProtect — the openconnect protocol vs vendor binary
+#     (gp-saml-gui for SAML auth flows)
+#   - DNS leak handling: split-DNS via systemd-resolved + the
+#     VPN connection's "Use this connection only for resources
+#     on its network" toggle
+#   - MTU pitfalls (1500 over a tunnel = fragmentation hell)
+#   - certificate management: PKCS#12 imports, .ovpn embedded vs
+#     external files, smartcard / PIV-backed auth
+#   - vendor binaries (Cisco AnyConnect Secure Client, GlobalProtect)
+#     and why NetworkManager-openconnect is usually preferable
+#   - kill switch via firewalld: drop traffic if the tunnel is down
+#   - cross-references: NETWORKING, FIREWALLD, GPG / SSH KEYS
+
+
 TIME / NTP — CHRONY
 -------------------
 
@@ -2722,6 +2866,44 @@ sudo grubby --update-kernel=ALL --remove-args='nvidia-drm.modeset=1'
 sudo reboot
 
 
+HARDWARE-ACCELERATED VIDEO (VAAPI / VDPAU / NVENC)
+--------------------------------------------------
+
+# TODO STUB — getting the GPU to decode/encode video instead of
+# burning the CPU. one of the highest-leverage tunings on a
+# laptop (battery life) or a video-heavy desktop (smoothness).
+# expected content:
+#   - mental model: vaapi (intel + amd + nvidia-via-shim),
+#     vdpau (legacy, nvidia), v4l2 m2m (some arm), nvenc/nvdec
+#     (nvidia native)
+#   - intel: intel-media-driver (gen8+), libva-intel-driver
+#     (legacy gen4-7); install + vainfo verification
+#   - amd: mesa-va-drivers (FOSS); for newer amd add
+#     mesa-vdpau-drivers; on RPM Fusion swap to mesa-va-drivers-freeworld
+#     for codecs that fedora can't ship (h264/h265)
+#   - nvidia: libva-nvidia-driver from rpm fusion (the vaapi
+#     shim over nvdec); nvidia's own ffmpeg-nvenc usage; the
+#     `nvidia-vaapi-driver` package
+#   - the codec freedom problem: fedora can't ship h264/h265/aac
+#     decoders out of the box; RPM Fusion's mesa-va-drivers-freeworld
+#     and ffmpeg packages fix this
+#   - vainfo / vdpauinfo / `ffmpeg -hwaccels` verification
+#   - firefox: media.ffmpeg.vaapi.enabled true + media.ffvpx.enabled
+#     false; about:support → graphics → check "Compositing"
+#     and "Video Acceleration"
+#   - chromium / google-chrome / electron apps: --use-gl=angle
+#     --enable-features=VaapiVideoDecodeLinuxGL flags
+#   - OBS hardware encoding: vaapi (intel/amd) or nvenc (nvidia)
+#   - mpv / vlc: --hwdec=auto / Tools → Preferences → Input/Codecs
+#   - the wayland accelerated-presentation gotcha (DMA-BUF)
+#   - troubleshooting: i965 vs iHD driver split, libva-utils,
+#     LIBVA_DRIVER_NAME / LIBVA_TRACE
+#   - the akmod-nvidia + nvidia-vaapi-driver combination on F44
+#   - flatpak apps: the freedesktop runtime's VAAPI portal,
+#     org.freedesktop.Platform.VAAPI.Intel extension
+#   - cross-references: NVIDIA, REPOS (RPM Fusion), WAYLAND
+
+
 DKMS — OUT-OF-TREE KERNEL MODULES
 ---------------------------------
 
@@ -3090,6 +3272,42 @@ sudo dracut --force
 #   re-enroll after firmware    → wipe-slot=tpm2 + re-enroll
 #   recovery if it breaks       → original passphrase still works
 #   list current slots          → cryptsetup luksDump <device>
+
+
+GPG AND SSH KEY MANAGEMENT
+--------------------------
+
+# TODO STUB — the cryptographic-identity layer the rest of the
+# primer leans on but never explains. complements SECURE BOOT
+# and TPM2 LUKS by covering the per-user key story.
+# expected content:
+#   - mental model: ssh keys (auth to remote machines), gpg keys
+#     (sign commits, encrypt files, sign rpms), distinct from
+#     LUKS / TPM / MOK
+#   - ssh keys: ssh-keygen (-t ed25519 by default in 2026), the
+#     ~/.ssh layout, authorized_keys, known_hosts, config aliases
+#   - ssh-agent: ssh-add, the gnome-keyring SSH-agent integration
+#     (replaced upstream's ssh-agent on workstation by default),
+#     when to disable it and run a real agent
+#   - hardware tokens for SSH: YubiKey FIDO2 (-t ed25519-sk),
+#     PIV-backed RSA via ssh-pkcs11-helper, the `ykman` cli
+#   - gpg keys: gpg --full-generate-key, ed25519 + cv25519
+#     subkeys, --export-secret-keys for backup, paper backup
+#     (paperkey)
+#   - gpg-agent + pinentry on wayland (pinentry-gnome3,
+#     pinentry-qt); the "no pinentry" troubleshooting recipe
+#   - signing git commits: git config user.signingkey, commit.gpgsign,
+#     tag.gpgsign; the .ssh/allowed_signers + git config
+#     gpg.format ssh path for ssh-key-based signing
+#   - signing rpms (forward-ref to RPM PACKAGING)
+#   - yubikey for gpg (smartcard mode): gpg --card-edit, key-to-card
+#   - keyring sync: WKD (Web Key Directory), keys.openpgp.org,
+#     keybase (deprecated but mentioned)
+#   - revocation certificates: generate at key creation, store offline
+#   - rotation cadence: subkeys yearly, master every 3-5 years
+#   - cross-references: SECURE BOOT, FINGERPRINT READER (for
+#     unlocking the keyring), RPM PACKAGING (signing builds),
+#     SHELL section (ssh config patterns)
 
 
 HARDWARE / FIRMWARE — fwupd
@@ -3785,6 +4003,48 @@ wpctl set-default <new-id>
 #   "old pulseaudio script needs to work"      → pactl (still works)
 
 
+BLUETOOTH — BLUEZ, PAIRING, AND PAIN POINTS
+-------------------------------------------
+
+# TODO STUB — the bluetooth stack as a whole. AUDIO covered
+# pipewire's bluetooth audio bits; this is everything else:
+# keyboards, mice, headphones-as-headphones, file transfer.
+# expected content:
+#   - the stack: kernel (btusb, hci_uart) → bluez (bluetoothd) →
+#     pipewire/wireplumber (audio) or the kernel HID layer
+#     (keyboards/mice) or obex (file transfer)
+#   - GNOME Settings → Bluetooth is the 95% path; blueman as a
+#     fallback when GNOME is being uncooperative
+#   - bluetoothctl from the cli: list, scan on, pair, trust,
+#     connect, info
+#   - the "won't reconnect after suspend" recipe: btusb power
+#     management, USB autosuspend, systemctl restart bluetooth
+#   - the codec problem: A2DP vs HSP/HFP, the headset
+#     bidirectional mic tradeoff, the wireplumber config snippet
+#     to pick a specific codec (LDAC, aptX, AAC)
+#   - dual-boot bluetooth pairing trick: same MAC on both OSes
+#     means re-pairing every time; copy the linkkey from the
+#     windows registry to /var/lib/bluetooth/<host>/<device>
+#   - kernel firmware: linux-firmware ships most; intel cnvi
+#     chipsets sometimes need iwlwifi+iwlbtu updates
+#   - Bluetooth LE: dbus-send patterns, gatttool deprecated,
+#     bluetoothctl gatt commands
+#   - file transfer: obexd, gnome-bluetooth, the deprecated
+#     bluetooth-sendto
+#   - troubleshooting recipes:
+#     - device not found after kernel update → rfkill list,
+#       systemctl status bluetooth, dmesg | grep -i bluetooth
+#     - intermittent disconnects → ExperimentalFeatures in
+#       /etc/bluetooth/main.conf, kernel power management
+#     - audio crackling → switch codec, raise quantum, try the
+#       headset-as-output-only A2DP profile
+#   - the "linux bluetooth still feels rough" honest tradeoff:
+#     it's much better than 2018 but still the most frequent
+#     source of daily-driver friction
+#   - cross-references: AUDIO (pipewire bluetooth path),
+#     POWER MANAGEMENT (suspend recovery), HARDWARE / FIRMWARE
+
+
 PRINTING AND SCANNING
 ---------------------
 
@@ -4195,6 +4455,54 @@ cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor   # confirm
 #   "DPDK / high-PPS networking"                  → network-latency +
 #                                                    cpu-partitioning
 #   "i don't know"                                → tuned-adm recommend
+
+
+PERFORMANCE INVESTIGATION TOOLKIT
+---------------------------------
+
+# TODO STUB — TUNED PROFILES tuned the system; this is "why is
+# it slow right now and what's it actually doing?" — the
+# troubleshooting muscle memory every admin needs.
+# expected content:
+#   - the four-corners model: CPU / memory / disk / network —
+#     start by asking which corner is saturated, THEN drill in
+#   - first-pass top-down tools: top / htop / btop, free -h,
+#     uptime (loadavg), vmstat 1, iostat -xz 1, sar (sysstat)
+#   - per-process: pidstat -d 1 (IO per pid), ps auxf, pmap,
+#     prlimit, /proc/<pid>/io, /proc/<pid>/status
+#   - cpu: mpstat -P ALL 1, perf top, perf record/report,
+#     `perf stat -d <cmd>` for cache/branch counters
+#   - memory: free, /proc/meminfo (the page-cache vs available
+#     distinction), `smem -tk`, slabtop, pmap -X
+#   - disk: iotop, biotop (bcc-tools), iostat -xz, `dstat`
+#     (deprecated; `dool` is the rust rewrite), `nvme list` +
+#     `nvme smart-log` for NVMe-specific metrics
+#   - network: ss -tuna (replaces netstat -tuna), ip -s link,
+#     iftop, nethogs, bmon, sar -n DEV/TCP/UDP
+#   - what's listening: ss -tlnp, lsof -i, ss -tup
+#   - what files are open: lsof, lsof -p <pid>, lsof +D /path
+#   - tcpdump basics: tcpdump -i any -nn 'host x and port y' -w
+#     out.pcap; pair with wireshark for UI
+#   - syscall tracing: strace -fp <pid> (heavy), perf trace
+#     (lighter), bpftrace one-liners
+#   - bpf-based observability: bpftrace, bcc-tools (cachestat,
+#     execsnoop, opensnoop, tcpconnect, biolatency); the
+#     systemd-journal-bcc bridge
+#   - systemd-cgtop, systemd-analyze blame, systemd-analyze plot
+#   - GPU: nvidia-smi (NVIDIA), radeontop / amdgpu_top (AMD),
+#     intel_gpu_top (Intel)
+#   - the "is it really cpu-bound?" check: pressure stall
+#     information via /proc/pressure/{cpu,memory,io}
+#   - logging timestamps: journalctl -o short-precise + dmesg -T
+#   - common workflows:
+#     - "system feels slow" → uptime + vmstat 1 + iostat 1 to
+#       identify the saturated corner
+#     - "this one app is slow" → strace -c + perf record + iotop
+#     - "memory pressure suspected" → /proc/pressure/memory +
+#       free -h + smem
+#     - "is the network the problem?" → ss + ping + mtr + iperf3
+#   - cross-references: TUNED PROFILES, SYSTEMD (resource control
+#     via CPUWeight / MemoryHigh / IOWeight), GAMING
 
 
 GNOME TIPS (Workstation default)
@@ -4761,6 +5069,51 @@ journalctl --user -u 'xdg-desktop-portal*' -b  # portal logs
 #
 # the long tail of edge cases is real but shrinking each release. by
 # F46-F48, this section should be much shorter.
+
+
+DISPLAYS — MULTI-MONITOR, HiDPI, FRACTIONAL SCALING
+---------------------------------------------------
+
+# TODO STUB — the display-side complement to WAYLAND. how to
+# actually drive 1-N monitors with mixed DPI without misery.
+# expected content:
+#   - GNOME Settings → Displays: arrangement, scale picker,
+#     refresh rate, rotation, primary display
+#   - fractional scaling: enabling in F44 (now opt-out, was
+#     experimental for years); the mutter scale-monitor-framebuffer
+#     experimental feature flag (legacy)
+#   - per-monitor scaling on wayland (mixed-DPI works); the
+#     XWayland blur on legacy apps under fractional scale and
+#     the GDK_DPI_SCALE / GDK_SCALE / QT_AUTO_SCREEN_SCALE_FACTOR
+#     workarounds
+#   - HiDPI font rendering: subpixel order, hinting, fontconfig
+#     overrides in ~/.config/fontconfig
+#   - color management: ICC profiles via colord, GNOME Settings →
+#     Color, displaycal for calibration hardware (i1Display,
+#     ColorMunki, SpyderX)
+#   - night light / blue-light filter; gammastep on non-GNOME
+#   - HDR on wayland: F44 ships KMS HDR plumbing in mutter
+#     (experimental); when it actually works, what's blocked
+#   - VRR / FreeSync / G-SYNC: KMS-level VRR support, mutter's
+#     variable refresh rate flag, per-app enablement
+#   - refresh-rate matching for video: mutter's adaptive rate,
+#     mpv --display-fps
+#   - tools: wlr-randr (sway/wlroots), gnome-randr-rs (gnome
+#     wayland session), kanshi for laptop-dock auto-arrangements
+#   - X11/XWayland fallback: xrandr (X11 only); GDM Wayland vs
+#     Xorg session picker on the login screen
+#   - multi-GPU laptops: PRIME render offload, DRI_PRIME=1,
+#     __NV_PRIME_RENDER_OFFLOAD=1 (nvidia)
+#   - external display via USB-C / Thunderbolt; DisplayPort MST
+#     hubs; bolt for thunderbolt authorization
+#   - troubleshooting recipes:
+#     - "display doesn't wake after sleep" → kernel cmdline +
+#       drm.debug
+#     - "scaling looks blurry" → check if it's XWayland; force
+#       a wayland-native build or scale to integer
+#     - "external monitor not detected" → kscreen-doctor / wlr-randr
+#       to verify the kernel sees it; check journalctl for EDID errors
+#   - cross-references: WAYLAND, NVIDIA, GNOME TIPS, POWER MANAGEMENT
 
 
 LOCALE / FONTS / INPUT METHODS
