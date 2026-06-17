@@ -2595,19 +2595,273 @@ dconf reset -f /org/gnome/
 WAYLAND — WHAT'S STILL DIFFERENT
 --------------------------------
 
-# TODO STUB — practical guide to fedora's wayland-first reality.
-# fedora has been wayland-default since F25 (GNOME); plasma is
-# wayland-default in F42+.
-# expected content:
-#   - what migrated names: xdotool → ydotool, xrandr → wlr-randr
-#   - screen recording: gnome's built-in (Ctrl+Shift+Alt+R), OBS via
-#     PipeWire portal
-#   - browser screen sharing (PipeWire portals — works on chrome+ff)
-#   - color pickers and automation tools that still don't work
-#   - global hotkeys / clipboard managers that need extra config
-#   - falling back to "GNOME on Xorg" at GDM (and when worth it)
-#   - electron apps + wayland (Ozone, --enable-features=...)
-#   - nvidia + wayland status (and cross-link to NVIDIA section)
+# fedora has been wayland-first for almost a decade — GNOME wayland
+# default since F25 (2016), plasma wayland default since F36 (2022),
+# F41 (2024) DROPPED the GNOME X11 session from the default install.
+# you can put it back (`dnf install gnome-session-xsession`) but the
+# direction is clear.
+#
+# the wayland transition is mostly complete for native apps and
+# painfully incomplete for specific edge cases (automation, color
+# pickers, some accessibility tooling). this section is what's still
+# different.
+
+
+# THE MENTAL MODEL — SECURITY OVER COMPATIBILITY
+
+# X11 lets any app see / control any other app. that's the security
+# bug, not a feature. wayland's design says: apps see only their own
+# windows; system-wide capture / control requires explicit permission
+# brokered by the compositor.
+#
+# every "thing that doesn't work the same on wayland" follows from
+# that: screen recording (needs portal permission), global hotkeys
+# (only the compositor can grab keys), clipboard managers (need to be
+# part of the compositor), color pickers (need portal permission to
+# read pixels), automation tools (need accessibility APIs or
+# permission portals).
+#
+# the answer to "why doesn't X11 tool X work" is almost always: it
+# would have to read or write things wayland doesn't let it. the
+# answer is usually "use the portal-aware replacement".
+
+
+# XWAYLAND — THE BACKWARDS COMPATIBILITY LAYER
+
+# XWayland is an X11 server that runs as a wayland CLIENT. legacy X11
+# apps connect to XWayland, which renders into a wayland surface. for
+# most apps you don't notice — the app says "i'm an X app" and
+# XWayland handles it.
+#
+# check what an app is using:
+echo $XDG_SESSION_TYPE                         # wayland or x11
+xlsclients -l                                  # X11 apps currently running
+
+# you'll see things like Steam, older Electron apps, some JetBrains
+# IDEs, OBS (in older configs), Wine apps — all via XWayland.
+# performance is generally fine; HiDPI scaling is the most common
+# pain point (XWayland apps may render blurry on fractional scales).
+
+# the long tail: XWayland is here forever. it's not deprecated; both
+# wayland and X11-via-XWayland will coexist indefinitely. don't worry
+# about "porting" your X11 apps unless YOU maintain them.
+
+
+# PIPEWIRE PORTALS — THE MAGIC THAT MAKES MODERN WAYLAND DESKTOPS WORK
+
+# desktop portals (xdg-desktop-portal) are the system that brokers
+# permission-needing operations: screen recording, file picker, screen
+# sharing, GPU access, notifications. on wayland, screen capture
+# specifically goes through PipeWire's video pipeline.
+#
+# verify the portal stack is running:
+systemctl --user status xdg-desktop-portal
+systemctl --user status xdg-desktop-portal-gnome     # GNOME backend
+systemctl --user status xdg-desktop-portal-gtk       # GTK fallback
+# (KDE users: substitute xdg-desktop-portal-kde)
+#
+# if these aren't running, browser screen sharing, OBS screen capture,
+# flatpak file pickers, and GNOME's built-in screen recorder all fail
+# silently or weirdly.
+
+
+# SCREEN RECORDING
+
+# native built-in (GNOME): Ctrl+Shift+Alt+R toggles recording. saved
+# to ~/Videos/. limited but zero setup.
+#
+# OBS Studio — the canonical option. since OBS 28+ it speaks PipeWire
+# portals natively. pick a "Screen Capture (PipeWire)" source; a
+# portal dialog appears the first time asking which monitor / window.
+sudo dnf install obs-studio
+#
+# gpu-screen-recorder — replay-buffer-focused option. low overhead.
+# good for gaming highlights.
+sudo dnf install gpu-screen-recorder
+#
+# wf-recorder — CLI for wlroots-based compositors (sway, hyprland).
+# overkill for GNOME / Plasma which have built-in or OBS paths.
+
+
+# SCREEN SHARING IN BROWSERS
+
+# works on chrome / chromium / firefox via PipeWire portals. if it
+# DOESN'T work, in order of probability:
+#
+# 1. xdg-desktop-portal services aren't running (see above)
+# 2. browser is too old (chrome <90, firefox <94 don't support it)
+# 3. flatpak browser missing PipeWire socket access — should be
+#    automatic, but for the manually-paranoid:
+flatpak override --user --filesystem=xdg-run/pipewire-0:ro \
+    org.mozilla.firefox
+# 4. you're on XWayland chromium (the Ozone flag — see ELECTRON below)
+
+
+# MIGRATED TOOL NAMES — QUICK REFERENCE
+
+#   X11 tool         wayland replacement
+#   ────────────     ──────────────────────────────────────────────
+#   xdotool          ydotool (kernel uinput; needs setup) or
+#                    wtype (sway/wlroots only)
+#   xrandr           wlr-randr (wlroots), kscreen-doctor (KDE),
+#                    GNOME has no CLI — use Settings → Displays
+#   xclip / xsel     wl-copy / wl-paste (from wl-clipboard)
+#   xev              wev (wayland event viewer)
+#   xprop            no direct replacement; window props aren't
+#                    exposed to other clients
+#   xkill            no replacement; killing other windows is not
+#                    a wayland-native concept
+#   xset s off       gsettings or busctl call to org.gnome.ScreenSaver
+#   xrandr brightness  brightnessctl (kernel sysfs)
+#   xdg-screensaver  busctl org.gnome.ScreenSaver (via dbus)
+
+
+# YDOTOOL — XDOTOOL'S WAYLAND-COMPATIBLE COUSIN
+
+# xdotool's input synthesis worked because X11 let any app inject
+# events into any window. wayland doesn't. ydotool uses the kernel's
+# uinput device instead — works regardless of display server.
+
+sudo dnf install ydotool
+sudo systemctl enable --now ydotoold
+sudo usermod -aG input "$USER"                 # log out + back in
+
+ydotool type "hello"
+ydotool key 29:1 30:1 30:0 29:0                # Ctrl+A (keycodes)
+ydotool mousemove --absolute 500 300
+
+
+# WL-CLIPBOARD — XCLIP / XSEL'S WAYLAND COUSIN
+
+sudo dnf install wl-clipboard
+
+echo "hello" | wl-copy                         # copy to clipboard
+wl-paste                                       # paste
+wl-copy --primary < /etc/hostname              # primary selection
+wl-paste --watch <command>                     # run command on clip changes
+
+
+# GLOBAL HOTKEYS / CLIPBOARD MANAGERS / LAUNCHERS
+
+# wayland doesn't let arbitrary clients grab system-wide keys. the
+# COMPOSITOR has to grab them, then dispatch via D-Bus or a global
+# shortcut framework. workarounds vary:
+#
+#   - GNOME: Settings → Keyboard → View and Customize Shortcuts.
+#     add a custom shortcut → runs any command. enough for most
+#     "launch my terminal on Ctrl+Alt+T".
+#   - KDE: KGlobalAccel handles this natively (more flexible than
+#     GNOME's UI).
+#   - CLIPBOARD HISTORY: GNOME extension "gnome-clipboard-history" or
+#     "Clipboard Indicator". for KDE, Klipper is built-in. for sway,
+#     cliphist + wofi.
+#   - LAUNCHERS: GNOME's Activities + search is the canonical answer;
+#     rofi / wofi for wlroots compositors. ulauncher works on both
+#     X11 and wayland (with caveats).
+
+
+# WHAT STILL DOESN'T WORK CLEANLY
+
+# 1. COLOR PICKERS that grab arbitrary pixels — XWayland-only. gcolor3
+#    works via xdg-portal in some configs. for "what color is that"
+#    quick checks: GNOME has "Color Picker" extension via xdg-portal.
+#
+# 2. SCREEN MAGNIFIERS / ACCESSIBILITY ZOOM — GNOME's built-in zoom
+#    (Settings → Accessibility) works fine. third-party tools may not.
+#
+# 3. OBS SOURCE FILTERS that grab specific X11 windows — broken on
+#    pure wayland. either capture the whole monitor or run OBS via
+#    XWayland.
+#
+# 4. AUTOMATION TOOLS that watch arbitrary window state (AutoKey-style
+#    text expanders, keyboard macro tools watching window class) —
+#    limited. AT-SPI accessibility APIs are the modern path but
+#    coverage is uneven.
+#
+# 5. SCREEN-SHARING VLC OUTPUT or specific app windows in older apps
+#    that don't speak portals — fall back to XWayland or update the app.
+#
+# 6. SOME REMOTE-DESKTOP CLIENTS (TigerVNC viewer, x2go) — these
+#    assume X11. GNOME's built-in "Remote Desktop" (Settings → Sharing)
+#    speaks RDP and works fine over wayland.
+
+
+# ELECTRON APPS + WAYLAND
+
+# electron apps default to XWayland. they LOOK fine but you lose:
+# fractional scaling, native window decoration, smooth touchpad
+# gestures. force native wayland with the Ozone flag:
+#
+#   chromium / chrome / brave / vivaldi / opera:
+#       --enable-features=UseOzonePlatform --ozone-platform=wayland
+#   electron apps (vscode, slack, discord, signal, obsidian, etc.):
+#       same flag works for most modern electron versions
+#
+# persistent for chrome via /etc/chromium-browser/default or a flag
+# file. for vscode:
+mkdir -p ~/.config
+cat >> ~/.config/code-flags.conf <<'EOF'
+--enable-features=UseOzonePlatform
+--ozone-platform=wayland
+EOF
+#
+# for flatpak electron apps, use Flatseal or `flatpak override`:
+flatpak override --user --env=ELECTRON_OZONE_PLATFORM_HINT=auto \
+    com.slack.Slack
+
+
+# NVIDIA + WAYLAND STATUS
+
+# cross-link to the NVIDIA section — short version: driver 545+ works
+# well with wayland on GNOME and KDE. older driver branches struggle.
+# if you're on akmod-nvidia from RPM Fusion, you're current.
+#
+# verify wayland is actually running on nvidia:
+echo $XDG_SESSION_TYPE                         # wayland
+nvidia-smi                                     # driver loaded
+glxinfo -B 2>/dev/null | grep -i renderer     # should say NVIDIA
+
+
+# FALLING BACK TO XORG SESSION
+
+# add the X11 GNOME session back to gdm:
+sudo dnf install gnome-session-xsession
+# log out, click the gear icon at the password prompt, pick
+# "GNOME on Xorg".
+#
+# when it's worth doing:
+#   - you depend on an x11-only automation tool with no wayland path
+#   - you have an old nvidia driver branch (470xx, 390xx)
+#   - you're testing the X11 compatibility of your own software
+#
+# when it's NOT worth doing:
+#   - "wayland feels weird" — usually XWayland, fractional scaling,
+#     or electron flags, all fixable
+#   - "screen sharing broke" — usually missing portals (see above)
+
+
+# DIAGNOSTIC COMMANDS
+
+echo $XDG_SESSION_TYPE                         # wayland / x11
+loginctl show-session $XDG_SESSION_ID -p Type
+sudo dnf install wayland-utils
+wayland-info                                   # protocol versions
+xeyes                                          # if it runs, XWayland works
+systemctl --user status 'xdg-desktop-portal*'  # the portal stack
+journalctl --user -u 'xdg-desktop-portal*' -b  # portal logs
+
+
+# THE TAKEAWAY
+
+# wayland's "missing features" are mostly features that were security
+# holes in X11. the wayland answer is portals + per-app permissions,
+# brokered by the compositor. once your stack is current (recent
+# fedora, recent browser, recent electron) and the portal services
+# are running, the daily experience is indistinguishable from x11 —
+# better, actually, on HiDPI and fractional scaling.
+#
+# the long tail of edge cases is real but shrinking each release. by
+# F46-F48, this section should be much shorter.
 
 
 LOCALE / FONTS / INPUT METHODS
