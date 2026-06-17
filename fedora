@@ -292,18 +292,231 @@ sudo firewall-cmd --zone=trusted --change-interface=virbr0 --permanent
 NVIDIA DRIVERS — RPM FUSION PATH
 --------------------------------
 
-# install the kmod (Akmod auto-builds for new kernels via dkms-like mech):
+# fedora ships nouveau (the open-source nvidia driver) out of the box.
+# nouveau works for basic display but is significantly slower than the
+# proprietary driver and lacks CUDA, NVENC, and full vulkan support.
+# the supported path to the proprietary driver is RPM Fusion's
+# akmod-nvidia (auto-rebuilds against new kernels via akmods.service,
+# conceptually like DKMS but RPM-native).
+
+# this is the kind of setup you do once per machine and want to get
+# right the first time. the order below matters — installing akmod
+# before the kernel headers update, or rebooting before the akmod
+# build finishes, are the two ways people end up at a black screen.
+
+
+# STEP 1 — IDENTIFY YOUR CARD
+
+# the right driver variant depends on your GPU generation:
+lspci | grep -iE 'vga|3d|2d'
+
+#   - akmod-nvidia                — CURRENT branch (570.x). supports
+#                                   Turing (GTX 16xx, RTX 20xx) and newer.
+#                                   ALSO works for Maxwell + Pascal on
+#                                   the open-kernel build but check
+#                                   rpmfusion's nvidia page if unsure.
+#   - akmod-nvidia-470xx          — LTS 470.x branch. Kepler (GTX 6xx /
+#                                   7xx) and older Maxwell. for cards
+#                                   the current driver dropped.
+#   - akmod-nvidia-390xx          — legacy 390.x branch. Fermi era
+#                                   (GeForce 4xx / 5xx). end-of-life
+#                                   upstream; only install if you have
+#                                   nothing else.
+#
+# unsure which to pick: check nvidia's "Supported Products" page or
+# rpmfusion's "Howto/NVIDIA". if `nvidia-detect` is installed, it
+# picks for you:
+sudo dnf install nvidia-detect && nvidia-detect
+
+
+# STEP 2 — PREREQUISITES (EVERYTHING IN SYNC)
+
+# RPM Fusion must be enabled (see REPOS section above). then:
+
+# fully update first — you want the kernel and kernel-headers in sync
+# BEFORE akmod tries to build against them.
+sudo dnf upgrade --refresh
+sudo dnf install kernel-devel-$(uname -r) kernel-headers-$(uname -r)
+
+
+# STEP 3 — INSTALL THE DRIVER
+
+# CURRENT BRANCH (most people):
 sudo dnf install akmod-nvidia xorg-x11-drv-nvidia-cuda
+#    xorg-x11-drv-nvidia-cuda pulls in the CUDA RUNTIME libs (libcuda),
+#    needed for hardware video decode (NVENC/NVDEC), pytorch GPU,
+#    blender CUDA render, etc. install it unless you specifically don't
+#    want CUDA on the box.
 
-# wait ~5 minutes after install for akmod-build to finish, then reboot.
-# verify the kmod was built:
-modinfo -F version nvidia
+# steam / proton / wine — pull 32-bit libs:
+sudo dnf install xorg-x11-drv-nvidia-libs.i686
 
-# common nvidia + fedora gotcha: secure boot. nvidia kmod is unsigned
-# unless you enroll a MOK. either disable secure boot in firmware, or:
+# legacy 470xx branch (substitute the package names):
+sudo dnf install akmod-nvidia-470xx xorg-x11-drv-nvidia-470xx-cuda
+
+
+# STEP 4 — WAIT FOR THE AKMOD BUILD
+
+# akmods.service builds the kmod in the background. 5-15 minutes on
+# typical hardware. DO NOT REBOOT until it finishes — booting with the
+# kmod half-built drops you on nouveau (or worse, a black screen on a
+# system where nouveau is already blacklisted).
+
+# watch the build:
+sudo journalctl -fu akmods.service
+
+# verify the module file exists for your running kernel:
+ls /lib/modules/$(uname -r)/extra/nvidia/
+modinfo -F version nvidia        # prints driver version once built
+
+# if `modinfo` says nothing, the build hasn't finished or it failed.
+# kick it manually:
+sudo akmods --force
+
+
+# STEP 5 — SECURE BOOT (skip if disabled in firmware)
+
+# check your state:
+mokutil --sb-state                 # SecureBoot enabled / disabled
+
+# if enabled: akmod's built kmod is unsigned and shim will refuse to
+# load it. RPM Fusion's akmod hooks generate a Machine Owner Key (MOK)
+# pair at /var/lib/dkms/mok.{pub,priv} and sign the kmod with it. you
+# enroll the pub side once:
 sudo mokutil --import /var/lib/dkms/mok.pub
-#    reboot, enroll the key in shim's MokManager prompt with the
-#    password mokutil asked for.
+#    sets a one-time password. on next reboot, shim's MokManager menu
+#    appears BEFORE GRUB — pick "Enroll MOK", confirm with that
+#    password. enrollment is permanent until you remove it.
+
+# verify enrollment after reboot:
+mokutil --list-enrolled | grep -A2 "DKMS\|nvidia"
+
+# easier path (if you don't care about secure boot): disable it in
+# firmware. matters less on a desktop than a laptop you carry out.
+
+
+# STEP 6 — WAYLAND / KMS MODESET
+
+# nvidia-drm.modeset=1 enables proper KMS support, required for clean
+# Wayland sessions, smooth tty switches, and gnome / kde wayland on
+# nvidia. driver 545+ enables this by default, and rpmfusion configures
+# it via /usr/lib/modprobe.d/nvidia-modeset.conf. verify:
+cat /sys/module/nvidia_drm/parameters/modeset       # should be: Y
+
+# if it's N, force it. either add the modprobe option:
+sudo tee /etc/modprobe.d/nvidia-modeset.conf <<'EOF'
+options nvidia-drm modeset=1
+EOF
+sudo dracut --force
+#    or add it as a kernel cmdline arg:
+sudo grubby --update-kernel=ALL --args='nvidia-drm.modeset=1'
+
+
+# STEP 7 — REBOOT AND VERIFY
+
+sudo reboot
+
+# after login, confirm:
+lsmod | grep -E 'nvidia|nouveau'    # nvidia loaded, nouveau ABSENT
+nvidia-smi                           # GPU model + driver version + processes
+glxinfo | grep -i 'opengl renderer'  # should say NVIDIA, not llvmpipe
+
+# session type (wayland or x11):
+echo $XDG_SESSION_TYPE
+
+
+# HYBRID LAPTOP / OPTIMUS — RENDER OFFLOAD
+
+# for laptops with both Intel/AMD iGPU + nvidia dGPU, the modern model
+# is "on-demand": iGPU drives the display, nvidia handles render
+# offload per-app. saves battery vs running everything on nvidia.
+
+# verify both GPUs are present:
+lspci -k | grep -EA3 'VGA|3D'
+
+# launch a single app on nvidia from a terminal:
+__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia glxinfo \
+    | grep 'OpenGL renderer'                # should now say NVIDIA
+
+# convenient wrapper:
+sudo tee /usr/local/bin/nv <<'EOF'
+#!/bin/sh
+exec env __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
+         __VK_LAYER_NV_optimus=NVIDIA_only "$@"
+EOF
+sudo chmod +x /usr/local/bin/nv
+#    then: `nv blender`, `nv steam`, etc.
+
+# steam per-game launch options for nvidia render offload:
+#     __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia %command%
+
+
+# CUDA DEVELOPMENT (vs CUDA RUNTIME)
+
+# xorg-x11-drv-nvidia-cuda installs runtime (libcuda) only — enough to
+# RUN cuda apps (pytorch, blender, ffmpeg-nvenc). for compiling cuda
+# code you need the toolkit. two paths:
+#
+# a) nvidia's official cuda repo (most cuda versions, large download)
+sudo dnf config-manager addrepo --from-repofile=https://developer.download.nvidia.com/compute/cuda/repos/fedora41/x86_64/cuda-fedora41.repo
+sudo dnf install cuda-toolkit
+#    fedora 44 isn't always in nvidia's repo on day one — substitute
+#    fedora41 or fedora42 as a placeholder; the binaries are usually
+#    forward-compatible. check developer.nvidia.com for current list.
+#
+# b) python-only path: install pytorch / tensorflow wheels that bundle
+#    their own cuda libs. no system toolkit needed.
+
+
+# COMMON FAILURES AND FIXES
+
+# 1. "nvidia kernel module missing" / black screen after reboot.
+#    you rebooted before akmod finished. boot to multi-user mode
+#    (add `3` to kernel cmdline at the GRUB menu — that's why we
+#    showed the GRUB menu earlier), log in, then:
+sudo akmods --force
+sudo systemctl isolate graphical.target
+#
+# 2. nouveau still loaded alongside nvidia. check the blacklist:
+cat /usr/lib/modprobe.d/nvidia.conf
+#    rpmfusion should drop a blacklist entry. if not:
+sudo tee /etc/modprobe.d/blacklist-nouveau.conf <<'EOF'
+blacklist nouveau
+options nouveau modeset=0
+EOF
+sudo dracut --force
+#
+# 3. kernel update broke nvidia. akmod usually rebuilds on `dnf
+#    upgrade`, but if it didn't fire:
+sudo akmods --force --kernels $(uname -r)
+sudo dracut --force
+#
+# 4. wayland tearing / glitching. driver 545+ should be fine. if
+#    not, log out and pick "GNOME on Xorg" at the gdm session
+#    picker — GNOME 47+ still ships the xorg session as an optional
+#    package:
+sudo dnf install gnome-session-xsession
+#    KDE Plasma's wayland on nvidia is generally smoother than
+#    GNOME's as of 2026.
+#
+# 5. screen tearing in X11. enable the nvidia force-composition
+#    pipeline in xorg conf, or use a compositor (picom).
+#
+# 6. external monitor not detected after suspend. driver power
+#    management quirk. on most setups this is fixed by:
+sudo systemctl enable --now nvidia-suspend.service \
+    nvidia-resume.service nvidia-hibernate.service
+
+
+# REMOVAL / ROLLBACK TO NOUVEAU
+
+sudo dnf remove '*nvidia*' --noautoremove
+sudo dnf install xorg-x11-drv-nouveau          # if dnf removed it
+sudo rm /etc/modprobe.d/blacklist-nouveau.conf 2>/dev/null
+sudo rm /etc/modprobe.d/nvidia-modeset.conf 2>/dev/null
+sudo dracut --force
+sudo grubby --update-kernel=ALL --remove-args='nvidia-drm.modeset=1'
+sudo reboot
 
 
 SECURE BOOT — NOTES
