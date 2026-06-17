@@ -4774,23 +4774,199 @@ ls /sys/kernel/iommu_groups/                  # one dir per group
 COCKPIT — WEB-BASED SYSTEM ADMINISTRATION
 -----------------------------------------
 
-# TODO STUB — cockpit is fedora's blessed web UI for sysadmin. already
-# mentioned in VIRTUAL MACHINES (cockpit-machines) but the core tool
-# is much broader.
-# expected content:
-#   - install: dnf install cockpit + module packages (cockpit-*)
-#   - access at https://localhost:9090; auto-signed cert + first-time
-#     trust flow
-#   - what each module covers: Overview, Logs, Services, Networking,
-#     Accounts, Software Updates, Storage, Containers (cockpit-podman),
-#     Machines (cockpit-machines), Terminal
-#   - remote machine management via the SSH backend — one cockpit to
-#     admin many
-#   - federated dashboards
-#   - extending: writing your own cockpit module (advanced)
-#   - SELinux + firewalld implications
-#   - when cockpit beats SSH+CLI (visualizations, audit, less-experienced
-#     team members) and when it doesn't (scripting, automation)
+# cockpit is fedora's blessed web UI for system administration. think
+# of it as "a browser-based version of the operations the SYSTEMD,
+# NETWORKING, and STORAGE sections cover via CLI". listens on
+# https://localhost:9090. backed by D-Bus + systemd + NetworkManager
+# + firewalld, so it's a thin UI layer over the same operations CLI
+# does.
+
+
+# WHAT COCKPIT IS — AND ISN'T
+
+# IS:
+#   - a session-based web UI for admin tasks
+#   - a unified pane covering services, networking, accounts, storage,
+#     logs, software updates, containers, VMs
+#   - a federation point for managing MULTIPLE machines from one
+#     cockpit instance
+#   - extensible — third-party modules exist (cockpit-podman,
+#     cockpit-machines, cockpit-storaged, cockpit-389-ds, etc.)
+#
+# IS NOT:
+#   - a long-running daemon doing background work (it's started
+#     on-demand by systemd socket activation)
+#   - a replacement for ansible / puppet / chef (it's interactive,
+#     not declarative)
+#   - automation-friendly (no formal API; intended for humans)
+
+
+# INSTALL + FIRST RUN
+
+# the core + the modules you'll actually use:
+sudo dnf install cockpit \
+    cockpit-system \
+    cockpit-networkmanager \
+    cockpit-storaged \
+    cockpit-podman \
+    cockpit-machines \
+    cockpit-selinux \
+    cockpit-packagekit
+
+# enable the socket (started on-demand by socket activation; cheap):
+sudo systemctl enable --now cockpit.socket
+
+# open firewalld for it (default: only loopback; you usually want LAN):
+sudo firewall-cmd --add-service=cockpit --permanent && \
+    sudo firewall-cmd --reload
+
+# access:
+#   https://localhost:9090       (from this machine)
+#   https://<host>.local:9090     (from your LAN)
+# log in as any user in the `wheel` group (sudoers); cockpit uses PAM.
+
+# first-time TLS warning: cockpit ships an auto-signed cert. accept it
+# in the browser, or install your own (next section).
+
+
+# THE STANDARD MODULES
+
+#   OVERVIEW          — system summary, CPU/memory/disk graphs over time,
+#                       uptime, recent events, hardware info
+#   LOGS              — journalctl browser with filters (priority, unit,
+#                       time range). good for "show me errors since today"
+#   NETWORKING        — interfaces, bonds, bridges, VLANs (NetworkManager
+#                       under the hood). firewalld zones + services.
+#   ACCOUNTS          — local user / group management, SSH key install
+#   SERVICES          — start/stop/enable/disable systemd units; mask;
+#                       view properties. the GUI version of `systemctl`.
+#   SOFTWARE UPDATES  — runs `dnf upgrade` with progress UI. shows
+#                       security updates separately.
+#   STORAGE           — disks, partitions, LVM, btrfs, NFS mounts.
+#                       create / resize / format / encrypt.
+#   TERMINAL          — embedded web terminal (real shell, no SSH client
+#                       needed). useful for "i need CLI but I'm already
+#                       in cockpit".
+#   CONTAINERS        — cockpit-podman: list / start / stop containers,
+#                       inspect images, build from Containerfile.
+#   VIRTUAL MACHINES  — cockpit-machines: libvirt frontend (covered in
+#                       VIRTUAL MACHINES section).
+#   SELINUX           — view denials, modify booleans, browse policy
+#                       (the GUI version of the SELINUX section's
+#                       `audit2allow` workflow).
+#   DIAGNOSTIC REPORTS — `sosreport` generation (the standard "send this
+#                        to red hat support" tarball)
+#   APPLICATIONS      — application-specific modules (3rd party plugin
+#                       discovery)
+
+
+# REMOTE MACHINE MANAGEMENT (FEDERATION)
+
+# cockpit can manage REMOTE machines from one UI. login to your local
+# cockpit, click the hostname dropdown, "Add new host":
+#   - enter hostname + ssh user
+#   - cockpit ssh's to the remote, installs nothing
+#   - the remote needs cockpit installed too, OR cockpit-bridge alone
+#     (much lighter)
+#
+# the experience: switch between hosts from a dropdown; manage each
+# with the full UI. designed for small fleets (5-20 machines); larger
+# fleets want ansible AWX or similar.
+
+
+# TLS / CERTIFICATES
+
+# cockpit ships a self-signed cert at /etc/cockpit/ws-certs.d/0-self-
+# signed.cert. for LAN use:
+#   - accept the warning in the browser (one-time per machine)
+#   - or import the cert into your browser's trust store
+#
+# for proper TLS (your own CA or let's encrypt):
+sudo cp ~/my-fullchain.pem /etc/cockpit/ws-certs.d/10-mycert.cert
+sudo cp ~/my-key.pem /etc/cockpit/ws-certs.d/10-mycert.key
+sudo chmod 600 /etc/cockpit/ws-certs.d/10-mycert.key
+sudo systemctl restart cockpit.socket cockpit
+
+
+# AUTHENTICATION
+
+# cockpit defaults to local PAM (your linux password). additional options:
+#   - SSH key — if your account has authorized_keys, the embedded
+#     terminal uses them automatically
+#   - certificates — client cert auth via /etc/cockpit/cockpit.conf
+#   - kerberos / GSSAPI — for Active Directory / IPA environments
+#
+# tune in /etc/cockpit/cockpit.conf:
+sudo tee /etc/cockpit/cockpit.conf <<'EOF'
+[WebService]
+LoginTo = false                # disable "log in to another machine" UI
+AllowUnencrypted = false       # require HTTPS (default true on localhost)
+MaxStartups = 10               # concurrent login attempts
+EOF
+sudo systemctl restart cockpit.socket
+
+
+# SELINUX + FIREWALLD
+
+# cockpit's policy is shipped; selinux works out of the box. denials
+# usually mean a custom path or port (covered in SELINUX — GOING DEEPER).
+# firewalld has a preconfigured `cockpit` service:
+sudo firewall-cmd --info-service=cockpit
+
+
+# EXTENDING — WRITING A COCKPIT MODULE (advanced)
+
+# cockpit modules are HTML + JS apps that run inside the cockpit shell.
+# the cockpit project documents the API:
+#   https://cockpit-project.org/guide/latest/
+#
+# a minimal module is a directory under ~/.local/share/cockpit/<name>/
+# with a manifest.json. dev iteration is fast; deploy is just copying
+# files. niche but useful for in-house tooling.
+
+
+# WHEN COCKPIT BEATS SSH + CLI
+
+# good for:
+#   - VISUALIZATIONS over time (CPU / memory / network graphs)
+#   - less-experienced team members ("just open cockpit and look at
+#     the services tab")
+#   - audit / single-pane-of-glass for someone overseeing N machines
+#   - quick diagnostics ("is this VM healthy" — open cockpit, glance)
+#   - homelab use where you want a browser UI for casual tasks
+#
+# bad for:
+#   - scripting / automation (no formal API; intended for humans)
+#   - complex multi-step operations (CLI / ansible is better)
+#   - large fleets (>50 machines — federation gets unwieldy)
+#   - hands-off / unattended operations
+
+
+# HONEST TRADEOFFS
+
+# 1. FEATURE PARITY WITH CLI VARIES. some operations have no UI; the
+#    embedded terminal is the escape hatch.
+# 2. SHIPS WITH FEDORA SERVER + WORKSTATION + ATOMIC. on minimal
+#    installs you may need to install + open firewall.
+# 3. NO API. you can't automate cockpit operations — it's interactive
+#    by design.
+# 4. BROWSER COMPAT. modern browsers only; some older firefox versions
+#    have CSS quirks. modern chrome / firefox are fine.
+# 5. THE REMOTE-HOST DROPDOWN DOESN'T SCALE. great for 5 hosts; ugly
+#    at 50.
+
+
+# DECISION MATRIX
+
+#   "homelab admin from my laptop browser"      → cockpit
+#   "i need a web GUI for the NAS / mini-PC"    → cockpit
+#   "i'm onboarding a junior to sysadmin"       → cockpit (familiar UI)
+#   "i want to automate provisioning"           → ansible, NOT cockpit
+#   "i want to manage 100+ machines"            → ansible + AWX, not
+#                                                  cockpit
+#   "VMs on this fedora box"                    → cockpit-machines
+#   "containers on this fedora box"             → cockpit-podman
+#   "audit dashboard for a small team"          → cockpit federation
 
 
 CONTAINERS — PODMAN FIRST
