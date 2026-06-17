@@ -2577,23 +2577,149 @@ sudo reboot
 DKMS — OUT-OF-TREE KERNEL MODULES
 ---------------------------------
 
-# TODO STUB — DKMS (Dynamic Kernel Module Support) automatically
-# rebuilds out-of-tree kernel modules when the kernel updates.
-# mentioned in passing in SILVERBLUE gotchas but never explained.
-# expected content:
-#   - the mental model: source in /usr/src/<module>-<ver>/; DKMS
-#     rebuilds against the new kernel on update
-#   - dkms status / add / build / install / remove
-#   - dkms.conf format
-#   - DKMS vs AKMOD: RPM Fusion's alternative; preferred on fedora
-#     because it integrates cleanly with akmods.service
-#   - when DKMS is unavoidable (vendor drivers shipped DKMS-only)
-#   - Secure Boot + DKMS: enrolling a MOK to sign rebuilt modules
-#     (cross-link to SECURE BOOT)
-#   - troubleshooting: dkms autoinstall, manual rebuild after a
-#     kernel update that didn't trigger the hook
-#   - DKMS DOES NOT WORK on Silverblue (cross-link to SILVERBLUE)
-#   - cross-link to NVIDIA section (which uses akmod, not DKMS)
+# DKMS (Dynamic Kernel Module Support) is the framework for keeping
+# out-of-tree kernel modules in sync with kernel updates. fedora's
+# blessed alternative is AKMOD (RPM Fusion). DKMS is the fallback
+# when a vendor only ships DKMS sources.
+
+
+# THE MENTAL MODEL
+
+# kernel modules can be IN-TREE (shipped with the kernel; updated
+# atomically with kernel updates) or OUT-OF-TREE (vendor-shipped,
+# need to be rebuilt against each new kernel ABI). DKMS:
+#   1. accepts module source under /usr/src/<module>-<version>/
+#   2. registers it with `dkms add`
+#   3. on every kernel install, runs `dkms autoinstall`, which
+#      rebuilds the module against the new kernel headers
+#
+# the result: install a new kernel, reboot, the out-of-tree module
+# is already built and loaded.
+
+
+# DKMS vs AKMOD — WHY FEDORA PREFERS AKMOD
+
+# both solve the same problem (rebuild on kernel update). differences:
+#
+#   DKMS                                   AKMOD (RPM Fusion)
+#   ─────────────────────────────────      ───────────────────────────
+#   shipped under /usr/src/                shipped as a .src.rpm-style
+#                                           akmod-* package
+#   rebuilds on `dkms autoinstall`         rebuilds via akmods.service
+#   one rebuilt module file in             rebuilt into a proper RPM
+#     /var/lib/dkms/                         in /var/cache/akmods
+#   needs kernel-devel installed           needs kernel-devel installed
+#   Secure Boot: MOK enrolls the           Secure Boot: MOK enrolls the
+#     DKMS-generated key                     akmod-built key
+#
+# in practice akmod integrates more cleanly with fedora's package
+# lifecycle (RPM Fusion repos, akmods.service auto-rebuild). use akmod
+# if available; reach for DKMS only when forced.
+
+
+# WHEN DKMS IS UNAVOIDABLE
+
+# - many enterprise / vendor drivers (some VPN clients, certain
+#   wifi cards, niche hardware) ship DKMS-only because that's what
+#   the vendor tested on RHEL/CentOS.
+# - some OUT-OF-MAINLINE driver projects ship DKMS-only because
+#   they're not on RPM Fusion.
+# - prebuilt nvidia (the "from nvidia.com .run installer" path) uses
+#   DKMS internally. fedora users SHOULD NOT take that path; use
+#   akmod-nvidia from RPM Fusion (see NVIDIA section).
+
+
+# INSTALL + DAILY
+
+sudo dnf install dkms kernel-devel kernel-headers
+
+# every dkms-managed module has a record in `dkms status`:
+sudo dkms status
+
+# add a new module's source (the canonical "I just installed the
+# vendor package, what now"):
+sudo dkms add -m mymodule -v 1.2.3
+sudo dkms build -m mymodule -v 1.2.3
+sudo dkms install -m mymodule -v 1.2.3
+sudo modprobe mymodule
+
+# one-shot all three:
+sudo dkms autoinstall
+
+# remove a module:
+sudo dkms remove -m mymodule -v 1.2.3 --all
+
+
+# dkms.conf — THE PER-MODULE RECIPE
+
+# /usr/src/<module>-<version>/dkms.conf describes how to build:
+PACKAGE_NAME="mymodule"
+PACKAGE_VERSION="1.2.3"
+MAKE[0]="make -C $kernel_source_dir M=$dkms_tree/$PACKAGE_NAME/$PACKAGE_VERSION/build modules"
+CLEAN="make -C $kernel_source_dir M=$dkms_tree/$PACKAGE_NAME/$PACKAGE_VERSION/build clean"
+BUILT_MODULE_NAME[0]="mymodule"
+DEST_MODULE_LOCATION[0]="/updates"
+AUTOINSTALL="yes"
+
+# vendor packages usually ship this file; you rarely write one from
+# scratch unless you're packaging upstream source yourself.
+
+
+# SECURE BOOT + DKMS
+
+# under Secure Boot, the kernel refuses to load unsigned modules.
+# DKMS-generated modules are unsigned by default. options:
+#
+# 1. disable Secure Boot in firmware (simplest, weakens evil-maid
+#    posture; see SECURE BOOT section).
+#
+# 2. enroll a Machine Owner Key (MOK) and sign DKMS-built modules
+#    with it. DKMS supports this via:
+sudo dkms generate_mok                          # creates a key pair
+sudo mokutil --import /var/lib/dkms/mok.pub
+#    reboot, enroll via shim's MokManager prompt.
+#
+# 3. let the vendor's installer manage signing if it does
+#    (some do; nvidia's .run installer auto-signs, akmod-nvidia
+#    handles it via mokutil).
+
+
+# TROUBLESHOOTING
+
+# 1. KERNEL UPDATED, MODULE NOT LOADED. dkms didn't rebuild on the
+#    transition. force it:
+sudo dkms autoinstall --kernelver $(uname -r)
+sudo modprobe mymodule
+#
+# 2. BUILD FAILS WITH "missing kernel-headers". install:
+sudo dnf install kernel-headers-$(uname -r) kernel-devel-$(uname -r)
+#
+# 3. SECURE BOOT BLOCKS LOAD. dmesg shows "module verification
+#    failed: signature and/or required key missing". sign + enroll
+#    (above).
+#
+# 4. DKMS REPORTS "module installed but not built for this kernel".
+#    forgot to autoinstall after the kernel landed:
+sudo dkms autoinstall
+
+
+# DKMS DOES NOT WORK ON SILVERBLUE
+
+# silverblue's /usr is read-only. DKMS needs to write rebuilt modules
+# into /lib/modules/<kver>/ — not allowed. the silverblue path is:
+#   - layer akmod via `rpm-ostree install` (see SILVERBLUE section)
+#   - bake the module into a custom uBlue-style image
+#   - accept that some vendor drivers won't work on silverblue
+# DKMS is a workstation-only concern.
+
+
+# CROSS-REFERENCES
+
+# - NVIDIA section — fedora's nvidia uses akmod, not DKMS
+# - SECURE BOOT section — MOK enrollment for signing modules
+# - SILVERBLUE section — DKMS does not work; alternatives there
+# - RPM PACKAGING — if you're packaging an out-of-tree module
+#   yourself, akmod is the fedora-blessed format
 
 
 SECURE BOOT — NOTES
