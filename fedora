@@ -4517,43 +4517,297 @@ wpctl set-default <new-id>
 BLUETOOTH — BLUEZ, PAIRING, AND PAIN POINTS
 -------------------------------------------
 
-# TODO STUB — the bluetooth stack as a whole. AUDIO covered
-# pipewire's bluetooth audio bits; this is everything else:
-# keyboards, mice, headphones-as-headphones, file transfer.
-# expected content:
-#   - the stack: kernel (btusb, hci_uart) → bluez (bluetoothd) →
-#     pipewire/wireplumber (audio) or the kernel HID layer
-#     (keyboards/mice) or obex (file transfer)
-#   - GNOME Settings → Bluetooth is the 95% path; blueman as a
-#     fallback when GNOME is being uncooperative
-#   - bluetoothctl from the cli: list, scan on, pair, trust,
-#     connect, info
-#   - the "won't reconnect after suspend" recipe: btusb power
-#     management, USB autosuspend, systemctl restart bluetooth
-#   - the codec problem: A2DP vs HSP/HFP, the headset
-#     bidirectional mic tradeoff, the wireplumber config snippet
-#     to pick a specific codec (LDAC, aptX, AAC)
-#   - dual-boot bluetooth pairing trick: same MAC on both OSes
-#     means re-pairing every time; copy the linkkey from the
-#     windows registry to /var/lib/bluetooth/<host>/<device>
-#   - kernel firmware: linux-firmware ships most; intel cnvi
-#     chipsets sometimes need iwlwifi+iwlbtu updates
-#   - Bluetooth LE: dbus-send patterns, gatttool deprecated,
-#     bluetoothctl gatt commands
-#   - file transfer: obexd, gnome-bluetooth, the deprecated
-#     bluetooth-sendto
-#   - troubleshooting recipes:
-#     - device not found after kernel update → rfkill list,
-#       systemctl status bluetooth, dmesg | grep -i bluetooth
-#     - intermittent disconnects → ExperimentalFeatures in
-#       /etc/bluetooth/main.conf, kernel power management
-#     - audio crackling → switch codec, raise quantum, try the
-#       headset-as-output-only A2DP profile
-#   - the "linux bluetooth still feels rough" honest tradeoff:
-#     it's much better than 2018 but still the most frequent
-#     source of daily-driver friction
-#   - cross-references: AUDIO (pipewire bluetooth path),
-#     POWER MANAGEMENT (suspend recovery), HARDWARE / FIRMWARE
+# the bluetooth stack as a whole. AUDIO covers the codec /
+# wireplumber side; this section covers everything else —
+# pairing, HID devices, file transfer, LE, and the recipes for
+# when something inevitably misbehaves.
+#
+# honest preamble: bluetooth on linux in 2026 is much better
+# than 2018, but it's still the most frequent source of
+# daily-driver friction. budget patience.
+
+
+# THE STACK (KNOW WHO'S DOING WHAT)
+
+# bluetooth on fedora is a layer cake. when something breaks,
+# matching the symptom to the layer is most of the diagnosis.
+#
+#   1. radio        — the chip (intel cnvi, broadcom, mediatek,
+#                     realtek). rfkill can soft-block it.
+#   2. kernel       — btusb (USB chips) / hci_uart (UART) drivers.
+#                     dmesg messages live here. firmware too.
+#   3. bluetoothd   — the BlueZ daemon (systemd unit `bluetooth`).
+#                     handles pairing, the dbus API, device DB
+#                     in /var/lib/bluetooth/<adapter>/<device>/.
+#   4. consumer     — depends on the device:
+#                       audio          → pipewire + wireplumber
+#                       keyboard/mouse → kernel HID (uhid)
+#                       file transfer  → obexd
+#                       LE / GATT      → dbus / bluez API
+#
+# when a device "doesn't work", first ask: did pairing complete
+# at layer 3, but the consumer at layer 4 didn't pick it up? or
+# did the radio at layer 1 even come up?
+
+# fast health check:
+rfkill list                                   # soft/hard block status
+systemctl status bluetooth                    # daemon up?
+bluetoothctl show                             # adapter info, powered, discoverable
+dmesg | grep -iE 'bluetooth|hci|btusb' | tail -50
+
+
+# PAIRING — THE 95% PATH AND THE CLI
+
+# GNOME Settings → Bluetooth is the supported flow. it covers
+# most devices, including the "next to my laptop" pairing for
+# AirPods, gaming controllers, mice, and headphones.
+
+# when GNOME is being uncooperative (the device shows up and
+# vanishes, or won't pair past discovery), drop to the CLI.
+# bluetoothctl is the swiss-army knife:
+
+bluetoothctl                                   # interactive shell
+# inside the shell:
+power on
+agent on
+default-agent
+scan on                                        # devices appear over ~30s
+devices                                        # list discovered
+pair AA:BB:CC:DD:EE:FF
+trust AA:BB:CC:DD:EE:FF                        # auto-reconnect later
+connect AA:BB:CC:DD:EE:FF
+info AA:BB:CC:DD:EE:FF                         # capabilities, services, paired?
+quit
+
+# one-liners (work outside the interactive shell too):
+bluetoothctl devices Paired
+bluetoothctl info AA:BB:CC:DD:EE:FF
+bluetoothctl disconnect AA:BB:CC:DD:EE:FF
+bluetoothctl remove AA:BB:CC:DD:EE:FF          # forget completely
+
+# the GUI fallback when GNOME is misbehaving:
+sudo dnf install blueman
+blueman-manager
+# blueman is a GTK app from the broader linux ecosystem. exposes
+# more knobs (PAN tethering, audio profile switching, manual
+# service connect) than gnome's stripped-down panel.
+
+
+# KEYBOARDS, MICE, GAMING CONTROLLERS
+
+# bluetooth HID devices hand off to the kernel's uhid driver
+# after pairing — no userspace plumbing required.
+#
+# pairing quirks:
+#   - keyboards often display a PIN on screen; type it on the
+#     keyboard and press Enter. some Logitech / Apple keyboards
+#     pair without a PIN at all.
+#   - gaming controllers (Xbox, DualSense, Switch Pro) typically
+#     auto-connect after pairing. for Steam, also enable
+#     "Steam Input" in BPM → Controller Settings.
+#   - some Apple Magic devices need apple-magic-mouse2 / hid-apple
+#     kernel module options for clicks-vs-taps and scroll
+#     direction.
+
+# multi-host devices (Logitech MX Keys / MX Master with 3 paired
+# hosts) work fine — just pair on each host and use the device's
+# host-switch button.
+
+
+# AUDIO — KEEP IT BRIEF, CROSS-REF AUDIO
+
+# the codec story (LDAC / aptX HD / AAC / SBC), the bidirectional
+# mic tradeoff (A2DP-only vs HSP/HFP), and the wireplumber config
+# to force a specific codec all live in the AUDIO section's
+# "BLUETOOTH AUDIO — CODEC SELECTION" subsection.
+#
+# the short version: pipewire negotiates the best mutually-
+# supported codec automatically. if you got SBC and expected
+# LDAC, see AUDIO for the config snippet that whitelists codecs.
+
+wpctl status                                   # current sink + codec
+pactl list cards | grep -A20 bluez            # available profiles
+
+
+# FILE TRANSFER (OBEX) — STILL A THING
+
+# pushing a file from your phone to the laptop or vice-versa.
+# fedora ships gnome-bluetooth + obexd; the GNOME Settings
+# panel exposes "Send files via Bluetooth" when a device is
+# connected.
+
+# cli alternatives (when GNOME's path is broken):
+sudo dnf install obex-data-server bluez-tools
+obexctl                                        # bluez-tools, interactive
+# or one-shot push:
+bt-obex --push -d AA:BB:CC:DD:EE:FF ~/myfile.pdf
+
+# the deprecated `bluetooth-sendto` from older fedora still
+# works on F44 but is being phased out. prefer obexctl going
+# forward.
+
+
+# BLUETOOTH LE / GATT (FOR SMART-DEVICE TINKERING)
+
+# Bluetooth LE devices (smart bulbs, fitness trackers, BLE beacons,
+# Mi Flora plant sensors) speak GATT, not classic profiles. the
+# old `gatttool` is deprecated; bluetoothctl now handles GATT:
+
+bluetoothctl
+connect AA:BB:CC:DD:EE:FF
+menu gatt
+list-attributes
+select-attribute /org/bluez/.../service00xx/char00yy
+attribute-info
+read
+write "0x01 0x02"
+back
+
+# scripting LE: use python-bleak (pip / dnf install python3-bleak)
+# or rust's btleplug crate. the dbus API works directly but the
+# wrappers are dramatically easier.
+
+
+# WON'T RECONNECT AFTER SUSPEND — THE CLASSIC
+
+# the symptom: laptop wakes, the headset / mouse doesn't come
+# back. usually the radio is fine but the USB controller behind
+# it got autosuspended.
+
+# the cheap reset that fixes most of these:
+sudo systemctl restart bluetooth
+
+# the more durable fix — disable USB autosuspend on the bluetooth
+# device. find the right device first:
+for f in /sys/bus/usb/devices/*/product; do
+    [ -f "$f" ] && grep -l -i 'bluetooth' "$f"
+done
+# then for that device, e.g. /sys/bus/usb/devices/1-7:
+echo on | sudo tee /sys/bus/usb/devices/1-7/power/control
+# persist with a udev rule (see /etc/udev/rules.d/) or with
+# the kernel cmdline:
+#   btusb.enable_autosuspend=0
+
+# pairs with POWER MANAGEMENT — the laptop's overall suspend
+# behavior affects what bluetooth has to recover from.
+
+
+# DUAL-BOOT PAIRING TRICK (THE CLASSIC GOTCHA)
+
+# pairing a single device (mouse, keyboard, headphones) on BOTH
+# windows and fedora means each OS stores a different link key
+# under the SAME device MAC. result: the device re-pairs
+# successfully on the OS you just booted, breaking the OTHER OS.
+# you re-pair forever.
+
+# fix: copy the link key from windows into linux so both sides
+# share the same secret. only needed on classic BT, not BLE.
+#
+# 1. boot windows, pair the device
+# 2. reboot to a windows recovery tool (Linux NTFS read works
+#    too if you can mount the windows registry hive)
+# 3. read the LTK / IRK from:
+#    HKLM\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Keys
+# 4. write it into linux's device file:
+#    /var/lib/bluetooth/<adapter-MAC>/<device-MAC>/info
+#    in the [LinkKey] / [LongTermKey] section
+#
+# tools that automate this: bt-dualboot, bluetooth-dualboot-bug
+# (community scripts on github). worth searching when you hit it.
+
+
+# FIRMWARE QUIRKS
+
+# the kernel ships most bluetooth firmware via the `linux-firmware`
+# package. when a NEW chip is reported "broken on linux", the
+# fix is almost always a firmware/driver update — both arrive
+# with the next kernel.
+
+# intel cnvi / wifi+bt combo chips occasionally need iwlbtu /
+# iwlwifi blob updates:
+rpm -q linux-firmware                          # version
+dnf list updates linux-firmware                # newer available?
+sudo dmesg | grep -iE 'firmware|btusb'         # what loaded, what failed
+
+# realtek 8761/8852 chips have historically needed quirky firmware;
+# fedora packs these in `linux-firmware`. if dmesg complains about
+# missing rtl_bt/<file>.bin, file a bug.
+
+
+# TROUBLESHOOTING RECIPES
+
+# 1. device not found at all after a kernel update
+rfkill list
+sudo rfkill unblock bluetooth                  # in case soft-blocked
+systemctl status bluetooth
+sudo systemctl restart bluetooth
+dmesg | grep -iE 'bluetooth|btusb' | tail -40
+# if it's a USB-attached BT dongle, try a different port.
+
+# 2. intermittent disconnects on otherwise-paired devices
+#    BlueZ's experimental features fix several real disconnect
+#    bugs. enabled by default in newer fedora, but worth checking:
+grep -i Experimental /etc/bluetooth/main.conf
+# if absent, add under [General]:
+#   Experimental = true
+sudo systemctl restart bluetooth
+
+# 3. device pairs but never appears as a usable input/audio
+#    check whether the kernel HID / pipewire took over:
+bluetoothctl info AA:BB:CC:DD:EE:FF | grep -i 'connected\|UUIDs'
+# for audio: pactl list cards | grep -A20 bluez
+# for HID:   ls /sys/class/input/
+sudo journalctl -u bluetooth -n 100
+
+# 4. "pairing successful" then immediate disconnect
+sudo journalctl -u bluetooth -f &              # watch in another shell
+# retry pairing. common causes:
+#   - LE secure connections mismatch (old device firmware)
+#   - userspace agent missing (you forgot `agent on; default-agent`
+#     in bluetoothctl)
+#   - device's PIN code requirement; use bluetoothctl, not
+#     gnome's silent pair
+
+
+# HONEST TRADEOFFS
+
+# linux bluetooth has improved dramatically with bluez 5.x and
+# pipewire, but it's still:
+#   - the most common laptop suspend regression
+#   - the most likely to need firmware updates per kernel
+#   - the most opaque to debug when GNOME's UI swallows errors
+#
+# strategies that compound:
+#   - keep linux-firmware current (it auto-updates with dnf)
+#   - prefer well-supported headphones (sony, bose, anker) over
+#     niche brands with proprietary apps
+#   - for critical "calls must work" rigs, USB headset > BT
+#   - keep blueman in your back pocket as the diagnostic GUI
+
+
+# QUICK REFERENCE
+
+#   pair the easy way                → GNOME Settings → Bluetooth
+#   pair from the cli                → bluetoothctl: scan / pair / trust / connect
+#   force a specific audio codec     → see AUDIO → BLUETOOTH AUDIO
+#   "device disappeared post-resume" → systemctl restart bluetooth
+#   "audio sounds awful"             → AUDIO codec config + check HSP/HFP profile
+#   "dual-boot keeps re-pairing"     → copy LTK from windows registry
+#   "what does dmesg say?"           → dmesg | grep -iE 'bluetooth|btusb|hci'
+#   "GNOME is being weird"           → blueman-manager
+#   "BLE smart-device tinkering"     → bluetoothctl gatt menu / python-bleak
+#   "intermittent disconnects"       → Experimental = true in main.conf
+
+
+# cross-references
+# - AUDIO section: pipewire bluetooth pipeline, codec selection,
+#   HSP/HFP vs A2DP profile choice
+# - POWER MANAGEMENT section: USB autosuspend, the suspend-resume
+#   cycle that breaks BT most often
+# - HARDWARE / FIRMWARE section: linux-firmware updates that
+#   carry new BT chip support
+# - NETWORKING section: bluetooth tethering (PAN) is rarely used
+#   but the configuration lives in NetworkManager
 
 
 PRINTING AND SCANNING
