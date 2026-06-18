@@ -3643,33 +3643,478 @@ sudo mount -t nfs4 -o rsize=1048576,wsize=1048576,async \
 CORPORATE VPN — OPENVPN, IPSEC, AND FRIENDS
 -------------------------------------------
 
-# TODO STUB — for when your job's VPN isn't WireGuard or Tailscale.
-# NETWORKING covered the modern stack; this covers the legacy
-# corporate stack you'll probably be forced to use at some point.
-# expected content:
-#   - NetworkManager VPN plugins: which exist, what they cover
-#       NetworkManager-openvpn (+ -gnome)
-#       NetworkManager-vpnc (Cisco IPSec)
-#       NetworkManager-libreswan (strongSwan/Libreswan IPSec/IKEv2)
-#       NetworkManager-openconnect (Cisco AnyConnect, GlobalProtect,
-#         Pulse Secure — via openconnect's protocol support)
-#       NetworkManager-l2tp (L2TP/IPSec, Microsoft VPN)
-#       NetworkManager-sstp (Microsoft SSTP)
-#       NetworkManager-fortisslvpn (Fortinet)
-#   - install + nmcli usage for each
-#   - GUI: gnome-control-center → Network → VPN → +
-#   - GlobalProtect — the openconnect protocol vs vendor binary
-#     (gp-saml-gui for SAML auth flows)
-#   - DNS leak handling: split-DNS via systemd-resolved + the
-#     VPN connection's "Use this connection only for resources
-#     on its network" toggle
-#   - MTU pitfalls (1500 over a tunnel = fragmentation hell)
-#   - certificate management: PKCS#12 imports, .ovpn embedded vs
-#     external files, smartcard / PIV-backed auth
-#   - vendor binaries (Cisco AnyConnect Secure Client, GlobalProtect)
-#     and why NetworkManager-openconnect is usually preferable
-#   - kill switch via firewalld: drop traffic if the tunnel is down
-#   - cross-references: NETWORKING, FIREWALLD, GPG / SSH KEYS
+# NETWORKING covered the modern VPN stack (WireGuard,
+# Tailscale). this section is for the corporate VPN your job
+# forces on you — almost always one of OpenVPN, IPSec/IKEv2,
+# AnyConnect, GlobalProtect, Pulse Secure, SSTP, or Fortinet.
+# fedora has good NetworkManager support for nearly all of
+# these; vendor binaries are usually the last resort.
+
+
+# IDENTIFY THE PROTOCOL FIRST
+
+# what does your IT actually use? the give-aways:
+#
+#   .ovpn config file shipped         → OpenVPN
+#                                       NetworkManager-openvpn
+#
+#   "AnyConnect" / "Secure Client"    → Cisco AnyConnect SSL VPN
+#                                       NetworkManager-openconnect
+#
+#   "GlobalProtect" / Palo Alto       → GlobalProtect
+#                                       NetworkManager-openconnect
+#                                       (PROTOCOL=gp; SAML often)
+#
+#   "Pulse Secure" / "Ivanti Connect" → Pulse Secure
+#                                       NetworkManager-openconnect
+#                                       (PROTOCOL=pulse)
+#
+#   "Cisco IPSec" (old)               → Cisco classic IPSec
+#                                       NetworkManager-vpnc
+#
+#   "IKEv2" / "strongSwan" /
+#   "Libreswan"                       → IPSec IKEv2
+#                                       NetworkManager-libreswan
+#
+#   "L2TP over IPSec"                 → consumer-Microsoft style
+#                                       NetworkManager-l2tp
+#
+#   "SSTP" (Microsoft RAS)            → SSTP over TLS
+#                                       NetworkManager-sstp
+#
+#   "FortiClient" / "Fortigate SSL"   → Fortinet SSL VPN
+#                                       NetworkManager-fortisslvpn
+#
+# if IT can't articulate which, the heuristic: anything they
+# market as a "secure client" or "endpoint client" is almost
+# always SSL/TLS-based (openconnect family). anything that
+# sends you a config file is OpenVPN. anything older than ~2018
+# is IPSec.
+
+
+# THE GUI PATH (THE 90% CASE)
+
+# install the right plugin, then:
+#   Settings → Network → VPN → "+" → pick the type → fill in
+# the plugin teaches the dialog what fields to ask for.
+# everything saves to /etc/NetworkManager/system-connections/
+# as a .nmconnection file (root-readable). secrets land in the
+# gnome-keyring or in the file itself, depending on the
+# connection's "Always Ask" toggle.
+
+
+# ============================================================
+# OPENVPN
+# ============================================================
+
+sudo dnf install NetworkManager-openvpn NetworkManager-openvpn-gnome
+
+# IT usually hands you a .ovpn file with everything bundled.
+# import it:
+nmcli connection import type openvpn file work.ovpn
+# the connection now appears in `nmcli connection show` and
+# in the GNOME VPN list.
+
+# connect:
+nmcli connection up work
+nmcli connection down work
+
+# common gotchas:
+#   - .ovpn with `tls-auth` or `tls-crypt` keys: keep the
+#     accompanying files in the same directory or paste them
+#     inline in the .ovpn before import.
+#   - `ca`, `cert`, `key` paths in the .ovpn must point to
+#     ABSOLUTE paths after import, or be inline.
+#   - 2FA / yubikey OTP: the .ovpn often has `auth-user-pass`
+#     and `static-challenge`. NM will prompt for the OTP each
+#     connect.
+
+
+# ============================================================
+# OPENCONNECT — ANYCONNECT, GLOBALPROTECT, PULSE
+# ============================================================
+
+# `openconnect` is one binary that speaks several proprietary
+# SSL-VPN protocols. one of the few cases where reverse-engineered
+# linux-native tools are both better-supported and more secure
+# than the vendor blob.
+
+sudo dnf install NetworkManager-openconnect \
+                 NetworkManager-openconnect-gnome openconnect
+
+# Cisco AnyConnect:
+sudo openconnect --protocol=anyconnect vpn.example.com
+# or via NM: Network → + → "Cisco AnyConnect Compatible VPN
+# (openconnect)" → gateway + creds.
+
+# Pulse Secure / Ivanti Connect:
+sudo openconnect --protocol=pulse vpn.example.com
+
+# GlobalProtect:
+sudo openconnect --protocol=gp vpn.example.com
+
+# add it to NetworkManager so it's a saved connection:
+nmcli connection add type vpn vpn-type openconnect \
+    con-name "work-vpn" \
+    vpn.data "gateway=vpn.example.com,protocol=anyconnect"
+nmcli connection up work-vpn
+
+
+# --- GLOBALPROTECT + SAML — THE PAIN POINT ---
+
+# many GP deployments use SAML SSO. openconnect can't run a
+# full browser, so SAML stalls at "open this URL in your
+# browser." the community workaround is gp-saml-gui:
+
+sudo dnf install gp-saml-gui     # may need COPR — see REPOS
+
+# usage:
+gp-saml-gui --portal vpn.example.com user.name
+# it opens an embedded webkit window, you SSO through it
+# (including any MFA), and it hands the resulting cookie to
+# openconnect to bring the tunnel up.
+
+# the openconnect-sso project is the alternative — does the
+# same trick for AnyConnect SAML / SSO with MFA.
+sudo dnf install openconnect-sso         # often COPR
+
+
+# ============================================================
+# IPSEC — VPNC AND LIBRESWAN
+# ============================================================
+
+# vpnc (legacy Cisco IPSec — pre-AnyConnect):
+sudo dnf install NetworkManager-vpnc NetworkManager-vpnc-gnome
+# import a legacy .pcf:
+nmcli connection import type vpnc file work.pcf
+
+# libreswan / strongSwan IKEv2 (modern IPSec):
+sudo dnf install NetworkManager-libreswan NetworkManager-libreswan-gnome
+# typical fields IT will give you:
+#   gateway, group name, shared secret OR cert, IKEv2,
+#   "Phase 1 / Phase 2" algorithm strings.
+
+# debug from the cli when NM hides the error:
+sudo journalctl -u NetworkManager -f
+sudo systemctl status ipsec
+sudo ipsec status
+
+
+# ============================================================
+# L2TP / IPSEC — THE MICROSOFT CONSUMER STACK
+# ============================================================
+
+sudo dnf install NetworkManager-l2tp NetworkManager-l2tp-gnome
+# common with old-school "Windows VPN" setups. NM's wrapper
+# handles the IPSec + L2TP dance, but it's fragile — be ready
+# to read /var/log/messages and pppd journal output.
+
+
+# ============================================================
+# SSTP — MICROSOFT RAS OVER TLS
+# ============================================================
+
+sudo dnf install NetworkManager-sstp NetworkManager-sstp-gnome
+# the "Windows VPN" you see on Server 2016+. configure with
+# the gateway hostname; SSTP rides over TCP 443 so it punches
+# through almost any firewall.
+
+
+# ============================================================
+# FORTINET — FORTIGATE SSL VPN
+# ============================================================
+
+sudo dnf install NetworkManager-fortisslvpn NetworkManager-fortisslvpn-gnome
+# uses openfortivpn underneath. handles cert auth, password,
+# and OTP. some Fortinet deployments require the vendor's
+# FortiClient binary specifically — see the next section.
+
+
+# ============================================================
+# VENDOR BINARIES — LAST RESORT
+# ============================================================
+
+# Cisco AnyConnect "Secure Client", Palo Alto GlobalProtect
+# (vendor build), FortiClient — IT will sometimes mandate one.
+# they all share three problems on linux:
+#
+#   1. they ship out-of-tree kernel modules that lag mainline.
+#      every kernel update can break the tunnel.
+#   2. they often install systemd services that run as root
+#      with broad ambient capabilities. real attack surface.
+#   3. they don't integrate with NetworkManager / split DNS /
+#      polkit — you're back to per-vendor UX.
+#
+# when you can talk IT into it, openconnect-family alternatives
+# are usually both more reliable and more secure. when you
+# can't, install the vendor RPM in a system that's already
+# reproducible (or in a VM you can rebuild quickly).
+
+
+# ============================================================
+# SPLIT TUNNEL VS FULL TUNNEL — DECIDE THIS EXPLICITLY
+# ============================================================
+
+# corporate VPNs ship one of two modes:
+#
+#   FULL TUNNEL  — all traffic goes through the tunnel. your
+#                  netflix counts against IT's bandwidth and
+#                  shows up in their logs. simplest, slowest.
+#
+#   SPLIT TUNNEL — only certain prefixes (the corp network)
+#                  go through; everything else uses your normal
+#                  default route. faster; preserves privacy on
+#                  non-work traffic.
+
+# the toggle in NM:
+#   GNOME Settings → VPN connection → IPv4 / IPv6 tab →
+#     "Use this connection only for resources on its network"
+#   nmcli equivalent:
+nmcli connection modify work-vpn \
+    ipv4.never-default yes \
+    ipv6.never-default yes
+# now only the routes that the VPN itself pushes are added;
+# your default route stays on your normal interface.
+
+# WHEN YOU MUST ENABLE SPLIT TUNNEL — many IT teams configure
+# the VPN to FORCE full tunnel server-side. the client toggle
+# above only works if the server doesn't push a default route.
+# if it does, you can manually delete the pushed default route:
+ip route show default
+sudo ip route del default dev tun0
+
+
+# ============================================================
+# DNS LEAKS AND SPLIT DNS
+# ============================================================
+
+# DNS is the most common "the VPN is connected but I can't
+# reach internal hosts" symptom. fedora uses systemd-resolved,
+# which can do PER-INTERFACE DNS — corporate names resolve via
+# the VPN's DNS, public names via your normal upstream.
+
+# inspect current state:
+resolvectl status                              # per-link DNS + routing
+resolvectl query internal.example.com          # which link answered?
+
+# what you usually want for a SPLIT-DNS corporate VPN:
+nmcli connection modify work-vpn \
+    ipv4.dns-search "corp.example.com,internal" \
+    ipv4.dns-priority 50            # higher priority than your LAN
+# (lower numeric = higher priority. <0 makes it the ONLY DNS
+# for matching queries — true split-DNS.)
+
+# verify after connecting:
+resolvectl status tun0
+resolvectl query internal.example.com
+resolvectl query google.com
+# the first should answer via tun0; the second via your normal
+# wifi/eth link.
+
+# DNS LEAK (the privacy concern) — full-tunnel users want ALL
+# DNS to ride the tunnel. set:
+nmcli connection modify work-vpn \
+    ipv4.ignore-auto-dns no \
+    ipv4.dns-priority -50           # negative = exclusive
+# now systemd-resolved will route every lookup through the VPN.
+
+
+# ============================================================
+# MTU PITFALLS
+# ============================================================
+
+# every VPN encapsulates your packets, which means the effective
+# MTU drops below 1500. when websites half-load, large file
+# transfers stall, or `git clone` hangs after a few hundred KB,
+# suspect MTU.
+
+# the diagnostic: ping with don't-fragment to find max packet
+# size that traverses without fragmentation. for tun0 typical:
+ping -M do -s 1400 internal.example.com
+# if 1400 works but 1450 doesn't, your MTU is around 1450.
+
+# the fix in NetworkManager:
+nmcli connection modify work-vpn vpn.data "mtu=1380"
+# (the exact value depends on the protocol overhead. typical
+# safe defaults: WireGuard ~1420, OpenVPN ~1450, IPSec ~1438,
+# DTLS-AnyConnect ~1406.)
+
+# kernel-side fallback — let the kernel discover MTU by sniffing
+# ICMP "fragmentation needed" packets. enable per interface:
+sudo sysctl -w net.ipv4.tcp_mtu_probing=1
+
+
+# ============================================================
+# CERTIFICATE AUTH — PKCS#12, SMARTCARDS, AND PIV
+# ============================================================
+
+# many corporate VPNs are cert-based. IT hands you a .p12
+# (PKCS#12) file with your private key + cert + CA chain,
+# usually password-protected.
+
+# import into NM (recommended — keeps secrets in keyring):
+#   the VPN add dialog has an "Authentication: Certificate"
+#   option that takes the .p12 directly.
+
+# command-line inspection:
+openssl pkcs12 -info -in mycert.p12 -nodes
+
+# extract pieces if a tool wants them separately:
+openssl pkcs12 -in mycert.p12 -nodes -nocerts -out user.key
+openssl pkcs12 -in mycert.p12 -nodes -clcerts -nokeys -out user.crt
+openssl pkcs12 -in mycert.p12 -nodes -cacerts -nokeys -out ca.crt
+
+# smartcard / YubiKey PIV — cert lives on the token, never on
+# disk. install opensc and your tunnel client must support
+# PKCS#11:
+sudo dnf install opensc opensc-pkcs11
+# openvpn:
+#   pkcs11-providers /usr/lib64/opensc-pkcs11.so
+#   pkcs11-id  "<id from p11tool --list-tokens>"
+p11tool --list-tokens
+p11tool --list-all "pkcs11:..."
+
+# cross-references: GPG AND SSH KEY MANAGEMENT covers the PIV
+# slot setup (ykman piv keys generate, certs generate). same
+# cert can be reused for the VPN.
+
+
+# ============================================================
+# KILL SWITCH — DROP TRAFFIC IF THE TUNNEL IS DOWN
+# ============================================================
+
+# the goal: if the VPN dies, nothing leaks onto the local LAN.
+# implement at the firewalld layer.
+
+# 1. put your normal wifi/eth into a tight zone that blocks
+#    egress to the wider internet:
+sudo firewall-cmd --new-zone=vpn-kill --permanent
+sudo firewall-cmd --reload
+sudo firewall-cmd --zone=vpn-kill --set-target=DROP --permanent
+sudo firewall-cmd --zone=vpn-kill --add-source=192.168.1.0/24 --permanent
+# allow ONLY DNS + the VPN endpoint outbound (replace with
+# your actual VPN gateway and port):
+sudo firewall-cmd --zone=vpn-kill --add-port=53/udp --permanent
+sudo firewall-cmd --zone=vpn-kill --add-rich-rule \
+    'rule family=ipv4 destination address=203.0.113.10 port port=443 protocol=tcp accept' \
+    --permanent
+
+# 2. attach your physical interface to the new zone:
+sudo nmcli connection modify "Wired connection 1" \
+    connection.zone vpn-kill
+
+# 3. the VPN tunnel (tun0/ppp0) goes into the default `trusted`
+#    zone so VPN traffic flows freely:
+# (NetworkManager handles this when the VPN connects)
+sudo firewall-cmd --reload
+
+# verify: kill the tunnel mid-transfer; new traffic should
+# stall, not fall back to the physical link.
+
+# CAVEATS: this also blocks captive-portal handshakes and
+# coffee-shop wifi auth pages, which usually happens BEFORE the
+# VPN comes up. either temporarily swap zones, or use a more
+# permissive ruleset that only blocks once the VPN connection
+# profile has been "up" at least once. for daily-use this trade
+# is fine; for travel laptops it's friction.
+
+
+# ============================================================
+# TROUBLESHOOTING RECIPES
+# ============================================================
+
+# 1. NM says "Failed to activate VPN connection"
+#    journal is the only source of truth:
+sudo journalctl -u NetworkManager -f
+nmcli connection up work-vpn --ask         # interactive, prints debug
+# common: missing CA, wrong protocol selection, expired cert.
+
+# 2. tunnel is up but no traffic flows
+ip route show                                 # what's been pushed
+resolvectl status                             # which DNS is active
+ping -I tun0 10.0.0.1                          # bypass routing
+sudo ss -tnap | grep -i tun                    # any sockets bound to tun?
+
+# 3. half-loaded pages / stalled transfers
+# almost always MTU. see MTU PITFALLS above.
+
+# 4. "I'm connected but can't reach internal.example.com"
+# DNS — see DNS LEAKS section. quick check:
+resolvectl query internal.example.com
+# answer should show "tun0" (or the VPN interface name).
+# if it shows your wifi link, fix ipv4.dns-priority.
+
+# 5. tunnel drops randomly
+# check both ends. typical culprits:
+#   - laptop wifi roaming (re-auth breaks tunnel)
+#   - NAT keepalive too long; lower keepalive:
+nmcli connection modify work-vpn vpn.data "keepalive=15"
+#   - server-side idle timeout
+
+# 6. "vendor client only" requirement
+# document the IT contact who said this. revisit yearly.
+# openconnect family adds new protocols every couple of releases.
+
+
+# ============================================================
+# HONEST TRADEOFFS
+# ============================================================
+
+# NetworkManager-openconnect + openconnect (with gp-saml-gui
+# / openconnect-sso for SAML flows) is the best linux VPN
+# experience for SSL-VPN protocols. fight for it before
+# accepting a vendor binary.
+
+# split-DNS via systemd-resolved is genuinely good on fedora.
+# almost every "the VPN doesn't work for internal sites"
+# complaint is a misconfigured ipv4.dns-priority / dns-search.
+
+# the kill switch above is real protection but it makes
+# coffee-shop life annoying. for a daily-driver workstation
+# that rarely leaves the house, it's worth it; for a road
+# warrior, consider a hotspot-mode pattern (tether to phone,
+# trust phone, VPN over LTE) instead of a strict kill switch.
+
+# vendor "endpoint posture" tools (FortiClient, AnyConnect
+# Secure Client compliance modules) are increasingly common.
+# they typically can't run on linux unless IT explicitly
+# whitelists fedora. when refused, the play is escalation:
+# fedora is one of the most commonly used corporate dev
+# distros in 2026 — IT teams that don't support it are
+# increasingly the exception.
+
+
+# ============================================================
+# QUICK REFERENCE
+# ============================================================
+
+#   ".ovpn from IT"                  → NetworkManager-openvpn + nmcli connection import
+#   "Cisco AnyConnect"               → NetworkManager-openconnect (protocol=anyconnect)
+#   "GlobalProtect with SAML"        → openconnect protocol=gp + gp-saml-gui
+#   "Pulse Secure / Ivanti"          → openconnect protocol=pulse
+#   "Cisco IPSec (old .pcf)"         → NetworkManager-vpnc
+#   "IKEv2 / Libreswan"              → NetworkManager-libreswan
+#   "Microsoft VPN / L2TP-IPSec"     → NetworkManager-l2tp
+#   "Microsoft SSTP"                 → NetworkManager-sstp
+#   "Fortigate SSL"                  → NetworkManager-fortisslvpn
+#   "split tunnel"                   → ipv4.never-default yes
+#   "split DNS for internal"         → ipv4.dns-search + ipv4.dns-priority 50
+#   "DNS leak prevention"            → ipv4.dns-priority -50
+#   "half-loaded pages"              → set vpn.data mtu=1380 (or similar)
+#   "kill switch"                    → firewalld zone with DROP target on wifi
+#   "can't get vendor to support linux" → openconnect family covers most
+
+
+# cross-references
+# - NETWORKING section: the modern WireGuard / Tailscale stack,
+#   nmcli basics, systemd-resolved, mDNS
+# - FIREWALLD section: zones, rich rules, the kill switch above
+# - GPG AND SSH KEY MANAGEMENT section: PIV-on-YubiKey for
+#   cert-based VPN auth, p11tool / opensc-pkcs11
+# - PERFORMANCE INVESTIGATION section: MTU diagnostics
+#   (tcptraceroute, ping -M do), tunnel throughput vs link rate
+# - WHERE TO GO WHEN STUCK section: the openconnect / linux-vpn
+#   community forums that track new protocol versions
 
 
 TIME / NTP — CHRONY
