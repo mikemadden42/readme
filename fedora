@@ -6239,49 +6239,428 @@ cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor   # confirm
 PERFORMANCE INVESTIGATION TOOLKIT
 ---------------------------------
 
-# TODO STUB — TUNED PROFILES tuned the system; this is "why is
-# it slow right now and what's it actually doing?" — the
-# troubleshooting muscle memory every admin needs.
-# expected content:
-#   - the four-corners model: CPU / memory / disk / network —
-#     start by asking which corner is saturated, THEN drill in
-#   - first-pass top-down tools: top / htop / btop, free -h,
-#     uptime (loadavg), vmstat 1, iostat -xz 1, sar (sysstat)
-#   - per-process: pidstat -d 1 (IO per pid), ps auxf, pmap,
-#     prlimit, /proc/<pid>/io, /proc/<pid>/status
-#   - cpu: mpstat -P ALL 1, perf top, perf record/report,
-#     `perf stat -d <cmd>` for cache/branch counters
-#   - memory: free, /proc/meminfo (the page-cache vs available
-#     distinction), `smem -tk`, slabtop, pmap -X
-#   - disk: iotop, biotop (bcc-tools), iostat -xz, `dstat`
-#     (deprecated; `dool` is the rust rewrite), `nvme list` +
-#     `nvme smart-log` for NVMe-specific metrics
-#   - network: ss -tuna (replaces netstat -tuna), ip -s link,
-#     iftop, nethogs, bmon, sar -n DEV/TCP/UDP
-#   - what's listening: ss -tlnp, lsof -i, ss -tup
-#   - what files are open: lsof, lsof -p <pid>, lsof +D /path
-#   - tcpdump basics: tcpdump -i any -nn 'host x and port y' -w
-#     out.pcap; pair with wireshark for UI
-#   - syscall tracing: strace -fp <pid> (heavy), perf trace
-#     (lighter), bpftrace one-liners
-#   - bpf-based observability: bpftrace, bcc-tools (cachestat,
-#     execsnoop, opensnoop, tcpconnect, biolatency); the
-#     systemd-journal-bcc bridge
-#   - systemd-cgtop, systemd-analyze blame, systemd-analyze plot
-#   - GPU: nvidia-smi (NVIDIA), radeontop / amdgpu_top (AMD),
-#     intel_gpu_top (Intel)
-#   - the "is it really cpu-bound?" check: pressure stall
-#     information via /proc/pressure/{cpu,memory,io}
-#   - logging timestamps: journalctl -o short-precise + dmesg -T
-#   - common workflows:
-#     - "system feels slow" → uptime + vmstat 1 + iostat 1 to
-#       identify the saturated corner
-#     - "this one app is slow" → strace -c + perf record + iotop
-#     - "memory pressure suspected" → /proc/pressure/memory +
-#       free -h + smem
-#     - "is the network the problem?" → ss + ping + mtr + iperf3
-#   - cross-references: TUNED PROFILES, SYSTEMD (resource control
-#     via CPUWeight / MemoryHigh / IOWeight), GAMING
+# TUNED PROFILES gave you levers; this section gives you the
+# DIAGNOSTIC muscle to know which lever to pull. the goal is to
+# answer two questions fast: which of the four resources is the
+# bottleneck, and which process is responsible.
+
+
+# THE FOUR-CORNERS MODEL
+
+# every performance problem is one (or more) of:
+#
+#   CPU      — cores are pinned, runqueue is long
+#   MEMORY   — RSS pressure, swap thrash, OOM kills
+#   DISK     — I/O saturated, queue depth high, fsync stalls
+#   NETWORK  — bandwidth maxed, retransmits, latency spikes
+#
+# the most common diagnostic mistake is drilling down before
+# identifying the corner. always do a fast top-down sweep
+# first. if you can't identify the corner in 60 seconds, you
+# either don't have the right top-down tool installed, or the
+# bottleneck is in a fifth place (GPU, scheduler latency,
+# noisy-neighbor in a cgroup) — covered below.
+
+
+# INSTALL THE TOOLKIT ONCE
+
+# fedora's defaults are minimal. install the diagnostic set on
+# every machine you care about:
+sudo dnf install \
+    htop btop sysstat                          \
+    iotop-c                                    \
+    nethogs iftop bmon mtr-gui                 \
+    bcc-tools bpftrace                         \
+    perf strace lsof                           \
+    nvme-cli smartmontools                     \
+    dool                                       \
+    # zram-stats included with util-linux
+sudo systemctl enable --now sysstat            # sar history collection
+
+
+# THE 60-SECOND TRIAGE
+
+# run this top-down sweep BEFORE drilling in. it answers
+# "which corner?" in under a minute.
+
+uptime                                          # 1, 5, 15 min loadavg
+# loadavg > #CPUs ≈ runqueue building. > 2×#CPUs = bad.
+
+free -h                                         # memory + swap
+# "available" matters more than "free". if available is small
+# AND swap is climbing → memory pressure.
+
+vmstat 1 5                                      # full-system 5 samples
+# si/so > 0 → swapping. high "wa" → I/O wait. high "us"+"sy"
+# → CPU-bound.
+
+iostat -xz 1 5                                  # disk per-device 5 samples
+# %util near 100 → disk saturated. high await → I/O latency
+# is the bottleneck even if utilization is low.
+
+sar -n DEV 1 5                                  # network rate per iface
+# rxkB/s + txkB/s near link speed → network saturated.
+
+cat /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io
+# PSI: avg10 > 10 means SOMETHING is waiting for that resource
+# 10%+ of the time over the last 10s. very fast way to spot
+# pressure that top-level utilization misses.
+
+# pick the highest signal corner. drill into that one ONLY.
+
+
+# CPU — DRILLING DOWN
+
+mpstat -P ALL 1                                 # per-core breakdown
+# one core pinned but others idle = single-threaded hot path
+# (a real fedora workstation gotcha — pin the bottleneck
+# process to multiple cores or fix the app).
+
+htop                                            # interactive top
+btop                                            # prettier; same data
+# F4 to filter, F6 to sort by various counters. mark threads
+# of one process with `t` view.
+
+# the single most useful CPU command in linux:
+sudo perf top                                   # live cpu-cycle histogram
+# shows which kernel/user functions are eating cpu RIGHT NOW.
+# almost always identifies the hot path on the first run.
+
+# capture a profile of one command:
+sudo perf record -F 99 -ag -- sleep 30          # 30s, all cores
+sudo perf report                                # ncurses browser
+# render a flamegraph (install brendangregg/FlameGraph or use perf script):
+sudo perf script | stackcollapse-perf | flamegraph > out.svg
+
+# CPU counters (cache, branches, etc.) for a single command:
+sudo perf stat -d ./mybinary
+# look at IPC ("insns per cycle"). < 0.5 typically means
+# cache-miss heavy or memory-bound.
+
+
+# MEMORY — THE CONFUSING ONE
+
+# the right "is memory tight?" number on linux is NOT "free":
+free -h
+#   used   = real memory in use
+#   free   = literally untouched
+#   shared = tmpfs + shm
+#   buff/cache = page cache + slab (RECLAIMABLE)
+#   available = the meaningful "could be used by a new alloc"
+
+# the rule: "available" is your headroom. if available is
+# small AND swap activity is climbing AND PSI memory shows
+# pressure, you have a memory problem.
+
+vmstat 1                                        # si/so columns = swap activity
+swapon --show
+# zram-swap is fedora's default (a compressed in-RAM swap).
+# moderate so > 0 is OK; sustained so > si means active eviction.
+
+# per-process memory usage that doesn't double-count shared pages:
+sudo dnf install smem
+smem -tk -s rss                                 # rss
+smem -tk -s pss                                 # proportional set size
+# pss is the right "this process's share of memory" number on
+# linux. rss double-counts shared libs.
+
+# kernel slab cache (filesystem inodes, dentries, network
+# buffers) — overlooked source of pressure:
+sudo slabtop -o
+# huge dentry / inode caches after a `find /` are normal and
+# reclaimable. huge unreclaimable slabs are bug territory.
+
+# detailed view of one process's memory map:
+sudo pmap -X <pid> | head -30                   # who's holding what
+
+# /proc/meminfo as the canonical source:
+grep -E '^(MemTotal|MemAvailable|Cached|SReclaimable|Slab|Committed_AS)' \
+    /proc/meminfo
+
+# OOM kills — when memory ran out and the kernel started reaping:
+sudo journalctl -k | grep -iE 'oom|killed process'
+
+
+# DISK — IOPS, THROUGHPUT, AND THE LATENCY YOU FEEL
+
+iostat -xz 1                                    # per-device, 1-sec samples
+# columns to watch:
+#   %util    — saturation
+#   await    — total I/O latency (ms)
+#   r_await  / w_await — read vs write latency split
+#   r/s w/s  — IOPS
+#   rkB/s wkB/s — throughput
+#   aqu-sz   — average queue depth (high + high await = busy)
+
+# per-process disk I/O (the answer to "who's hammering the disk?"):
+sudo iotop -ao                                  # accumulated, only-IO procs
+sudo pidstat -d 1                               # text equivalent
+# also:
+sudo dool --top-bio-adv 5                       # dstat's rust replacement
+
+# kernel-level disk latency histogram (bcc-tools):
+sudo /usr/share/bcc/tools/biolatency 10 1
+sudo /usr/share/bcc/tools/biosnoop                # per-IO trace
+
+# nvme-specific telemetry:
+sudo nvme list
+sudo nvme smart-log /dev/nvme0n1
+# look at percentage_used (wearout %), media_errors, available_spare
+
+# fsync stalls (the classic "my journal is full" symptom):
+sudo /usr/share/bcc/tools/fsync                  # not always present;
+# alternative: bpftrace one-liner:
+sudo bpftrace -e 'tracepoint:syscalls:sys_enter_fsync { @[comm]=count(); }'
+
+# disks supporting SMART (covered in DISK MANAGEMENT):
+sudo smartctl -a /dev/nvme0n1
+
+
+# NETWORK — RATES, CONNECTIONS, AND LATENCY
+
+# per-interface rates:
+sar -n DEV 1                                    # 5 samples by default
+ip -s -c link                                   # colored interface stats
+bmon                                            # interactive bandwidth meter
+iftop -i wlp3s0                                 # per-flow live view
+
+# per-process network usage (the easiest "who's hogging the link"):
+sudo nethogs
+
+# active connections — the modern replacement for netstat:
+ss -tunap                                       # tcp+udp, numeric, with proc
+ss -tlnp                                        # what's LISTENING
+ss -tup state established                       # only established tcp
+
+# latency to a host (more useful than ping for path problems):
+mtr -rwn -c 100 8.8.8.8                         # 100 packets, report mode
+# packet loss at hop 3 means the problem is upstream of hop 3.
+
+# bandwidth between two hosts (need iperf3 on both ends):
+sudo dnf install iperf3
+# host A: iperf3 -s
+# host B: iperf3 -c <host-A-ip> -t 30
+
+# packet capture (mostly when ss + mtr aren't enough):
+sudo tcpdump -i any -nn -w /tmp/cap.pcap host 192.0.2.5 and port 443
+# capture for ~30s, ctrl+c, then:
+wireshark /tmp/cap.pcap                         # GUI analysis
+
+# what FILES (sockets included) a process has open:
+sudo lsof -p <pid>                              # everything
+sudo lsof -i -p <pid>                           # only sockets
+sudo lsof -i :443                               # who's bound to 443
+sudo lsof +D /var/log                           # who has files open under a dir
+
+
+# PROCESS-LEVEL DRILL-DOWN
+
+# the most common per-process inspection chain:
+ps auxf | head -20                              # process tree
+pidstat 1 5                                     # cpu per process
+pidstat -d 1 5                                  # disk I/O per process
+pidstat -r 1 5                                  # rss / page faults per process
+pidstat -w 1 5                                  # context switches per process
+
+# /proc/<pid> is the canonical source for everything kernel
+# knows about a process:
+cat /proc/<pid>/status                          # state, threads, RSS, sigs
+cat /proc/<pid>/io                              # bytes read/written
+cat /proc/<pid>/limits                          # ulimits
+cat /proc/<pid>/cgroup                          # which cgroup it's in
+ls -l /proc/<pid>/fd/                           # every open fd
+cat /proc/<pid>/stack                           # kernel stack (where it's blocked)
+
+# resource limits (file descriptors, processes, memlock):
+prlimit -p <pid>
+prlimit -p <pid> --nofile=65536                 # change a limit at runtime
+
+# strace — what syscalls is the process making?
+sudo strace -fp <pid>                           # follow, attach
+sudo strace -c -p <pid>                         # summarize on detach
+# CAUTION: strace pauses the process at every syscall. heavy
+# overhead. for production load, prefer:
+sudo perf trace -p <pid>                        # lighter syscall tracer
+
+
+# BPF / BCC — KERNEL OBSERVABILITY WITHOUT THE OVERHEAD
+
+# bcc-tools is the canonical collection. installed above. the
+# scripts live at /usr/share/bcc/tools/. high-value ones:
+sudo /usr/share/bcc/tools/execsnoop             # every exec() in real time
+sudo /usr/share/bcc/tools/opensnoop             # every open() in real time
+sudo /usr/share/bcc/tools/biolatency            # block I/O latency histogram
+sudo /usr/share/bcc/tools/cachestat             # page cache hit/miss
+sudo /usr/share/bcc/tools/runqlat               # scheduler runqueue latency
+sudo /usr/share/bcc/tools/tcpconnect            # outbound tcp connect attempts
+sudo /usr/share/bcc/tools/tcpretrans            # tcp retransmits — network-blame
+sudo /usr/share/bcc/tools/profile               # cpu profile via bpf
+
+# bpftrace one-liners (the awk of kernel tracing):
+sudo bpftrace -e 'tracepoint:syscalls:sys_enter_openat { @[comm]=count(); }'
+sudo bpftrace -e 'kprobe:vfs_read { @bytes[comm] = hist(arg2); }'
+
+# bpf is the right tool when strace would distort the workload.
+# it runs in-kernel, attaches to tracepoints/kprobes, aggregates
+# in maps, and emits summaries. nearly zero overhead per call.
+
+
+# SYSTEMD — UNITS, CGROUPS, BOOT
+
+# resource by service (the missing "top by systemd unit"):
+sudo systemd-cgtop                              # interactive
+sudo systemctl status myapp.service             # one unit's cpu / mem
+sudo systemctl show myapp.service \
+    -p MemoryCurrent,CPUUsageNSec,IOReadBytes
+
+# failed units:
+systemctl --failed
+sudo journalctl -p err -b                       # errors this boot
+
+# boot time investigation (covered in SYSTEMD too):
+systemd-analyze                                 # total + per-phase
+systemd-analyze blame                           # slowest units
+systemd-analyze critical-chain                  # slowest serialization chain
+systemd-analyze plot > /tmp/boot.svg            # SVG timeline
+
+# cap resource use of an existing service via drop-in (see SYSTEMD):
+sudo systemctl edit myapp.service
+# under [Service]:
+#   CPUWeight=50
+#   MemoryHigh=2G
+#   IOWeight=50
+
+
+# GPU
+
+# pick the right tool for the GPU:
+nvidia-smi dmon -s u                            # nvidia, 1s sample
+radeontop                                       # amd
+amdgpu_top                                      # newer amd (rust)
+intel_gpu_top                                   # intel
+nvtop                                           # vendor-agnostic, htop-style
+
+# GPU bottleneck symptoms:
+#   - smooth video / game stutters but CPU is idle → check GPU
+#   - vaapi-decoded video uses high CPU → vaapi isn't actually
+#     wired up. see HARDWARE-ACCELERATED VIDEO.
+
+
+# PRESSURE STALL INFORMATION (PSI)
+
+# linux 4.20+ exposes a single, statistical signal per resource:
+# "what % of the last 10s/60s/300s was SOMETHING stalled on this?"
+cat /proc/pressure/cpu                          # often "some" only
+cat /proc/pressure/memory                       # some + full
+cat /proc/pressure/io                           # some + full
+
+# `some` = at least one task waiting. `full` = ALL tasks waiting.
+# `full memory` > 5% sustained means the system is thrashing
+# even if `free -h` looks OK. this is the most reliable
+# "memory is tight" signal on modern fedora.
+
+# per-cgroup PSI (any systemd service):
+cat /sys/fs/cgroup/system.slice/myapp.service/cpu.pressure
+
+
+# LOGS — DON'T FORGET TO READ THEM
+
+journalctl -p warning -b                        # this boot, warning+
+journalctl -p err -b -p err                     # errors only
+journalctl -k -b                                # kernel only
+dmesg -T --color=always | less                  # kernel ring with timestamps
+journalctl -o short-precise -u myapp            # microsecond timestamps
+
+# correlate timestamps with monitoring data. a service blip at
+# 14:32:17 + a kernel I/O error at 14:32:16 is the answer.
+
+
+# COMMON WORKFLOWS
+
+# "the system feels sluggish"
+uptime; free -h; vmstat 1 5; iostat -xz 1 5
+cat /proc/pressure/{cpu,memory,io}
+# whichever shows the highest signal: that's your corner.
+
+# "this one app is slow"
+sudo perf record -F 99 -p <pid> -g -- sleep 30
+sudo perf report
+# also:
+sudo strace -c -p <pid>                         # syscall summary
+sudo pidstat -d -p <pid> 1                      # disk per process
+
+# "memory pressure suspected"
+free -h; smem -tk -s pss | tail -20
+cat /proc/pressure/memory
+sudo journalctl -k | grep -i oom
+
+# "is the network the bottleneck?"
+ss -tunap | wc -l                               # how many sockets
+mtr -rwn -c 100 <target>
+sar -n DEV 1 5
+sudo /usr/share/bcc/tools/tcpretrans
+
+# "is the disk the bottleneck?"
+iostat -xz 1 5                                  # which device
+sudo iotop -ao                                  # which process
+sudo /usr/share/bcc/tools/biolatency 10 1       # latency distribution
+
+# "did this commit make things slower?"
+sudo perf stat -d ./before
+sudo perf stat -d ./after
+# IPC, cache misses, branch mispredictions side-by-side.
+
+
+# HONEST TRADEOFFS
+
+# building muscle memory on this stack pays off forever.
+# memorize the 60-second triage; once "which corner?" is
+# instant, everything else slots into place.
+
+# don't reach for strace on production. it pauses the target
+# at every syscall. for hot paths, perf trace or bpftrace are
+# nearly free.
+
+# `top` / `htop` / `btop` are diagnostic-tools-as-eye-candy.
+# fine to leave open in a corner; not where the answers come
+# from. the answers come from `vmstat`, `iostat`, `mpstat`,
+# `pidstat`, `perf`, `bpftrace` — none of which are pretty.
+
+# PSI is the single best "is this tight?" signal that wasn't
+# available pre-2019. learn to read it before you trust
+# averages from top/free/iostat.
+
+
+# QUICK REFERENCE
+
+#   "which corner is saturated?"      → uptime + vmstat + iostat + sar -n DEV + PSI
+#   "what's eating the CPU?"          → perf top   (then perf record -g for a profile)
+#   "what's eating memory?"           → smem -tk -s pss   +   /proc/pressure/memory
+#   "what's eating the disk?"         → iotop -ao   +   biolatency
+#   "what's eating the network?"      → nethogs   +   sar -n DEV   +   tcpretrans
+#   "who's listening on port X?"      → ss -tlnp | grep :X
+#   "who has this file open?"         → lsof <file>
+#   "why is the app blocked?"         → cat /proc/<pid>/stack
+#   "is memory really tight?"         → /proc/pressure/memory `full` > 5%
+#   "boot is slow"                    → systemd-analyze blame / critical-chain
+#   "what just ran?"                  → bcc-tools execsnoop
+#   "what just opened?"               → bcc-tools opensnoop
+#   "kernel says what?"               → journalctl -k -b   +   dmesg -T
+
+
+# cross-references
+# - TUNED PROFILES section: once you've identified the corner,
+#   the right tuned profile is the first lever to pull
+# - SYSTEMD section: CPUWeight / MemoryHigh / IOWeight resource
+#   control, cgroup-level limits per service
+# - DISK MANAGEMENT section: smartmontools, nvme-cli, the
+#   long-term disk-health side
+# - HARDWARE-ACCELERATED VIDEO section: video stutter that
+#   looks like CPU usually means vaapi isn't wired up
+# - POWER MANAGEMENT section: the scaling governor and the
+#   "why is my system slow on battery" answer
+# - GAMING section: frame pacing, the per-process resource
+#   knobs that benefit gamescope
 
 
 GNOME TIPS (Workstation default)
