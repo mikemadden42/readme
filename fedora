@@ -475,28 +475,234 @@ sudo -u postgres pg_dumpall -f /backup/postgres-dump.sql
 BTRFS SNAPSHOTS — THE ROLLBACK WORKFLOW
 ---------------------------------------
 
-# TODO STUB — the operational complement to BACKUPS.
-# BACKUPS established "snapshots aren't backups"; this section
-# covers what snapshots ARE useful for: cheap, instant rollback
-# of a borked system.
-# expected content:
-#   - mental model: subvolumes vs snapshots, CoW semantics, why
-#     a snapshot is free until you diverge
-#   - manual snapshots: btrfs subvolume snapshot / list / delete
-#   - the pre/post pattern around risky operations (rpm upgrades,
-#     config edits, ML driver swaps)
-#   - snapper: install, set up @ and @home configs, automatic
-#     pre/post hooks for dnf via libdnf5-plugin-snapper or
-#     dnf-plugin-snapper, timeline cleanup tuning
-#   - btrfs-assistant GUI for browsing/restoring
-#   - rolling back: rename current subvol, promote snapshot,
-#     update grubenv / BLS entry, reboot
-#   - boot-time recovery from grub: the read-only snapshot mount
-#     trick when the running system won't boot
-#   - quota / qgroup overhead and why some folks disable it
-#   - what snapshots DON'T protect against (drive failure,
-#     encryption-key loss, ransomware that touches every block)
-#   - cross-references: BACKUPS, GRUB, DISK MANAGEMENT
+# the BACKUPS section made the case that snapshots are NOT
+# backups. this section covers what snapshots ARE for: cheap,
+# instant, local rollback when a system change goes sideways.
+# for the filesystem-level deep dive (mkfs, profiles, balance,
+# scrub, send/receive) see the separate [[btrfs]] primer.
+
+
+# MENTAL MODEL — WHY THIS IS DIFFERENT FROM A BACKUP
+
+# - a SUBVOLUME is a named, independently-mountable tree
+# - a SNAPSHOT is a writable (or read-only) clone of a subvolume
+#   that shares blocks via copy-on-write
+# - taking a snapshot is O(1) and uses zero extra space until
+#   something diverges from the parent
+# - a snapshot lives on the SAME disk as the original. if the
+#   drive dies, both die together. that's why this is rollback
+#   insurance, not backup. see BACKUPS for the offsite story.
+
+
+# FEDORA'S DEFAULT SUBVOLUME LAYOUT
+
+# anaconda (the fedora installer) creates two top-level subvolumes
+# on a btrfs root install:
+#
+#   root  → mounted at /         (the OS + /var + /usr)
+#   home  → mounted at /home     (your data, separated for a reason)
+#
+# (note: NOT `@` and `@home` — that's the Ubuntu/Mint/openSUSE
+# naming. fedora uses plain `root` and `home`.)
+#
+# /var/log and /var/cache are NOT separate subvolumes by default
+# (unlike openSUSE) — they're inside `root`. this is a deliberate
+# fedora choice; rolling back root rolls back logs too. live with it,
+# or restructure manually if you care.
+
+sudo btrfs subvolume list /              # see what's there
+sudo btrfs subvolume show /              # the current subvolume's info
+findmnt /                                # confirm subvol= mount option
+
+
+# MANUAL SNAPSHOTS — THE PRE / POST PATTERN
+
+# the everyday discipline: before a risky change, take a snapshot.
+# after, decide whether to keep or delete. costs nothing if you
+# never diverge.
+
+# read-only snapshot (the conservative default — can't be mutated
+# accidentally, can still be browsed and restored from)
+sudo btrfs subvolume snapshot -r / /.snapshots/root-pre-$(date +%F-%H%M)
+
+# writable snapshot (when you want to test in the snapshot itself)
+sudo btrfs subvolume snapshot / /.snapshots/root-pre-$(date +%F-%H%M)
+
+# list / delete
+sudo btrfs subvolume list /
+sudo btrfs subvolume delete /.snapshots/root-pre-2026-06-17-1430
+
+# when to take one manually:
+#   - before `dnf upgrade --refresh` (especially across releases)
+#   - before swapping NVIDIA driver branches
+#   - before mass /etc edits or restoring a config from elsewhere
+#   - before installing something from COPR or a vendor rpm
+#   - before running someone else's install.sh
+
+# /.snapshots is a convention, not a requirement. snapper uses it
+# by default; if you go fully manual, create it yourself:
+sudo mkdir -p /.snapshots
+sudo chmod 750 /.snapshots
+
+
+# SNAPPER — AUTOMATIC PRE / POST FOR EVERY DNF TRANSACTION
+
+# snapper is the openSUSE-grown tool that turns the manual pattern
+# into a hands-off habit: automatic snapshot before AND after every
+# package transaction, with timeline cleanup so it doesn't blow up
+# /.snapshots over months.
+
+sudo dnf install snapper btrfs-assistant
+sudo snapper -c root create-config /        # config for /
+sudo snapper -c home create-config /home    # optional, for /home
+
+# the dnf bridge — this is the piece that makes it automatic.
+# on dnf5 (fedora 41+):
+sudo dnf install python3-dnf-plugin-snapper
+# (on legacy dnf4: dnf-plugin-snapper)
+
+# now every `sudo dnf install/upgrade/remove` creates a pre+post
+# snapshot pair tagged with the dnf transaction id.
+
+# verify it works:
+sudo dnf install -y htop                    # any small install
+sudo snapper list                           # see the pre/post pair
+
+# timeline cleanup tuning (in /etc/snapper/configs/root):
+#   TIMELINE_LIMIT_HOURLY="5"
+#   TIMELINE_LIMIT_DAILY="7"
+#   TIMELINE_LIMIT_WEEKLY="4"
+#   TIMELINE_LIMIT_MONTHLY="6"
+#   TIMELINE_LIMIT_YEARLY="0"
+#
+# crank these down hard on a laptop with small SSD. snapper's
+# defaults are openSUSE-style "keep a lot."
+
+
+# BROWSING AND RESTORING — BTRFS-ASSISTANT (GUI)
+
+# btrfs-assistant is the GUI to snapper + btrfs maintenance. flatpak
+# version exists; the dnf package integrates more cleanly with system
+# snapper configs.
+btrfs-assistant      # launch; needs polkit auth
+
+# what it gives you:
+#   - browse every snapshot, see what changed file-by-file (uses
+#     snapper diff)
+#   - "restore this snapshot" → handles the rename + grub update
+#   - configure snapper timelines without editing config files
+#   - run scrub / balance on a schedule with sane defaults
+
+
+# THE ROLLBACK FLOW (THE WHOLE POINT OF THIS SECTION)
+
+# scenario: a dnf upgrade broke something. you want to be back on
+# the pre-upgrade state in 60 seconds.
+
+# OPTION A — the snapper-driven path
+sudo snapper list                            # find the pre-snapshot
+sudo snapper rollback <NUMBER>               # snapper handles the rest
+sudo reboot
+# snapper renames the current `root` aside, promotes the snapshot
+# to be the new `root`, and updates the default subvolume. on
+# reboot you're on the snapshot.
+
+# OPTION B — the manual path (when snapper isn't installed)
+# 1. boot from any fedora live USB
+# 2. mount the btrfs root with subvolid=5 to see the top
+sudo mount -o subvolid=5 /dev/mapper/luks-... /mnt
+sudo mv /mnt/root /mnt/root-broken
+sudo btrfs subvolume snapshot /mnt/.snapshots/root-pre-... /mnt/root
+sudo btrfs subvolume set-default $(sudo btrfs subvolume list /mnt | \
+    awk '/path root$/ {print $2}') /mnt
+sudo umount /mnt
+sudo reboot
+
+# /home is on its own subvolume — rolling back root does NOT
+# touch your data. that's the whole point of fedora's split layout.
+
+
+# BOOT-TIME RECOVERY — GRUB-BTRFS
+
+# grub-btrfs adds a "btrfs snapshots" submenu to GRUB at boot, so
+# you can roll back to a snapshot when the system WON'T BOOT (the
+# moment you need rollback most).
+sudo dnf install grub-btrfs
+sudo systemctl enable --now grub-btrfsd      # watches for new snapshots
+# the daemon regenerates grub on every new snapshot. pick a
+# snapshot from the GRUB submenu → boots it read-only → from
+# inside, run `snapper rollback` to promote it permanently.
+
+
+# QUOTA / QGROUPS — KNOW THIS BEFORE YOU ENABLE IT
+
+# qgroups let snapper compute and enforce per-snapshot space usage.
+# they also have a real performance cost (especially on big
+# subvolumes with many snapshots), and they've been historically
+# buggy on btrfs.
+sudo btrfs quota enable /
+sudo btrfs qgroup show -p /
+
+# the honest tradeoff: on a workstation, leave qgroups DISABLED
+# and let snapper count by count instead of by size. enable them
+# only if you've hit a real "snapshots filled the disk" problem
+# and need automatic cleanup by size.
+
+
+# WHAT SNAPSHOTS WILL NEVER SAVE YOU FROM
+
+# this is worth re-saying because it's the most common mistake:
+#
+#   - drive failure (snapshot and original on same disk → both gone)
+#   - file deletion that propagated through a sync tool
+#   - ransomware that encrypts every block (snapshot is on the
+#     same fs and can be deleted by the attacker)
+#   - LUKS key loss (no key, no fs, no snapshots)
+#   - filesystem-level corruption (rare but real on btrfs)
+#
+# every one of those needs a real offsite backup. see BACKUPS.
+
+
+# HONEST TRADEOFFS
+
+# snapper + dnf-plugin-snapper adds ~2 snapshots per package
+# operation. on a small ~256GB SSD with default cleanup limits
+# you'll burn 10-30 GB on snapshot metadata in a few months.
+# this is the cost of the safety net; tune TIMELINE_LIMIT_*
+# down if it bothers you.
+
+# don't snapshot inside /var/lib/containers, /var/lib/libvirt,
+# or other CoW-already filesystems — you'll get write
+# amplification and ballooning. set NoCOW on those directories:
+sudo chattr +C /var/lib/containers
+sudo chattr +C /var/lib/libvirt/images
+# (must be done on an empty directory; existing files won't be
+# converted. for an existing dir: move out, set +C, move back.)
+
+# do NOT enable snapper on /home AND let it run timeline. people's
+# Downloads folder churns a lot — a year of snapshots will eat
+# real space. prefer manual /home snapshots before risky moves.
+
+
+# QUICK REFERENCE
+
+#   "before I do X, take a snapshot"     → btrfs subvolume snapshot -r / /.snapshots/...
+#   "auto snapshot on every dnf"         → snapper + python3-dnf-plugin-snapper
+#   "see all snapshots"                  → snapper list   OR   btrfs subvolume list /
+#   "diff this snapshot vs now"          → snapper diff <num>..0
+#   "roll back to a snapshot"            → snapper rollback <num> && reboot
+#   "can't boot — roll back from GRUB"   → grub-btrfs + grub-btrfsd
+#   "GUI for all of this"                → btrfs-assistant
+#   "how much space is this costing me?" → btrfs filesystem usage /
+#   "kill all old snapshots"             → snapper cleanup timeline
+
+
+# cross-references
+# - BACKUPS section: why this is NOT a substitute for offsite backups
+# - UPGRADE STRATEGY section: the snapshot-before-release-upgrade flow
+# - GRUB section: BLS entries, default subvol, boot menu
+# - DISK MANAGEMENT section: when /boot is on its own partition
+# - [[btrfs]] primer: filesystem-level mechanics, profiles, scrub
 
 
 DISK MANAGEMENT (LVM, SWAP, PARTITIONING)
