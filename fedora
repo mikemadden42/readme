@@ -3711,39 +3711,358 @@ sudo reboot
 HARDWARE-ACCELERATED VIDEO (VAAPI / VDPAU / NVENC)
 --------------------------------------------------
 
-# TODO STUB — getting the GPU to decode/encode video instead of
-# burning the CPU. one of the highest-leverage tunings on a
-# laptop (battery life) or a video-heavy desktop (smoothness).
-# expected content:
-#   - mental model: vaapi (intel + amd + nvidia-via-shim),
-#     vdpau (legacy, nvidia), v4l2 m2m (some arm), nvenc/nvdec
-#     (nvidia native)
-#   - intel: intel-media-driver (gen8+), libva-intel-driver
-#     (legacy gen4-7); install + vainfo verification
-#   - amd: mesa-va-drivers (FOSS); for newer amd add
-#     mesa-vdpau-drivers; on RPM Fusion swap to mesa-va-drivers-freeworld
-#     for codecs that fedora can't ship (h264/h265)
-#   - nvidia: libva-nvidia-driver from rpm fusion (the vaapi
-#     shim over nvdec); nvidia's own ffmpeg-nvenc usage; the
-#     `nvidia-vaapi-driver` package
-#   - the codec freedom problem: fedora can't ship h264/h265/aac
-#     decoders out of the box; RPM Fusion's mesa-va-drivers-freeworld
-#     and ffmpeg packages fix this
-#   - vainfo / vdpauinfo / `ffmpeg -hwaccels` verification
-#   - firefox: media.ffmpeg.vaapi.enabled true + media.ffvpx.enabled
-#     false; about:support → graphics → check "Compositing"
-#     and "Video Acceleration"
-#   - chromium / google-chrome / electron apps: --use-gl=angle
-#     --enable-features=VaapiVideoDecodeLinuxGL flags
-#   - OBS hardware encoding: vaapi (intel/amd) or nvenc (nvidia)
-#   - mpv / vlc: --hwdec=auto / Tools → Preferences → Input/Codecs
-#   - the wayland accelerated-presentation gotcha (DMA-BUF)
-#   - troubleshooting: i965 vs iHD driver split, libva-utils,
-#     LIBVA_DRIVER_NAME / LIBVA_TRACE
-#   - the akmod-nvidia + nvidia-vaapi-driver combination on F44
-#   - flatpak apps: the freedesktop runtime's VAAPI portal,
-#     org.freedesktop.Platform.VAAPI.Intel extension
-#   - cross-references: NVIDIA, REPOS (RPM Fusion), WAYLAND
+# the highest-leverage GPU tuning most people skip. CPU-decoded
+# 1080p youtube on a laptop is a real ~30% battery hit and a
+# loud fan; with vaapi wired up the same playback is silent
+# and inert. on F44 this takes 15 minutes to set up and then
+# works forever.
+
+
+# WHY THIS IS A FEDORA QUESTION
+
+# fedora can't ship H.264, H.265 (HEVC), or AAC decoders by
+# default. those codecs are patent-encumbered, and red hat
+# legal won't risk it. mesa's vaapi packages on fedora are
+# COMPILED WITH THOSE CODECS DISABLED.
+
+# every distro fedora users complain about ("video works out
+# of the box on ubuntu!") simply ships what fedora can't.
+# the fix is RPM Fusion's `mesa-va-drivers-freeworld` and
+# `mesa-vdpau-drivers-freeworld` — recompiled with the codecs
+# turned on. one-time swap; you forget about it.
+
+# see REPOS for RPM Fusion enablement.
+
+
+# THE APIS — A SHORT TAXONOMY
+
+# four ways apps ask the GPU for help:
+#
+#   VAAPI   (libva)   — the modern lingua franca on linux.
+#                       intel and amd implement it natively;
+#                       nvidia speaks it through a shim
+#                       (nvidia-vaapi-driver) over NVDEC.
+#                       what mpv, ffmpeg, firefox, chromium,
+#                       gstreamer all default to.
+#
+#   VDPAU             — older nvidia/amd API. mostly legacy.
+#                       a few players still prefer it on
+#                       nvidia (some mpv configs); on amd
+#                       nothing new should be using it.
+#
+#   NVENC / NVDEC     — nvidia's native encode/decode. ffmpeg
+#                       and OBS speak these directly via the
+#                       proprietary driver. the highest-quality
+#                       path on nvidia hardware.
+#
+#   QSV               — Intel Quick Sync via oneVPL. similar
+#                       quality story to NVENC but intel-only.
+#                       ffmpeg has -hwaccel qsv.
+#
+#   V4L2 M2M          — kernel-level codec offload, common on
+#                       arm SBCs and some embedded GPUs. not
+#                       a workstation concern.
+#
+# rule of thumb on x86 fedora:
+#   - intel CPU only           → vaapi (intel-media-driver, iHD)
+#   - amd or nvidia GPU        → vaapi (mesa-va-drivers-freeworld
+#                                       OR nvidia-vaapi-driver)
+#   - encoding pipeline        → nvenc on nvidia, vaapi on the rest
+
+
+# INSTALL — PER VENDOR
+
+# enable RPM Fusion first (see REPOS):
+sudo dnf install \
+    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+# install libva-utils everywhere — it's how you verify:
+sudo dnf install libva-utils vdpauinfo
+
+# --- INTEL (haswell / gen8+, all modern laptops) ---
+sudo dnf install intel-media-driver        # iHD — modern, gen8+
+# legacy intel (broadwell gen7 and older — rare in 2026):
+sudo dnf install libva-intel-driver        # i965
+
+# tell libva which one to use (usually auto-detected):
+echo 'LIBVA_DRIVER_NAME=iHD' >> ~/.bashrc
+
+# --- AMD (the recommended fedora swap) ---
+sudo dnf install mesa-va-drivers-freeworld mesa-vdpau-drivers-freeworld \
+                ffmpeg ffmpeg-libs --allowerasing
+# `--allowerasing` because rpm fusion's packages REPLACE the
+# fedora-shipped neutered versions. that's the point.
+
+# --- NVIDIA (proprietary driver path) ---
+# after akmod-nvidia is installed (NVIDIA section):
+sudo dnf install libva-nvidia-driver
+# vaapi calls now go: app → libva → nvidia shim → NVDEC.
+# limitations: encode (vaenc_*) is not available via the shim;
+# use nvenc directly for encoding. decode works for most h.264,
+# h.265, av1, vp9.
+
+# verify any of the above:
+vainfo                                     # shows entry/exit points and codecs
+vdpauinfo                                  # only matters on nvidia/legacy
+ffmpeg -hwaccels                           # which APIs ffmpeg can use
+
+
+# READING vainfo OUTPUT
+
+# you want lines like these. if H.264 / H.265 are MISSING after
+# the install, you didn't swap in the rpm fusion -freeworld
+# packages. re-run the install above with --allowerasing.
+#
+#   VAProfileH264Main               : VAEntrypointVLD
+#   VAProfileH264Main               : VAEntrypointEncSlice
+#   VAProfileHEVCMain               : VAEntrypointVLD
+#   VAProfileAV1Profile0            : VAEntrypointVLD
+#   VAProfileVP9Profile0            : VAEntrypointVLD
+#
+# VAEntrypointVLD = decode. EncSlice / EncSliceLP = encode.
+# encode requires hardware AND driver support; older intel iGPUs
+# decode without encoding.
+
+
+# PER-APP CONFIGURATION
+
+# --- FIREFOX ---
+# fedora's firefox now ships with vaapi on by default for
+# wayland — check, don't blindly toggle:
+# about:support → "Graphics" → "Compositing: WebRender" and
+# "HW_DECODED_VIDEO" should appear under Media → Codec Support.
+
+# if it's still cpu-decoding, force-enable:
+#   about:config
+#     media.ffmpeg.vaapi.enabled    = true
+#     media.ffvpx.enabled           = false       (use system ffmpeg)
+#     media.rdd-ffmpeg.enabled      = true
+#     gfx.x11-egl.force-enabled     = true        (X11 sessions)
+#     widget.dmabuf.force-enabled   = true        (wayland)
+
+# verify under load: open a youtube video, then:
+intel_gpu_top                                 # intel — Video and Render engines
+radeontop                                     # amd
+nvidia-smi dmon -s u                          # nvidia
+# you want non-zero activity on the video/decode engine.
+
+# --- CHROMIUM / GOOGLE-CHROME / ELECTRON ---
+# RPM Fusion's chromium-freeworld has vaapi enabled at build time.
+# google-chrome and stock chromium need flags:
+google-chrome \
+    --enable-features=VaapiVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks \
+    --ozone-platform-hint=auto
+# make it permanent — put in /etc/chromium/master_preferences,
+# or for electron apps in their respective config dirs.
+# verify at chrome://gpu — "Video Decode: Hardware accelerated"
+# expected on the line for H.264/H.265/AV1.
+
+# electron apps (vscode, slack, discord, signal):
+# create ~/.config/<app>-flags.conf (or app-specific paths) with:
+#   --enable-features=VaapiVideoDecodeLinuxGL
+#   --ozone-platform-hint=auto
+
+# --- mpv (THE PLAYER OF CHOICE) ---
+sudo dnf install mpv
+# ~/.config/mpv/mpv.conf:
+cat > ~/.config/mpv/mpv.conf <<'EOF'
+hwdec=auto-safe
+vo=gpu-next
+profile=high-quality
+EOF
+# verify: while playing, press `i` for stats — look for
+# "Hardware Decoder: vaapi (h264)" (or nvdec on nvidia).
+
+# --- VLC ---
+# Tools → Preferences → Input/Codecs → Hardware-accelerated
+# decoding: VA-API (or NVDEC). VLC's vaapi path is less
+# polished than mpv's; if you have problems, mpv first.
+
+
+# OBS — RECORDING / STREAMING
+
+sudo dnf install obs-studio
+# in OBS: Settings → Output → Output Mode: Advanced.
+# Recording → Encoder:
+#
+#   NVIDIA          → "NVIDIA NVENC H.264 / HEVC / AV1"
+#                     (the gold standard for quality at low CPU)
+#   Intel           → "QuickSync H.264 / HEVC / AV1" (with intel-mediasdk
+#                     and obs-vaapi)  OR  "VAAPI H.264 / HEVC"
+#   AMD             → "VAAPI H.264 / HEVC / AV1"
+#
+# verify with `top` while recording — OBS should be <15% CPU.
+
+
+# FLATPAK — THE OFTEN-MISSED PIECE
+
+# flatpak apps run in a sandbox that ships its OWN graphics
+# drivers via runtime extensions. if vaapi works for native
+# firefox but NOT for flatpak firefox, you're missing the
+# extension. install all VAAPI variants:
+flatpak install flathub \
+    org.freedesktop.Platform.VAAPI.Intel
+# the runtime auto-installs mesa for AMD; intel needs this
+# explicit one. on nvidia, flathub ships an additional
+# org.freedesktop.Platform.GL.nvidia-* extension matched
+# to your installed driver version.
+
+# verify inside the sandbox:
+flatpak run --command=vainfo org.mozilla.firefox
+# (firefox flatpak has vainfo in the runtime; non-firefox
+# flatpaks may not. you can override the runtime entry point
+# with --command for debugging.)
+
+# the long-running flatpak bug is that the host driver version
+# must match the bundled extension. if you update akmod-nvidia
+# and flatpak nvidia apps stop accelerating, run:
+flatpak update
+
+
+# FFMPEG — THE GENERIC ENCODE / DECODE COMMANDS
+
+# decode + filter + encode pipeline, hardware all the way:
+# (intel/amd VAAPI)
+ffmpeg -hwaccel vaapi -hwaccel_output_format vaapi \
+    -i input.mp4 \
+    -vf 'scale_vaapi=w=1280:h=720' \
+    -c:v h264_vaapi -b:v 4M output.mp4
+
+# (nvidia NVENC, the cleanest encode path on nvidia)
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda \
+    -i input.mp4 \
+    -c:v h264_nvenc -preset p4 -b:v 4M output.mp4
+
+# (intel QSV — alternative on intel; sometimes better quality
+# than vaapi at the same bitrate)
+ffmpeg -hwaccel qsv -c:v h264_qsv -i input.mp4 \
+    -c:v hevc_qsv -global_quality 25 output.mkv
+
+# list every codec ffmpeg can hardware-accelerate:
+ffmpeg -codecs 2>/dev/null | grep -E 'cuvid|nvenc|vaapi|qsv'
+
+
+# THE WAYLAND DMA-BUF GOTCHA
+
+# under wayland, video frames decoded on the GPU stay on the
+# GPU and are presented via dma-buf. on x11 they have to be
+# copied to system memory first. result: vaapi looks "more
+# efficient" under wayland for the same content. on F44
+# (wayland default), this is automatic.
+
+# if you're stuck on a session that's not handing off dma-buf
+# (some snap apps, some VNC setups), `intel_gpu_top` will show
+# a high "Blitter" workload — that's the copy. switch the app
+# to a wayland-native build (see DISPLAYS for the XWayland
+# story).
+
+
+# MEASURING — DID IT ACTUALLY WORK?
+
+# the cheapest test: a 1080p60 youtube tab. compare
+# `top -p $(pgrep -d, firefox)` before and after.
+# typical 1080p H.264 on a recent intel/amd laptop:
+#   software decode: 30-60% CPU on a few cores
+#   vaapi decode   : <5% CPU + a busy video engine
+
+# real-time per-engine GPU activity:
+intel_gpu_top                                 # the gold standard for intel
+radeontop                                     # amd
+nvidia-smi dmon -s u                          # nvidia
+nvtop                                         # vendor-agnostic, htop-style
+
+# the libva debug stream — when things look on paper but
+# nothing is moving:
+LIBVA_TRACE=/tmp/libva mpv video.mp4
+# /tmp/libva.<pid>.log will show every libva call. look for
+# "vaCreateContext" failures.
+
+
+# TROUBLESHOOTING RECIPES
+
+# 1. vainfo lists everything BUT H.264 / HEVC
+#    you have the patent-restricted fedora packages, not the
+#    rpm fusion freeworld swap. re-run:
+sudo dnf swap mesa-va-drivers mesa-va-drivers-freeworld
+sudo dnf install ffmpeg --allowerasing
+#    then log out (to refresh LIBVA_DRIVER_NAME env) and re-test.
+
+# 2. vainfo says "no driver" / "failed to initialize"
+#    libva can't find the right driver. check:
+echo $LIBVA_DRIVER_NAME           # may be set incorrectly
+ls /usr/lib64/dri/ | grep -E 'iHD|i965|radeonsi|nvidia'
+#    on intel: iHD_drv_video.so should exist (intel-media-driver)
+#    on amd: radeonsi_drv_video.so (mesa-va-drivers)
+#    on nvidia: nvidia_drv_video.so (libva-nvidia-driver)
+unset LIBVA_DRIVER_NAME           # let it auto-detect
+
+# 3. nvidia hybrid laptop: firefox uses iGPU vaapi, not dGPU
+#    expected. for desktop video you WANT the iGPU — it's
+#    lower power. force nvidia only for high-perf workloads
+#    (DISPLAYS → PRIME render offload).
+
+# 4. obs records nothing / black frames on nvidia
+#    nvenc needs the proprietary driver loaded (akmod-nvidia)
+#    AND nvidia-cuda is sometimes needed for some encoders:
+sudo dnf install nvidia-vaapi-driver xorg-x11-drv-nvidia-cuda
+
+# 5. fedora updated and acceleration broke
+#    most often: kernel update without matching nvidia akmod
+#    rebuild yet (the akmod takes a couple of minutes after
+#    boot to compile). give it 5-10 minutes, then:
+akmods --rebuild --kernels $(uname -r)
+sudo systemctl restart akmods
+
+
+# HONEST TRADEOFFS
+
+# the freeworld swap is a one-line config that nobody enjoys
+# discovering. fedora's policy is principled (patent freedom)
+# but lossy for the user. budget 15 minutes for the swap once
+# per machine and stop thinking about it.
+
+# encoding quality on the same bitrate, ranked by perception:
+#   software (x264 medium)  >  nvenc (p7)  >  qsv  >  vaapi
+# vaapi encode is the most universally available but the
+# lowest-quality. if you stream, nvenc on nvidia is the right
+# pick; software x264 is the right pick if quality matters
+# more than CPU.
+
+# the chromium / electron VAAPI story is materially worse than
+# firefox's. expect to maintain the flag soup per-app, and
+# expect chromium-freeworld to lag stock chromium on minor
+# version bumps. if web video battery life is critical to you,
+# firefox is just a better deal on linux.
+
+
+# QUICK REFERENCE
+
+#   first thing on a new install        → enable rpm fusion + swap mesa-va-drivers-freeworld
+#   verify vaapi works                  → vainfo
+#   verify firefox uses it              → about:support → HW_DECODED_VIDEO
+#   verify chromium uses it             → chrome://gpu → Video Decode: Hardware
+#   measure GPU engine usage            → intel_gpu_top / radeontop / nvidia-smi dmon
+#   nvidia decode                       → libva-nvidia-driver + akmod-nvidia
+#   nvidia encode                       → ffmpeg ... -c:v h264_nvenc / OBS NVENC
+#   intel encode                        → -hwaccel qsv  OR  -c:v h264_vaapi
+#   flatpak app skipping vaapi          → flatpak install ...Platform.VAAPI.Intel
+#   debug libva calls                   → LIBVA_TRACE=/tmp/libva mpv ...
+#   it broke after dnf upgrade          → akmods rebuild + wait, or freeworld swap drift
+
+
+# cross-references
+# - NVIDIA section: driver install (akmod-nvidia), CUDA, the
+#   proprietary path this section depends on
+# - REPOS section: RPM Fusion enablement, the freeworld package
+#   set, the patent-freedom rationale
+# - DISPLAYS section: wayland vs xwayland presentation, the
+#   dma-buf path, PRIME render offload on hybrid laptops
+# - WAYLAND section: protocol-level reasoning for why vaapi
+#   plays nicer under wayland (single-copy dma-buf)
+# - GAMING section: gamescope + HDR + vaapi interactions
+# - POWER MANAGEMENT section: the actual battery delta from
+#   moving video off the CPU
 
 
 DKMS — OUT-OF-TREE KERNEL MODULES
