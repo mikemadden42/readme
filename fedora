@@ -4119,37 +4119,401 @@ sudo dracut --force
 GPG AND SSH KEY MANAGEMENT
 --------------------------
 
-# TODO STUB — the cryptographic-identity layer the rest of the
-# primer leans on but never explains. complements SECURE BOOT
-# and TPM2 LUKS by covering the per-user key story.
-# expected content:
-#   - mental model: ssh keys (auth to remote machines), gpg keys
-#     (sign commits, encrypt files, sign rpms), distinct from
-#     LUKS / TPM / MOK
-#   - ssh keys: ssh-keygen (-t ed25519 by default in 2026), the
-#     ~/.ssh layout, authorized_keys, known_hosts, config aliases
-#   - ssh-agent: ssh-add, the gnome-keyring SSH-agent integration
-#     (replaced upstream's ssh-agent on workstation by default),
-#     when to disable it and run a real agent
-#   - hardware tokens for SSH: YubiKey FIDO2 (-t ed25519-sk),
-#     PIV-backed RSA via ssh-pkcs11-helper, the `ykman` cli
-#   - gpg keys: gpg --full-generate-key, ed25519 + cv25519
-#     subkeys, --export-secret-keys for backup, paper backup
-#     (paperkey)
-#   - gpg-agent + pinentry on wayland (pinentry-gnome3,
-#     pinentry-qt); the "no pinentry" troubleshooting recipe
-#   - signing git commits: git config user.signingkey, commit.gpgsign,
-#     tag.gpgsign; the .ssh/allowed_signers + git config
-#     gpg.format ssh path for ssh-key-based signing
-#   - signing rpms (forward-ref to RPM PACKAGING)
-#   - yubikey for gpg (smartcard mode): gpg --card-edit, key-to-card
-#   - keyring sync: WKD (Web Key Directory), keys.openpgp.org,
-#     keybase (deprecated but mentioned)
-#   - revocation certificates: generate at key creation, store offline
-#   - rotation cadence: subkeys yearly, master every 3-5 years
-#   - cross-references: SECURE BOOT, FINGERPRINT READER (for
-#     unlocking the keyring), RPM PACKAGING (signing builds),
-#     SHELL section (ssh config patterns)
+# the per-user cryptographic identity layer. distinct from
+# LUKS (disk), TPM (hardware), MOK (kernel modules), and
+# secure boot (firmware) — all of which we cover elsewhere.
+# this is "the keys YOU carry."
+
+
+# MENTAL MODEL — WHAT EACH KEY IS FOR
+
+#   ssh keys  → authenticate YOU to remote machines (git push,
+#               server login, scp, rsync, ansible). cheap to
+#               make, easy to rotate, store on disk + agent.
+#
+#   gpg keys  → identity that signs and encrypts. used for:
+#                 - signing git commits and tags
+#                 - signing rpms you build (see RPM PACKAGING)
+#                 - encrypting files / email
+#                 - identity proofs (sigstore, trust anchors)
+#               longer-lived than ssh keys, more ceremony.
+#
+#   FIDO2 / WebAuthn → hardware-backed authentication for web
+#               and now for ssh and sudo. YubiKey is the
+#               canonical token. covered briefly below.
+#
+#   x509 / PIV → certificates on a smartcard (YubiKey PIV slots).
+#               used for some corporate VPNs, smartcard sudo,
+#               some SSH setups. niche on workstation.
+#
+# the rule of thumb: ssh for auth, gpg for signing+encrypting,
+# yubikey (or similar) to make either of those hardware-bound.
+
+
+# SSH KEYS — THE EVERYDAY LAYER
+
+# fedora 44 ships openssh 9.x. the modern default is ed25519
+# (small, fast, secure). RSA is still legal but no reason to
+# prefer it for new keys.
+
+# generate a key (you can take all defaults):
+ssh-keygen -t ed25519 -C "alice@laptop"
+# files produced:
+#   ~/.ssh/id_ed25519       — private key (chmod 600)
+#   ~/.ssh/id_ed25519.pub   — public key (chmod 644)
+
+# generate with a hardware-bound passkey (requires libfido2):
+ssh-keygen -t ed25519-sk -C "alice@laptop-yubikey"
+# the private "key" is a stub that the YubiKey signs through.
+# losing the YubiKey = losing the key. keep a recovery key.
+
+# always use a passphrase on the on-disk private key. the agent
+# (next section) means you only type it once per session.
+
+# ~/.ssh layout (memorize these — every file matters):
+#
+#   id_ed25519, id_ed25519.pub   — your private / public key pair
+#   authorized_keys              — keys allowed to log INTO this
+#                                  account (mode 600)
+#   known_hosts                  — host keys you've trusted before
+#   config                       — per-host shortcuts and options
+#
+# directory must be mode 700; files generally 600 (private) or
+# 644 (public). sshd refuses to use the directory otherwise.
+
+# ~/.ssh/config — the single best ssh productivity unlock:
+cat >> ~/.ssh/config <<'EOF'
+Host gh
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+
+Host prod-*
+    User deploy
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519_prod
+    ForwardAgent no                # default no; only opt-in per host
+
+Host *.internal
+    User alice
+    ProxyJump bastion.example.com  # ssh through a jump host
+EOF
+chmod 600 ~/.ssh/config
+
+# now: `ssh gh`, `ssh prod-web01`, `ssh db.internal` all just
+# work without flags.
+
+# copy your public key onto a remote server's authorized_keys:
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@host
+
+# fingerprint check (paste into a side channel to verify a
+# host or key out-of-band):
+ssh-keygen -lf ~/.ssh/id_ed25519.pub                 # local key
+ssh-keyscan -t ed25519 host.example.com | ssh-keygen -lf -
+
+
+# SSH-AGENT ON FEDORA WORKSTATION
+
+# fedora workstation runs gnome-keyring as the default SSH agent.
+# its SSH agent listens on $SSH_AUTH_SOCK, unlocks at GNOME login,
+# and re-prompts for the key passphrase the first time you use
+# the key.
+
+echo $SSH_AUTH_SOCK
+# typical: /run/user/1000/keyring/ssh   ← gnome-keyring
+# (older: $XDG_RUNTIME_DIR/ssh-XXXXXX/agent.NNN   ← openssh)
+
+# add a key to the running agent (prompts for passphrase ONCE):
+ssh-add ~/.ssh/id_ed25519
+ssh-add -L                                            # list loaded keys
+ssh-add -D                                            # drop all loaded keys
+
+# when to disable gnome-keyring's SSH agent — if you want:
+#   - YubiKey-backed keys exclusively (gnome-keyring doesn't
+#     speak the sk-* family well)
+#   - a real openssh agent with per-key expiration / confirm
+#   - to run a specific agent (1password, bitwarden) for ssh
+#
+# disable the gnome-keyring SSH component:
+mkdir -p ~/.config/autostart
+cp /etc/xdg/autostart/gnome-keyring-ssh.desktop \
+   ~/.config/autostart/
+echo 'Hidden=true' >> ~/.config/autostart/gnome-keyring-ssh.desktop
+# log out and back in. now use the upstream openssh agent or
+# your tool of choice's agent.
+
+
+# HARDWARE-BACKED SSH (YUBIKEY)
+
+# two paths, both useful:
+#
+# 1. FIDO2 ed25519-sk — easiest, modern. the YubiKey signs ssh
+#    handshakes. requires openssh 8.2+ on both ends (fine on f44).
+ssh-keygen -t ed25519-sk -O resident -C "alice-yubikey"
+# `resident` lets you re-derive the key on a fresh machine
+# with `ssh-keygen -K`. without `resident`, you keep the stub
+# files in ~/.ssh and the key is bound to those files + token.
+#
+# 2. PIV — older corporate-style. a certificate lives in a
+#    PIV slot on the YubiKey; ssh uses pkcs11.
+sudo dnf install ykman opensc
+ykman piv keys generate 9a /tmp/pub.pem
+ykman piv certificates generate 9a /tmp/pub.pem
+# then in ~/.ssh/config:
+#   PKCS11Provider /usr/lib64/opensc-pkcs11.so
+ssh-add -s /usr/lib64/opensc-pkcs11.so               # load from token
+ssh-add -e /usr/lib64/opensc-pkcs11.so               # remove
+
+# ykman is the command-line YubiKey manager:
+sudo dnf install ykman
+ykman info
+ykman fido credentials list                           # resident FIDO2 creds
+ykman piv info
+
+
+# GPG KEYS — THE SIGNING / ENCRYPTING LAYER
+
+# fedora ships GnuPG 2.x as `gpg2`, symlinked to `gpg`.
+gpg --version
+
+# generate a modern key (master + signing + encryption + auth):
+gpg --full-generate-key
+# pick: (9) ECC sign and encrypt → (1) Curve 25519 → 0 (never
+# expires on the master, expirations on subkeys) → real name,
+# email, comment, passphrase.
+
+# what you get (verify with --list-secret-keys):
+#   sec    ed25519                     — master (cert/sign)
+#   ssb    cv25519                     — encryption subkey
+#
+# the conventional shape is: master that ONLY certifies, plus
+# subkeys for sign / encrypt / auth. add them after creation:
+gpg --edit-key alice@example.com
+> addkey                  # ed25519, sign
+> addkey                  # cv25519, encrypt
+> addkey                  # ed25519, auth (for ssh-via-gpg)
+> save
+
+# why subkeys? you can rotate signing/encryption keys yearly
+# without changing your identity. the master cert key lives
+# offline (USB stick in a safe).
+
+# list / inspect:
+gpg --list-keys
+gpg --list-secret-keys
+gpg --fingerprint alice@example.com                  # 40-hex full fp
+gpg -K --with-keygrip                                 # internal handles
+
+
+# GPG BACKUP — DO THIS THE DAY YOU GENERATE A KEY
+
+# export EVERYTHING you'd need to recover from a fresh machine:
+gpg --export-secret-keys --armor alice@example.com  > ~/gpg-backup-secret.asc
+gpg --export-secret-subkeys --armor alice@example.com > ~/gpg-backup-subkeys.asc
+gpg --export-ownertrust > ~/gpg-backup-trust.txt
+gpg --gen-revoke alice@example.com > ~/gpg-revoke.asc
+
+# paper backup — paperkey extracts only the actually-needed
+# secret material (no metadata bloat) so it prints small:
+sudo dnf install paperkey
+gpg --export-secret-keys alice@example.com | paperkey -o ~/gpg-paper.txt
+# print, store in a safe deposit box, fireproof safe, or
+# similar. burn the digital copy.
+
+# store the revocation certificate offline. if your private key
+# leaks, this is the ONLY way to invalidate it on keyservers.
+
+
+# GPG-AGENT + PINENTRY ON WAYLAND
+
+# gpg-agent is started on demand by gpg. on wayland it needs a
+# graphical pinentry — fedora workstation ships pinentry-gnome3
+# which is the right default.
+
+# verify which pinentry is wired in:
+cat ~/.gnupg/gpg-agent.conf 2>/dev/null
+which pinentry pinentry-gnome3 pinentry-curses
+
+# common failure: "Inappropriate ioctl for device" or no pinentry
+# popup. fix — write an explicit pinentry-program line:
+mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+cat > ~/.gnupg/gpg-agent.conf <<'EOF'
+pinentry-program /usr/bin/pinentry-gnome3
+default-cache-ttl 600
+max-cache-ttl 7200
+EOF
+gpg-connect-agent reloadagent /bye
+
+# if you SSH and want pinentry on the LOCAL machine for remote
+# gpg, gpg-agent has socket forwarding — niche, skip unless you
+# need it.
+
+
+# SIGNING GIT COMMITS — THE TWO MODERN PATHS
+
+# you have a choice in 2026: sign with GPG (long-established) or
+# sign with SSH (newer, simpler, increasingly preferred).
+
+# Path A — sign with GPG:
+git config --global user.signingkey  <KEYID>
+git config --global commit.gpgsign   true
+git config --global tag.gpgsign      true
+git commit -S -m "signed commit"        # explicit
+# github / gitlab will display the "Verified" badge after you
+# upload the public key to your account settings.
+
+# Path B — sign with SSH (git ≥ 2.34):
+git config --global gpg.format        ssh
+git config --global user.signingkey   ~/.ssh/id_ed25519.pub
+git config --global commit.gpgsign    true
+
+# verify a commit locally requires an allowed_signers file:
+echo "alice@example.com $(cat ~/.ssh/id_ed25519.pub)" \
+    > ~/.config/git/allowed_signers
+git config --global gpg.ssh.allowedSignersFile \
+    ~/.config/git/allowed_signers
+git log --show-signature
+
+# ssh-key signing is simpler because you already have an ssh
+# key. github accepts ssh-signed commits since 2022. use it
+# unless you specifically need gpg's web-of-trust semantics.
+
+
+# SIGNING RPMS — FORWARD POINTER
+
+# building and signing your own rpms — gpg-key creation, the
+# %_gpg_name macro, rpm --addsign, rpmsign — lives in the
+# RPM PACKAGING section. you'll reuse the same gpg key from
+# above.
+
+
+# YUBIKEY FOR GPG (SMARTCARD MODE)
+
+# moves your gpg PRIVATE keys onto the YubiKey. master cert key
+# can also live there. once moved, the keys NEVER leave the
+# token — every signature/decryption requires a touch.
+
+gpg --card-status                            # YubiKey detected?
+gpg --card-edit                              # interactive
+> admin
+> name / lang / sex                          # cardholder info
+> kdf-setup                                  # secure PIN hashing
+> passwd                                     # change admin PIN
+> quit
+
+# move a subkey onto the card:
+gpg --edit-key alice@example.com
+> key 1                                       # select signing subkey
+> keytocard                                   # move it
+> save
+# CAREFUL: keytocard moves, doesn't copy. make sure you have
+# the backup from earlier BEFORE you do this.
+
+# now on any machine: insert YubiKey → `gpg --card-status` to
+# pick up the stubs → sign / decrypt as normal. no private
+# material on disk.
+
+
+# PUBLISHING + DISCOVERING KEYS
+
+# WKD (Web Key Directory) is the modern way. domain owners
+# publish keys at https://<domain>/.well-known/openpgpkey/...
+gpg --auto-key-locate clear,wkd,nodefault --locate-key bob@example.com
+
+# keys.openpgp.org is the cleanest keyserver — it validates
+# email control and strips unverified third-party signatures.
+gpg --keyserver hkps://keys.openpgp.org --send-keys <KEYID>
+gpg --keyserver hkps://keys.openpgp.org --recv-keys <KEYID>
+
+# the SKS keyserver network is dead (poisoning attack, 2019).
+# don't bother with pgp.mit.edu, sks-keyservers.net, or
+# similar — they're either offline or unreliable.
+
+# keybase still works for old identities but stopped getting
+# meaningful development after the Zoom acquisition. don't
+# build new flows on it.
+
+
+# ROTATION + REVOCATION
+
+# rotation cadence (rule of thumb, not gospel):
+#   ssh keys                        → no schedule; rotate on
+#                                     suspicion of compromise
+#                                     or hardware change
+#   gpg signing/encryption subkeys  → yearly
+#   gpg master cert key             → 3-5 years, or on compromise
+#   yubikey-resident keys           → lifetime of the YubiKey
+
+# extend a subkey's expiration (without rotating):
+gpg --edit-key alice@example.com
+> key 1
+> expire
+> 1y
+> save
+gpg --send-keys <KEYID>        # republish
+
+# revoke a leaked key — use the pre-generated revocation cert:
+gpg --import ~/gpg-revoke.asc
+gpg --send-keys <KEYID>
+# the revocation propagates to anyone who fetches from the
+# keyserver. this is why you generate the revoke cert and
+# store it BEFORE you need it.
+
+
+# HONEST TRADEOFFS
+
+# the security upgrade from "ssh key + passphrase on disk" to
+# "YubiKey-backed ed25519-sk" is real but small. the upgrade
+# from "no agent, no passphrase, no signed commits" to "any
+# agent + passphrase + signed commits" is much bigger. don't
+# skip the easy wins chasing the hard ones.
+
+# gpg gets a reputation as user-hostile partly because the
+# defaults pre-2018 were genuinely bad. modern gpg 2.x with
+# ed25519/cv25519 and pinentry-gnome3 is fine. start there.
+
+# rotating gpg subkeys is unsexy but easy and worth doing.
+# rotating the master key is a real ceremony — re-publishing,
+# losing your old web-of-trust signatures, etc. push that out
+# as far as the cadence above suggests.
+
+# ssh commit signing is increasingly the right default. gpg
+# signing matters if you also sign rpms or care about WKD /
+# Sequoia / web-of-trust semantics.
+
+
+# QUICK REFERENCE
+
+#   make an ssh key                  → ssh-keygen -t ed25519 -C "me@host"
+#   copy pubkey to server            → ssh-copy-id user@host
+#   start using ssh aliases          → ~/.ssh/config (chmod 600)
+#   hardware-backed ssh              → ssh-keygen -t ed25519-sk -O resident
+#   load key into agent              → ssh-add
+#   make a gpg key                   → gpg --full-generate-key
+#   list secret keys                 → gpg -K
+#   backup a gpg key                 → gpg --export-secret-keys --armor > file
+#   paper-print a gpg key            → gpg --export-secret-keys | paperkey
+#   sign git commits with gpg        → commit.gpgsign + user.signingkey
+#   sign git commits with ssh        → gpg.format=ssh + ssh pubkey path
+#   move gpg key onto YubiKey        → gpg --edit-key → key N → keytocard
+#   publish a gpg key                → keys.openpgp.org + WKD
+#   revoke a leaked gpg key          → gpg --import revoke.asc + --send-keys
+
+
+# cross-references
+# - SECURE BOOT section: MOK enrollment uses a separate signing
+#   key (not your personal gpg) — different identity story
+# - TPM2 LUKS section: hardware-rooted identity for disk vs the
+#   per-user identity here
+# - FINGERPRINT READER section: PAM-side biometric auth for
+#   sudo / unlock; orthogonal to ssh/gpg but pairs nicely
+# - RPM PACKAGING section: %_gpg_name, rpm --addsign, koji
+#   signing — reuses the gpg key from this section
+# - SHELL section: $SSH_AUTH_SOCK, agent forwarding, the
+#   shell-environment side of all this
+# - USERS, GROUPS, AND SUDO section: PAM, polkit, authselect —
+#   the per-machine auth model these keys ride on
 
 
 HARDWARE / FIRMWARE — fwupd
