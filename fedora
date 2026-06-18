@@ -1928,32 +1928,337 @@ cat /proc/cmdline | grep -o 'resume=[^ ]*'
 BOOT TROUBLESHOOTING AND RESCUE
 -------------------------------
 
-# TODO STUB — the "something just broke, what now?" section.
-# pairs with GRUB, KERNEL CMDLINE, and TTYs for the full
-# break-glass toolkit.
-# expected content:
-#   - the GRUB boot menu: showing it, picking an older kernel,
-#     `e` to edit one boot's cmdline (covered in GRUB but
-#     worth cross-referencing)
-#   - rd.break — drop into a shell during early initramfs
-#   - rd.shell, rd.debug, systemd.debug-shell
-#   - emergency.target (systemctl emergency) vs rescue.target
-#     vs multi-user.target — when to pick each
-#   - init=/bin/bash for a single-user-ish shell with read-only /
-#   - the live-USB chroot recovery pattern:
-#       mount / + /boot, bind /dev /proc /sys /run, chroot in,
-#       fix /etc/fstab or regenerate initramfs (dracut --force)
-#   - regenerating GRUB config from inside the chroot
-#   - LUKS unlock during recovery (cryptsetup open + mount)
-#   - reinstalling the bootloader: grub2-install (BIOS) +
-#     grub2-mkconfig; UEFI shim/grub via dnf reinstall grub2-efi
-#     shim-x64
-#   - SELinux relabel from rescue: touch /.autorelabel
-#   - read-only / due to btrfs errors: usebackuproot mount option,
-#     btrfs check (and when NOT to run --repair)
-#   - fsck from rescue media (ext4 / xfs)
-#   - "I can't ssh in but the machine boots" — sshd via emergency.target
-#   - cross-references: GRUB, KERNEL CMDLINE, TTYS, BTRFS SNAPSHOTS
+# the "something just broke, what now?" section. write this
+# down BEFORE you need it — once the machine won't boot, you
+# don't want to be reading docs on your phone.
+
+
+# THE BOOT STAGES (KNOW WHERE YOU'RE FAILING)
+
+# fedora's boot is a chain — each link can fail differently.
+# matching the symptom to the stage is half the diagnosis.
+#
+#   1. firmware (UEFI or BIOS)
+#        symptom: nothing on screen, "no bootable device", drive
+#        not in boot order. fix lives in the firmware menu (F2 /
+#        F10 / F12 / Esc — vendor-specific), not in fedora.
+#
+#   2. bootloader (shim → GRUB on UEFI; GRUB on BIOS)
+#        symptom: "grub rescue>" prompt, GRUB hangs, EFI entry
+#        gone. fix: GRUB reinstall + grub2-mkconfig, efibootmgr.
+#
+#   3. kernel + initramfs (loaded from /boot)
+#        symptom: kernel panic, "VFS: Unable to mount root fs",
+#        "you are in emergency mode" with luks/btrfs errors.
+#        fix: pick an older kernel, rd.break, rebuild initramfs.
+#
+#   4. systemd early boot (initramfs → systemd in real root)
+#        symptom: drops to emergency.target, single failing
+#        service, /etc/fstab error.
+#        fix: emergency / rescue target, systemctl --failed.
+#
+#   5. user session (GDM, wayland, gnome-shell)
+#        symptom: black screen after login, no display manager,
+#        "oh no, something has gone wrong."
+#        fix: TTY login (Ctrl+Alt+F3), check journalctl -u gdm,
+#        roll back graphics driver. that's a user-session
+#        problem, not a boot problem — different toolkit.
+
+
+# STAGE 2/3 RECIPES — FROM THE GRUB MENU
+
+# the GRUB menu is your first line of defense. if you can see it,
+# you can get out of almost any kernel/initramfs problem.
+
+# show the menu reliably (covered fully in the GRUB section):
+sudo grub2-editenv - unset menu_auto_hide
+
+# pick an older kernel
+#   GRUB main menu → "Advanced options for Fedora" → choose
+#   previous kernel. fedora keeps 3 by default (installonly_limit).
+
+# edit ONE boot's kernel cmdline (no permanent change)
+#   highlight the entry → press `e` → edit the `linux ...` line
+#   → Ctrl+x to boot with it. survives this boot only.
+
+# useful args to APPEND for diagnostics (see KERNEL CMDLINE):
+#   single                  → boot to rescue.target
+#   systemd.unit=rescue.target
+#   systemd.unit=emergency.target
+#   systemd.unit=multi-user.target   → text mode, no GDM
+#   rd.break                → shell BEFORE pivoting to real root
+#   rd.shell                → shell only if initramfs fails
+#   rd.debug                → very loud initramfs logging
+#   plymouth.enable=0       → kill the splash; see actual messages
+#   systemd.log_level=debug → wall-of-text but answers most things
+
+# pick the btrfs snapshot submenu (if grub-btrfs is installed)
+#   GRUB → "Fedora Linux snapshots" → boot a snapshot read-only
+#   → from inside, `snapper rollback` to make it permanent.
+#   see BTRFS SNAPSHOTS for the full flow.
+
+
+# STAGE 3/4 RECIPES — TARGETS AS RECOVERY ROOMS
+
+# systemd targets are basically "how much of the system do you
+# want running while you fix it." rescue is small; emergency is
+# smaller; multi-user is "normal but no GUI."
+
+#   emergency.target   — minimal, / mounted read-only, no other
+#                        filesystems, root shell. for "/etc/fstab
+#                        is wedged" situations.
+#   rescue.target      — single-user mode, all filesystems mounted,
+#                        root shell. for "I can repair from here."
+#   multi-user.target  — text-mode multi-user (think old runlevel 3).
+#                        for "GUI is broken, login normally and
+#                        debug from a real session."
+#   graphical.target   — the default; GUI up.
+
+# from a running system:
+sudo systemctl rescue        # drops to single-user
+sudo systemctl emergency     # drops to emergency shell
+sudo systemctl isolate multi-user.target   # kill the GUI, stay multi-user
+sudo systemctl isolate graphical.target    # bring the GUI back
+
+# from GRUB (append to the kernel line):
+systemd.unit=rescue.target
+systemd.unit=emergency.target
+
+# you'll be prompted for the root password. if root has no
+# password (the modern default), see the next recipe.
+
+
+# STAGE 3 ESCAPE HATCH — init=/bin/bash
+
+# the nuclear option: replace pid 1 with a shell. NO services
+# run, / is read-only by default, but you can remount and edit.
+# useful when emergency target also can't authenticate (forgot
+# root password, sudoers broken).
+
+#   GRUB → `e` on a kernel → append to the linux line:
+init=/bin/bash rw
+
+# once you're in:
+mount -o remount,rw /
+passwd                 # reset root password
+# or edit whatever was breaking:
+vi /etc/fstab
+touch /.autorelabel    # if you touched SELinux-labeled files
+exec /sbin/init        # try to continue boot, or:
+sync; reboot -f
+
+
+# STAGE 3 SHELLS — RD.BREAK AND FRIENDS
+
+# rd.break drops a shell INSIDE the initramfs, BEFORE the real
+# root is mounted at /. useful for "the kernel boots but the
+# real root won't mount" — usually LUKS or /etc/crypttab issues.
+
+# append to the kernel cmdline:
+rd.break
+
+# you'll land in a dracut shell. the real root (when mounted)
+# lives at /sysroot. typical recovery dance:
+mount -o remount,rw /sysroot
+chroot /sysroot
+# now /sysroot's tree is your /
+passwd                          # fix root pw, or
+vi /etc/crypttab                # fix luks setup, or
+dracut --force                  # rebuild initramfs
+
+# exit twice (chroot → dracut shell) and the boot continues.
+
+# rd.shell — only drops a shell if the initramfs FAILS. nice
+# permanent addition to a flaky machine's cmdline.
+# rd.debug   — enormous extra logging. pair with `systemd.log_level=debug`.
+
+
+# STAGE 4 — THE SYSTEMD DEBUG SHELL
+
+# debug-shell.service exposes a root shell on TTY9 (Ctrl+Alt+F9)
+# with no auth. useful when login is broken but boot succeeded.
+sudo systemctl enable --now debug-shell.service
+# DO NOT leave this enabled — it's a literal authless root
+# shell on a TTY. turn it off the moment you're done:
+sudo systemctl disable --now debug-shell.service
+
+
+# "BOOTS BUT NO SSH" RECIPE
+
+# if the box boots into multi-user but sshd isn't up, and you
+# can't get physical access:
+#
+#   from physical TTY:
+systemctl status sshd
+journalctl -u sshd -n 100
+sudo systemctl start sshd
+#
+#   if firewalld blocked it:
+sudo firewall-cmd --add-service=ssh
+sudo firewall-cmd --runtime-to-permanent
+#
+#   if SELinux blocked it (rare but happens after sshd_config
+#   edits with custom ports):
+sudo journalctl -t setroubleshoot -n 50
+sudo semanage port -a -t ssh_port_t -p tcp <newport>
+
+
+# THE BIG ONE — LIVE-USB CHROOT RECOVERY
+
+# when nothing on the disk will boot, the standard rescue is:
+# boot a fedora live USB → unlock + mount the real root →
+# chroot in → fix it → exit and reboot.
+
+# step 1 — boot any fedora workstation live USB (same major
+# version is ideal but not required; rescue ISOs at
+# getfedora.org/security/ work too)
+
+# step 2 — find the disks
+sudo lsblk -f
+# you're looking for: an EFI partition (vfat, /boot/efi),
+# the /boot partition (ext4 by default), and the LUKS
+# container (crypto_LUKS) that holds your btrfs root.
+
+# step 3 — unlock LUKS (if encrypted, which is the F44
+# workstation default)
+sudo cryptsetup open /dev/nvme0n1p3 luks-root
+# now /dev/mapper/luks-root is the unlocked btrfs.
+
+# step 4 — mount the btrfs root subvolume
+sudo mkdir -p /mnt/sysroot
+sudo mount -o subvol=root /dev/mapper/luks-root /mnt/sysroot
+
+# step 5 — mount the other partitions inside it
+sudo mount /dev/nvme0n1p2 /mnt/sysroot/boot          # /boot (ext4)
+sudo mount /dev/nvme0n1p1 /mnt/sysroot/boot/efi      # EFI (vfat)
+# (find your actual partition numbers from lsblk -f above.)
+
+# step 6 — bind-mount the virtual fs so chroot tooling works
+for d in dev proc sys run; do
+    sudo mount --bind /$d /mnt/sysroot/$d
+done
+# resolv.conf so dnf can hit the network if you need it:
+sudo cp /etc/resolv.conf /mnt/sysroot/etc/resolv.conf
+
+# step 7 — chroot in
+sudo chroot /mnt/sysroot /bin/bash
+# you're now operating as if you booted normally.
+
+# at this point the repair menu is open. common moves:
+
+#   regenerate initramfs (most kernel/initramfs problems):
+dracut --force --regenerate-all -v
+
+#   regenerate GRUB config:
+grub2-mkconfig -o /boot/grub2/grub.cfg
+
+#   reinstall the bootloader — UEFI:
+dnf reinstall grub2-efi-x64 shim-x64 grub2-efi-x64-modules
+grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg   # NOT /boot/grub2/...
+#   reinstall the bootloader — BIOS (legacy):
+grub2-install /dev/nvme0n1
+grub2-mkconfig -o /boot/grub2/grub.cfg
+
+#   re-add the boot entry to UEFI NVRAM (when efibootmgr lost it):
+efibootmgr -c -d /dev/nvme0n1 -p 1 -L "Fedora" \
+    -l '\EFI\fedora\shimx64.efi'
+
+#   queue an SELinux relabel for next boot:
+touch /.autorelabel
+# (slow on first boot. only do this if you edited /etc as root
+# in the chroot — SELinux contexts on new files will be wrong.)
+
+#   fix /etc/fstab (typo in mount options is a common cause
+#   of "boot drops to emergency.target"):
+vi /etc/fstab
+
+# step 8 — back out cleanly
+exit                                         # leave chroot
+for d in run sys proc dev; do
+    sudo umount /mnt/sysroot/$d
+done
+sudo umount /mnt/sysroot/boot/efi
+sudo umount /mnt/sysroot/boot
+sudo umount /mnt/sysroot
+sudo cryptsetup close luks-root
+sudo reboot
+
+
+# FILESYSTEM-LEVEL REPAIR
+
+# do this from the live USB, NOT from a running system.
+# the target filesystem MUST be unmounted.
+
+# ext4 (e.g. /boot):
+sudo e2fsck -fy /dev/nvme0n1p2
+
+# xfs (rare on fedora workstation; common on server installs):
+sudo xfs_repair /dev/sdXN
+
+# btrfs — try to mount with rescue options BEFORE running check:
+sudo mount -o ro,rescue=all /dev/mapper/luks-root /mnt/sysroot
+# if that works, copy data off. if not:
+sudo btrfs check /dev/mapper/luks-root            # read-only diagnosis
+# DO NOT run `btrfs check --repair` unless a known-good backup
+# exists and the upstream wiki recommends it for your symptom.
+# it has a real history of making things worse. prefer:
+sudo mount -o usebackuproot /dev/mapper/luks-root /mnt/sysroot
+# (uses an older root tree generation. mount as ro until you
+# verify the data looks right.)
+
+
+# HONEST TRADEOFFS
+
+# the fastest recovery is almost always: pick an older kernel
+# from GRUB, OR pick a btrfs snapshot. only reach for the
+# live-USB chroot when those don't work.
+
+# do not chroot from a live USB whose fedora version is OLDER
+# than the installed system — running newer userspace through
+# older kernel headers usually works, but the reverse breaks
+# weirdly. prefer same-version or newer rescue media.
+
+# `touch /.autorelabel` is annoying (slow first boot) but
+# rarely harmful. if in doubt, do it — wrong SELinux contexts
+# cause boot-time mystery failures that are hard to debug later.
+
+# always note which kernel was working BEFORE the bad upgrade:
+#   uname -r          # before the change
+#   sudo grubby --info=ALL | grep '^title' # full inventory
+# this lets you boot back to a known-good kernel from GRUB
+# without rescue media at all.
+
+
+# QUICK REFERENCE
+
+#   show GRUB menu                  → grub2-editenv - unset menu_auto_hide
+#   boot old kernel                 → GRUB → Advanced options
+#   edit one boot's cmdline         → GRUB → highlight → `e`
+#   boot from a btrfs snapshot      → grub-btrfs submenu (see BTRFS SNAPSHOTS)
+#   drop to single-user             → kernel cmdline: systemd.unit=rescue.target
+#   drop to a shell, /             → kernel cmdline: init=/bin/bash rw
+#   shell inside initramfs         → kernel cmdline: rd.break
+#   shell on TTY9 (already booted) → systemctl enable --now debug-shell.service
+#   live-USB chroot                → cryptsetup open + mount + bind + chroot
+#   rebuild initramfs              → dracut --force --regenerate-all
+#   rebuild GRUB                   → grub2-mkconfig -o /boot/grub2/grub.cfg
+#   reinstall UEFI bootloader      → dnf reinstall grub2-efi-x64 shim-x64
+#   re-add UEFI NVRAM entry        → efibootmgr -c ...
+#   fix SELinux labels             → touch /.autorelabel; reboot
+#   read-only btrfs (last resort)  → mount -o usebackuproot,ro
+
+
+# cross-references
+# - GRUB section: BLS entries, default boot, menu hide behavior
+# - KERNEL CMDLINE section: full list of recovery cmdline args
+# - TTYS section: Ctrl+Alt+F-keys, getty configuration
+# - BTRFS SNAPSHOTS section: roll back to a working state, often
+#   faster than chroot recovery
+# - TPM2 LUKS section: re-enrollment after firmware change can
+#   break unattended unlock; recovery uses the passphrase slot
+# - SELINUX section: when to relabel vs autorelabel
+# - WHERE TO GO WHEN STUCK section: who to ask once you've tried
+#   the recipes here
 
 
 REPOS — OFFICIAL, RPM FUSION, COPR, FLATHUB
