@@ -3221,28 +3221,423 @@ sudo systemctl edit tailscaled
 FILE SHARING — NFS AND SAMBA ON A LAN
 -------------------------------------
 
-# TODO STUB — sharing files with other machines on your LAN.
-# NETWORKING covered routing/DNS/VPN; this is the "I want my
-# media server / family laptop to see this drive" layer.
-# expected content:
-#   - SMB (samba) — the right default for mixed mac/windows/linux
-#     households. server: install samba, samba-common; smb.conf
-#     basics; smbpasswd; firewalld --add-service=samba; SELinux
-#     booleans (samba_export_all_rw, samba_enable_home_dirs);
-#     SELinux file context (samba_share_t)
-#   - SMB client: gvfs-smb auto in Files; smbclient -L //host;
-#     mount.cifs in /etc/fstab with credentials= file
-#   - NFS — the lighter-weight all-linux option. server: nfs-utils,
-#     /etc/exports; exportfs -ra; firewalld --add-service=nfs;
-#     SELinux booleans (nfs_export_all_rw, use_nfs_home_dirs)
-#   - NFS client: showmount -e <server>; mount -t nfs4; fstab
-#     entries with _netdev,noauto,x-systemd.automount
-#   - NFSv4 vs v3 (use v4 unless you can't)
-#   - autofs vs systemd automount units for on-demand mounts
-#   - sshfs as the "no server needed" option
-#   - mDNS / Avahi discovery (firewalld --add-service=mdns)
-#   - performance: rsize/wsize, async, version negotiation
-#   - cross-references: FIREWALLD, SELINUX, NETWORKING
+# sharing files between machines on your LAN. NETWORKING
+# covered routing / DNS / VPN; this is the layer above —
+# "the media server, the family laptop, the NAS, the phone."
+
+
+# WHICH PROTOCOL? — DECIDE FIRST
+
+# pick before configuring; switching costs more later than the
+# 30-second decision now.
+#
+#   all-linux LAN              → NFSv4
+#       Why: native POSIX semantics (real uid/gid, real perms,
+#       symlinks, locking), best throughput, simplest config.
+#
+#   mixed mac / windows / linux→ Samba (SMB)
+#       Why: the only protocol Windows speaks natively; macOS
+#       Finder loves it; android / iOS file apps speak it. you
+#       pay in POSIX-perm friction, but it's the universal
+#       common denominator.
+#
+#   ad-hoc, no server install  → sshfs
+#       Why: you already have ssh; reuses keys; works through
+#       any network ssh works through. slow for big-file
+#       transfers, fine for "browse a remote dir from Files."
+#
+#   internet-facing            → none of the above unsealed
+#       Why: NFS / Samba on the open internet is a foot-gun
+#       (auth weak, ransomware target, lateral-movement vector).
+#       expose via wireguard / tailscale (NETWORKING section)
+#       and treat that tunnel as your LAN.
+
+
+# ============================================================
+# SAMBA / SMB — THE MIXED-OS DEFAULT
+# ============================================================
+
+# --- SERVER INSTALL ---
+
+sudo dnf install samba samba-common samba-client
+
+# minimal /etc/samba/smb.conf for a home setup:
+sudo tee /etc/samba/smb.conf >/dev/null <<'EOF'
+[global]
+   workgroup = WORKGROUP
+   server string = fedora-nas
+   security = user
+   passdb backend = tdbsam
+   map to guest = bad user
+   server min protocol = SMB3        # refuse legacy SMB1/2
+   server signing = mandatory
+   client signing = mandatory
+   load printers = no
+   printing = bsd
+   printcap name = /dev/null
+   disable spoolss = yes
+
+[media]
+   path = /srv/share/media
+   read only = no
+   browseable = yes
+   valid users = @smbusers
+   create mask = 0664
+   directory mask = 0775
+EOF
+
+# enable + start:
+sudo systemctl enable --now smb nmb
+# (nmb is the NetBIOS name service — required for the "appears
+# in Windows network browser" path. modern macs and windows
+# also work via WSD; on fedora that needs the wsdd2 package.)
+
+# --- SAMBA USERS (separate from system users) ---
+
+# samba has its OWN password database. you ADD an existing
+# linux user to it, but the password is independent.
+sudo useradd -M -s /sbin/nologin smbalice
+sudo smbpasswd -a smbalice                # set samba password
+sudo smbpasswd -e smbalice                # enable
+
+# group for share access:
+sudo groupadd smbusers
+sudo usermod -aG smbusers smbalice
+sudo chgrp -R smbusers /srv/share/media
+sudo chmod -R 2775 /srv/share/media        # SGID for group inheritance
+
+# --- FIREWALL ---
+sudo firewall-cmd --add-service=samba --permanent
+sudo firewall-cmd --add-service=samba-client --permanent
+sudo firewall-cmd --reload
+
+# --- SELINUX (THE FEDORA-SPECIFIC PIECE) ---
+
+# 1) tell SELinux this directory is a samba share:
+sudo semanage fcontext -a -t samba_share_t '/srv/share/media(/.*)?'
+sudo restorecon -Rv /srv/share/media
+
+# 2) booleans you'll usually want:
+sudo setsebool -P samba_enable_home_dirs on   # share users' ~ via SMB
+sudo setsebool -P smbd_anon_write on          # allow anonymous writes
+sudo setsebool -P samba_export_all_rw on      # share anything (broad)
+
+# the booleans are cumulative. for a media share you typically
+# only need the fcontext step + restorecon. enable home-dirs
+# only if you also share [homes].
+
+# --- VERIFY THE SERVER ---
+sudo testparm                                  # parse smb.conf, warn on issues
+sudo smbclient -L //localhost -U smbalice      # what shares are visible?
+
+# --- SMB CLIENT ---
+
+# GUI (gnome Files): Other Locations → "Connect to Server" →
+#   smb://servername/media
+# saves credentials in gnome-keyring; auto-mounts on demand.
+
+# CLI: list shares, browse interactively:
+smbclient -L //server.local -U smbalice
+smbclient //server.local/media -U smbalice
+# inside: ls, get, put, cd, mget, mput, smbclient is an
+# ftp-style shell.
+
+# permanent mount via /etc/fstab + a credentials file:
+sudo tee /root/smb-media.cred >/dev/null <<'EOF'
+username=smbalice
+password=<the-samba-password>
+domain=WORKGROUP
+EOF
+sudo chmod 600 /root/smb-media.cred
+
+sudo mkdir -p /mnt/media
+echo '//server.local/media  /mnt/media  cifs  credentials=/root/smb-media.cred,_netdev,uid=1000,gid=1000,vers=3.0,iocharset=utf8,nofail  0 0' \
+    | sudo tee -a /etc/fstab
+sudo systemctl daemon-reload
+sudo mount -a
+
+# uid=1000,gid=1000 makes the mount "owned by you" — important
+# because SMB's perm model doesn't map one-to-one onto POSIX.
+
+
+# ============================================================
+# NFSv4 — THE ALL-LINUX HIGH-PERFORMANCE OPTION
+# ============================================================
+
+# --- SERVER INSTALL ---
+
+sudo dnf install nfs-utils
+
+# enable + start (a single unit on modern fedora):
+sudo systemctl enable --now nfs-server
+
+# --- DEFINE EXPORTS in /etc/exports ---
+
+# format: directory  client-list(options)
+sudo tee /etc/exports >/dev/null <<'EOF'
+/srv/share/backups   192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+/srv/share/media     192.168.1.0/24(ro,sync,no_subtree_check,all_squash,anonuid=1000,anongid=1000)
+EOF
+
+# the option vocabulary:
+#   rw / ro                    obvious
+#   sync                       writes hit disk before ACK (default; safe)
+#   async                      faster, BUT can lose data on power loss
+#   no_subtree_check           skip path-validation (recommended; default)
+#   root_squash (default)      remote root → nfsnobody (safer)
+#   no_root_squash             remote root → local root (use sparingly)
+#   all_squash                 every user → nfsnobody (for shared read areas)
+#   anonuid=NNN, anongid=NNN   the uid/gid all_squash maps to
+
+# reload exports without restarting nfs-server:
+sudo exportfs -rav
+sudo exportfs -v                              # show current exports
+
+# --- FIREWALL ---
+sudo firewall-cmd --add-service=nfs --permanent
+sudo firewall-cmd --add-service=mountd --permanent
+sudo firewall-cmd --add-service=rpc-bind --permanent
+sudo firewall-cmd --reload
+# NFSv4 mostly uses port 2049 only; mountd+rpcbind are needed
+# for v3 fallback. if you require v4 exclusively, just nfs.
+
+# --- SELINUX ---
+sudo setsebool -P nfs_export_all_rw on        # broad: any dir, RW
+sudo setsebool -P nfs_export_all_ro on        # broad: any dir, RO
+sudo setsebool -P use_nfs_home_dirs on        # only on CLIENTS that
+                                              # mount user homes via NFS
+
+# --- NFS CLIENT ---
+
+# list a server's exports (NFSv3 dialog; v4 hides them in
+# pseudoroot — see below):
+showmount -e server.local
+
+# one-shot mount:
+sudo mkdir -p /mnt/backups
+sudo mount -t nfs4 server.local:/srv/share/backups /mnt/backups
+
+# permanent + lazy: only mount on first access via systemd
+sudo mkdir -p /mnt/media
+echo 'server.local:/srv/share/media  /mnt/media  nfs4  defaults,_netdev,noauto,x-systemd.automount,x-systemd.idle-timeout=10min  0 0' \
+    | sudo tee -a /etc/fstab
+sudo systemctl daemon-reload
+# now `cd /mnt/media` lazily mounts; 10 min of idle unmounts.
+
+# the NFSv4 pseudoroot — clients see exports under a single
+# server-side namespace, not individual exported paths:
+sudo mount -t nfs4 server.local:/ /mnt/all
+ls /mnt/all                                   # shows pseudoroot tree
+# this is why `showmount -e` is a v3-era idiom; v4 considers
+# server-side enumeration over RPC a security smell.
+
+
+# ============================================================
+# NFSv4 VS v3 — DECIDE ONCE
+# ============================================================
+
+# use v4 unless you can't:
+#   v4 advantages    — single port (2049), stateful (recovers
+#                      cleanly), better locking, AUTH_GSS /
+#                      kerberos support, ACL semantics
+#   v4 cost          — slightly more setup; pseudoroot trips
+#                      people up the first time
+#
+# stick with v3 only if:
+#   - an old NAS / appliance doesn't support v4
+#   - you need to use NIS or local-uid mapping that v4 won't
+#   - a vendor's docs say "this only works on v3"
+
+# force a specific version on the client:
+sudo mount -t nfs -o vers=4.2 server.local:/srv/x /mnt/x
+sudo mount -t nfs -o vers=3   legacy:/srv/y       /mnt/y
+
+
+# ============================================================
+# ON-DEMAND MOUNTS — AUTOFS VS SYSTEMD AUTOMOUNT
+# ============================================================
+
+# both let "cd /mnt/foo" trigger a mount and an idle unmount.
+
+# SYSTEMD AUTOMOUNT (preferred on fedora):
+#   - configured via fstab `x-systemd.automount` (see above)
+#   - integrated with the journal and `systemctl list-units`
+#   - one tool to learn (`systemctl`), one place to debug
+systemctl list-units --type=automount
+journalctl -u mnt-media.automount
+
+# AUTOFS (older, still around):
+sudo dnf install autofs
+sudo systemctl enable --now autofs
+#   /etc/auto.master            — define mount points
+#   /etc/auto.misc              — define maps (NFS / SMB / etc.)
+# value: lets you write WILDCARD maps where the directory name
+# becomes the mount source. handy for "home directory per user"
+# patterns; rarely needed on a workstation.
+
+# rule of thumb: systemd automount on workstation, autofs on
+# multi-user servers with wildcard home-dir patterns.
+
+
+# ============================================================
+# SSHFS — THE "NO SERVER NEEDED" OPTION
+# ============================================================
+
+# you have ssh access; sshfs gives you the remote tree mounted
+# locally. great for "I want to edit one file in a VS Code that
+# lives on another machine."
+
+sudo dnf install fuse-sshfs
+
+# one-shot:
+sshfs alice@server.local:/var/www /mnt/www
+fusermount -u /mnt/www                        # unmount
+
+# permanent fstab entry (uses your ssh-agent for keys):
+echo 'alice@server.local:/var/www  /mnt/www  fuse.sshfs  defaults,_netdev,noauto,x-systemd.automount,allow_other,IdentityFile=/home/alice/.ssh/id_ed25519  0 0' \
+    | sudo tee -a /etc/fstab
+
+# tradeoff: per-syscall round-trip to a remote sshd. great for
+# small files / browsing; SLOW for `cp big-file` or `find`. for
+# bulk-transfer or many small reads, use NFS / SMB.
+
+
+# ============================================================
+# mDNS / SERVICE DISCOVERY (.local names)
+# ============================================================
+
+# fedora ships avahi; mDNS resolution works out of the box for
+# `.local` names. open the firewall service so clients can
+# discover this host:
+sudo firewall-cmd --add-service=mdns --permanent
+sudo firewall-cmd --reload
+systemctl status avahi-daemon
+
+# from a client:
+avahi-browse -a                                # see every service on LAN
+avahi-resolve -n server.local
+getent hosts server.local                       # via nss-mdns
+
+# avahi-discover is the GUI browser; useful when "the laptop
+# can't see the server" and you want to know if it's a samba/nfs
+# problem or a mDNS-discovery problem.
+
+
+# ============================================================
+# PERFORMANCE
+# ============================================================
+
+# NFS rsize / wsize — read and write block size. defaults are
+# negotiated; you usually don't need to set them. when you do
+# (e.g. gigabit LAN + jumbo frames):
+sudo mount -t nfs4 -o rsize=1048576,wsize=1048576,async \
+    server.local:/srv/x /mnt/x
+# rsize/wsize cap at 1 MiB. larger is not better; the kernel
+# rejects.
+
+# async means "ACK before disk" on the SERVER. faster, but a
+# server crash during writes = data loss. only enable on a
+# protected (UPS) server you trust.
+
+# samba performance — usually a windows-client problem more
+# than a linux-server problem. relevant knobs:
+#   socket options = TCP_NODELAY IPTOS_LOWDELAY
+#   server multi channel support = yes        (SMB3+ multichan)
+#   read raw / write raw / strict sync = ...  (rarely needed today)
+
+# bottleneck identification (these are the corners — see
+# PERFORMANCE INVESTIGATION):
+#   network saturated  → sar -n DEV 1
+#   server disk slow   → iostat -xz 1 on the SERVER
+#   server CPU pinned  → top on the SERVER (rarely; usually wire)
+#   client kernel busy → check NFS in-flight: cat /proc/self/mountstats
+
+
+# ============================================================
+# WORKFLOWS YOU'LL ACTUALLY HAVE
+# ============================================================
+
+# "I want my laptop and desktop to share ~/Photos"
+#   → NFSv4 with all_squash + anonuid mapped to your UID on
+#     both ends. or move ~/Photos to syncthing (different
+#     section / topic).
+
+# "the family iPad needs to upload to a NAS folder"
+#   → Samba. ios files app speaks SMB3 natively.
+
+# "I'm spinning up a build farm and the workers need
+#  /srv/sources from the controller"
+#   → NFSv4, async, jumbo frames on a dedicated subnet.
+
+# "I just need to grep a directory on another machine for
+#  five minutes"
+#   → sshfs. don't install a server for a one-off.
+
+# "I want my windows box to back up to my fedora server"
+#   → Samba + windows file history pointed at the share. or
+#     better, switch the backup tool to restic / borg and
+#     point it at a Samba share or `restic --repo s3:...` —
+#     see BACKUPS.
+
+
+# ============================================================
+# HONEST TRADEOFFS
+# ============================================================
+
+# do not use SMB1. it has had unauth RCEs (wannacry, eternal
+# blue). `server min protocol = SMB3` in smb.conf is the
+# default in this section for that reason; verify in smb.conf
+# any time you inherit a config from a guide.
+
+# NFS root_squash is the default for a reason. `no_root_squash`
+# means a compromised root on a client = root on your server's
+# filesystem. only set it for one specific install case
+# (provisioning workstations from a server image) and remove
+# it after.
+
+# samba shared with `valid users = @smbusers` is fine. NEVER
+# combine `guest ok = yes` with writeable shares on a network
+# you don't fully control. one device on the LAN gets owned
+# and your media library is now ransomware fodder.
+
+# SELinux contexts are the most common silent failure mode for
+# fedora samba/NFS shares. when "the share is exported but
+# clients see 'permission denied'", check `ausearch -m avc`
+# (see SELINUX section) before changing kernel options.
+
+
+# ============================================================
+# QUICK REFERENCE
+# ============================================================
+
+#   mixed-OS share              → samba; smb.conf [share] + smbpasswd
+#   all-linux share             → NFSv4 + /etc/exports
+#   ad-hoc, no install          → sshfs
+#   make samba dir visible      → semanage fcontext + restorecon
+#   firewalld: samba            → firewall-cmd --add-service=samba
+#   firewalld: nfs              → firewall-cmd --add-service=nfs
+#   list a server's exports     → showmount -e host       (v3 only)
+#   browse a samba server       → smbclient -L //host -U user
+#   mount samba persistently    → fstab: cifs + credentials= file
+#   mount nfs persistently      → fstab: nfs4 + x-systemd.automount
+#   discover services on LAN    → avahi-browse -a
+#   check shared dir contexts   → ls -lZ /srv/share
+#   debug a failing samba mount → tail /var/log/samba/log.smbd
+#   debug a failing nfs mount   → journalctl -u nfs-server; cat /proc/self/mountstats
+
+
+# cross-references
+# - FIREWALLD section: zone selection per interface, how to
+#   open services persistently
+# - SELINUX section: the booleans + file-context patterns this
+#   section relies on
+# - NETWORKING section: NetworkManager, mDNS, the WireGuard /
+#   Tailscale "treat as LAN" pattern for off-network access
+# - BACKUPS section: borg / restic against a samba or NFS share
+# - DISK MANAGEMENT section: where /srv/share usually lives on
+#   modern fedora — its own subvolume or LV
+# - PERFORMANCE INVESTIGATION section: where the bottleneck
+#   actually is when a share feels slow
 
 
 CORPORATE VPN — OPENVPN, IPSEC, AND FRIENDS
