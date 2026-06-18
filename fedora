@@ -1481,28 +1481,359 @@ sudo systemctl enable --now my-maint.timer
 USERS, GROUPS, AND SUDO
 -----------------------
 
-# TODO STUB — the basics of multi-user admin on fedora. surprising
-# omission given how much of the rest of the primer leans on
-# `sudo` working correctly.
-# expected content:
-#   - useradd / usermod / userdel / passwd basics
-#   - the `wheel` group: how fedora wires it to sudo via
-#     /etc/pam.d/su and the default sudoers `%wheel` rule
-#   - groups that gate hardware: dialout (serial), video, render,
-#     input, kvm, libvirt, docker (and why "just add me to docker"
-#     is effectively root)
-#   - id / groups / getent passwd / getent group
-#   - sudoers.d drop-ins (NEVER edit /etc/sudoers directly —
-#     use `sudo visudo -f /etc/sudoers.d/<name>`)
-#   - passwordless sudo for specific commands (NOPASSWD: pattern,
-#     when it's reasonable, when it isn't)
-#   - polkit (pkexec) vs sudo: when GUI auth uses polkit
-#   - service accounts and `nologin` shells
-#   - chage / faillock / pam_tally2 for password aging + lockout
-#   - sssd / freeipa / AD join (one-paragraph pointer; out of
-#     scope for a workstation primer but worth naming)
-#   - cross-references: SELINUX (user contexts), SYSTEMD (User=
-#     directive), SHELL section
+# the basics of multi-user admin. most of the rest of this
+# primer assumes `sudo` works and that you understand which
+# group gates which capability — both of which are surprisingly
+# fedora-flavored.
+
+
+# THE USER MODEL — WHERE THINGS LIVE
+
+# fedora stores its local user database in three plain-text
+# files (plus shadow), inherited from every unix since the 80s:
+#
+#   /etc/passwd  — username, UID, GID, home, shell (world-readable)
+#   /etc/shadow  — password hashes + aging (root-only readable)
+#   /etc/group   — group name, GID, member list
+#   /etc/gshadow — group password hashes (rare)
+#   /etc/subuid  — subordinate UID ranges (used by rootless podman)
+#   /etc/subgid  — subordinate GID ranges (used by rootless podman)
+
+# UID conventions on fedora:
+#   0          → root
+#   1-999      → system / service accounts
+#   1000+      → human users (first user from anaconda gets 1000)
+#
+# (fedora moved system accounts up to 1-999 from the old 1-499.
+# you'll see this if you read older guides.)
+
+# read it like a database:
+getent passwd                  # everyone the system can resolve
+getent passwd $USER            # one entry
+getent group wheel             # one group + members
+getent group | grep $USER      # which groups am I in?
+id                             # my UID, GID, groups (numeric + name)
+id someuser                    # same for another user
+
+# who's logged in right now / who recently was:
+who
+w                              # who + what they're running
+last                           # login history
+loginctl                       # systemd-logind's view of sessions
+
+
+# CREATING, MODIFYING, REMOVING USERS
+
+# the everyday commands. fedora ships `useradd`, `usermod`,
+# `userdel` from shadow-utils — same as every other linux.
+
+# create a user with a home dir and the default shell (bash)
+sudo useradd -m -s /bin/bash alice
+sudo passwd alice                   # set a password
+
+# create a user already in the wheel group (admins)
+sudo useradd -m -G wheel alice
+
+# add an EXISTING user to a group WITHOUT removing them from
+# their current groups (the -a is the safety belt):
+sudo usermod -aG wheel,docker alice
+# WITHOUT -a, -G REPLACES the secondary group list. that's a
+# classic foot-gun: `usermod -G docker alice` will drop alice
+# from wheel, video, etc. ALWAYS use `-aG`.
+
+# rename / change shell / change home
+sudo usermod -l newname oldname
+sudo usermod -s /bin/zsh alice
+sudo usermod -d /home/newhome -m alice
+
+# remove a user (keep their home dir):
+sudo userdel alice
+# remove them AND their home + mail spool:
+sudo userdel -r alice
+
+# lock / unlock without changing the password:
+sudo usermod -L alice                # lock
+sudo usermod -U alice                # unlock
+# or with passwd:
+sudo passwd -l alice
+sudo passwd -u alice
+
+# groups are managed the same way:
+sudo groupadd developers
+sudo groupmod -n devs developers
+sudo groupdel devs
+
+# group membership changes don't apply to existing sessions.
+# either log out and back in, or use:
+newgrp <group>                       # in the current shell
+
+
+# THE WHEEL GROUP — FEDORA'S ADMIN PATH
+
+# `wheel` is the historical "can become root" group. fedora wires
+# it to two things by default:
+#
+#   1. sudo  — /etc/sudoers ships with this rule:
+#                %wheel  ALL=(ALL)  ALL
+#              meaning: any user in the wheel group can run any
+#              command as any user, after typing their OWN
+#              password.
+#
+#   2. su    — /etc/pam.d/su includes pam_wheel.so via
+#              `auth required pam_wheel.so use_uid` (commented
+#              by default; uncomment to restrict `su` to wheel
+#              members).
+#
+# the first user created by anaconda is automatically added to
+# wheel. to confirm or grant wheel to someone else:
+sudo usermod -aG wheel alice
+groups alice                          # verify
+
+# the GNOME "Administrator" toggle in Settings → Users does
+# exactly this — flipping it adds/removes the user from wheel.
+
+
+# SUDOERS — THE ONE RULE: DON'T EDIT /etc/sudoers DIRECTLY
+
+# /etc/sudoers is a single file with bizarre syntax and a global
+# lock. a typo there can lock everyone out of sudo, including
+# you. NEVER edit it with vi/nano/code directly.
+#
+# instead, drop a file into /etc/sudoers.d/ with `visudo`'s
+# syntax check:
+
+sudo visudo -f /etc/sudoers.d/10-myrule
+# visudo: validates syntax on save, holds the sudoers lock,
+# refuses to write if you produced something illegal.
+
+# filename conventions: a numeric prefix orders files. avoid
+# dots or tildes in the name — sudoers ignores files matching
+# the `~` or containing `.` by default.
+
+# example: a NOPASSWD entry for a specific maintenance script
+sudo tee /etc/sudoers.d/20-deploy <<'EOF'
+%developers ALL=(root) NOPASSWD: /usr/local/bin/deploy-prod
+EOF
+sudo chmod 0440 /etc/sudoers.d/20-deploy
+
+# verify rules without invoking them:
+sudo -l                              # what can I do?
+sudo -l -U alice                     # what can alice do?
+sudo -lU alice -i                    # alice's rules in her env
+
+# the "I locked myself out of sudo" recovery is the
+# `init=/bin/bash` trick — see BOOT TROUBLESHOOTING AND RESCUE.
+
+
+# NOPASSWD — WHEN IT'S REASONABLE
+
+# NOPASSWD is a real escalation surface. the question to ask is
+# "does this command (or args pattern) give an attacker a path
+# to arbitrary code execution?" if yes, don't NOPASSWD it.
+#
+# reasonable:
+#   - a single well-vetted script with a fixed path
+#   - read-only commands (NOPASSWD: /usr/bin/journalctl)
+#   - service control for one specific service:
+#       NOPASSWD: /usr/bin/systemctl restart myapp.service
+#
+# NOT reasonable:
+#   - NOPASSWD: ALL (you may as well give them root)
+#   - NOPASSWD: /usr/bin/vim (vim can `:!sh`)
+#   - NOPASSWD: /usr/bin/find (find can `-exec`)
+#   - NOPASSWD: any package manager or container runtime
+#
+# if you find yourself wanting NOPASSWD: ALL for ergonomics,
+# consider whether a longer sudo timeout solves the problem:
+#   Defaults  timestamp_timeout=30  (minutes; 0 = always ask;
+#                                    -1 = never expire)
+sudo tee /etc/sudoers.d/05-timeout <<'EOF'
+Defaults  timestamp_timeout=30
+EOF
+
+
+# HARDWARE-GATING GROUPS
+
+# linux uses unix groups as a coarse capability model for
+# hardware access. the common ones on fedora workstation:
+#
+#   wheel       — sudo (above)
+#   adm         — read access to /var/log (without sudo)
+#   audio       — historical; PipeWire makes this mostly irrelevant
+#   video       — /dev/video* (webcams), some GPU bits
+#   render      — /dev/dri/renderD* (GPU compute, vaapi)
+#   input       — /dev/input/* (raw HID — careful with this one)
+#   dialout     — /dev/ttyUSB*, /dev/ttyACM* (serial, microcontrollers,
+#                 USB CDC devices)
+#   plugdev     — historical; udev/polkit handle most of this now
+#   kvm         — /dev/kvm (virtualization)
+#   libvirt     — libvirtd socket (manage VMs without sudo)
+#   docker      — docker daemon socket
+#   wireshark   — /usr/bin/dumpcap with cap_net_raw (no sudo to capture)
+#
+# WHY `docker` IS EFFECTIVELY ROOT:
+#   the docker daemon runs as root. membership in the docker
+#   group means you can mount / into a container and chroot
+#   yourself to root. THIS IS NOT A SECURITY BOUNDARY. on
+#   fedora, prefer rootless `podman` (see CONTAINERS) which
+#   doesn't have this problem.
+#
+# add a user to one of these and the change applies to NEW
+# sessions only:
+sudo usermod -aG dialout alice
+# verify:
+id alice | tr , '\n' | grep dialout
+
+
+# POLKIT (pkexec) VS SUDO — WHO HANDLES GUI AUTH
+
+# the password prompts you see in GNOME Settings, gnome-disks,
+# fwupd, gnome-software, etc., are NOT sudo. they're polkit
+# (formerly PolicyKit). polkit:
+#
+#   - asks for YOUR password (admin-flagged) or root's
+#   - delegates authorization to a daemon over D-Bus
+#   - uses /etc/polkit-1/rules.d/ for custom rules (JavaScript)
+#   - is what GNOME / KDE / Cockpit reach for
+#
+# sudo is for shell-out-and-do-it. polkit is for "the GUI is
+# asking permission on your behalf."
+
+# inspect polkit:
+pkaction --verbose                    # all known actions
+pkcheck --action-id org.x.y --process-of $$    # would I be allowed?
+
+# admin group for polkit on fedora workstation: also `wheel`.
+# (gnome reads /etc/polkit-1/rules.d/ + the polkit defaults.)
+
+# the GUI command-line form:
+pkexec gnome-disks                    # GUI tool with elevation
+
+
+# SERVICE ACCOUNTS AND nologin SHELLS
+
+# system accounts (UID 1-999) almost never have a login shell.
+# they're meant to OWN files and RUN services, not log in.
+# typical entries look like:
+#
+#   nginx:x:991:991::/var/lib/nginx:/sbin/nologin
+#   postgres:x:26:26:PostgreSQL Server:/var/lib/pgsql:/bin/bash
+#
+# /sbin/nologin politely refuses ssh / su attempts; /bin/false
+# is rude (just exits). both are fine — use nologin for
+# clarity.
+
+# create a system account (no login, system-range UID):
+sudo useradd -r -s /sbin/nologin -d /var/lib/myapp -M myapp
+
+# the systemd `User=` directive in a service unit references
+# these accounts. see SYSTEMD for the unit pattern.
+
+# don't try to manually create UIDs in the system range — let
+# `useradd -r` pick. RPM packages claim specific UIDs sometimes
+# (postgres=26, mysql=27), and you'll collide.
+
+
+# PASSWORD AGING AND LOCKOUT
+
+# `chage` controls password expiration and account lockout
+# windows. fedora workstation doesn't enforce expiration by
+# default; this matters on hardened / multi-user systems.
+
+# inspect:
+sudo chage -l alice
+
+# set: max 90 days, warn at 7, minimum 1 day between changes
+sudo chage -M 90 -W 7 -m 1 alice
+
+# force a change at next login:
+sudo chage -d 0 alice
+
+# lock after N failed attempts via pam_faillock:
+sudo authselect select sssd with-faillock     # ↑ enables faillock
+# inspect failures:
+sudo faillock --user alice
+# clear lockout:
+sudo faillock --user alice --reset
+
+# (the older pam_tally2 module is deprecated; faillock is the
+# fedora-current path.)
+
+
+# AUTHSELECT — THE PAM CONFIG META-LAYER
+
+# fedora wraps PAM config in `authselect` so you don't hand-edit
+# /etc/pam.d/* anymore. it's a finite set of profiles + features.
+
+sudo authselect current               # what profile is active?
+sudo authselect list                  # available profiles
+sudo authselect list-features sssd    # features for a profile
+sudo authselect select sssd with-faillock with-mkhomedir
+
+# rule of thumb: edit pam files only when authselect has no
+# feature for what you need. otherwise authselect makes your
+# life much easier — and survives system upgrades.
+
+
+# CENTRAL IDENTITY — ONE-PARAGRAPH POINTER
+
+# everything above is LOCAL accounts. on a real corporate
+# network, identity lives in a directory (AD, LDAP, FreeIPA)
+# and fedora joins it via sssd. the join is:
+sudo dnf install sssd realmd adcli oddjob oddjob-mkhomedir
+sudo realm discover example.com
+sudo realm join example.com -U Administrator
+# users authenticate against the directory; sudo rules can come
+# from sssd-sudo too. on workstation this is uncommon; on
+# enterprise it's the default. out of scope here — the docs
+# live at sssd.io and freeipa.org.
+
+
+# HONEST TRADEOFFS
+
+# the temptation to add yourself to the `docker` group for
+# ergonomics is real. don't. prefer rootless podman (CONTAINERS
+# section). if you must use docker for some tooling, accept
+# that the host is effectively single-user-root.
+
+# NOPASSWD: ALL for "my dev box" is also tempting. don't. raise
+# the sudo timeout instead. the friction NOPASSWD removes isn't
+# worth the security hole.
+
+# `usermod -G` without `-a` is the most common destructive user
+# command. always type `-aG` reflexively — even when you mean to
+# replace, set the new list explicitly so the destruction is
+# obvious.
+
+# editing /etc/sudoers directly is the most common "I locked
+# myself out" mistake. always `visudo -f /etc/sudoers.d/...`.
+
+
+# QUICK REFERENCE
+
+#   "am I in the wheel group?"        → groups | grep wheel
+#   "make alice an admin"             → usermod -aG wheel alice
+#   "add a system service account"    → useradd -r -s /sbin/nologin myapp
+#   "passwordless sudo for one cmd"   → sudoers.d/ + NOPASSWD: /full/path
+#   "extend the sudo cache window"    → Defaults timestamp_timeout=30
+#   "verify a sudo rule"              → sudo -l   OR   sudo -lU alice
+#   "edit sudo safely"                → sudo visudo -f /etc/sudoers.d/<name>
+#   "GUI just asked for a password"   → that's polkit, not sudo
+#   "force password change next login"→ chage -d 0 alice
+#   "user is locked out"              → faillock --user alice --reset
+#   "join corporate AD"               → realm discover && realm join
+
+
+# cross-references
+# - SELINUX section: confined users, user_t vs unconfined_u,
+#   when standard user models butt up against MAC policy
+# - SYSTEMD section: User=, DynamicUser=, the difference between
+#   "system service" and "system account"
+# - CONTAINERS section: rootless podman, subuid/subgid mapping
+# - BOOT TROUBLESHOOTING section: init=/bin/bash if you locked
+#   yourself out of sudo
+# - SHELL section: $USER, $UID, $HOME — the env-level view
+# - VIRTUAL MACHINES section: libvirt group + qemu/kvm permissions
 
 
 TTYS — VIRTUAL TERMINALS (CTRL+ALT+F-KEYS)
