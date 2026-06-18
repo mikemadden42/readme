@@ -6534,46 +6534,407 @@ journalctl --user -u 'xdg-desktop-portal*' -b  # portal logs
 DISPLAYS — MULTI-MONITOR, HiDPI, FRACTIONAL SCALING
 ---------------------------------------------------
 
-# TODO STUB — the display-side complement to WAYLAND. how to
-# actually drive 1-N monitors with mixed DPI without misery.
-# expected content:
-#   - GNOME Settings → Displays: arrangement, scale picker,
-#     refresh rate, rotation, primary display
-#   - fractional scaling: enabling in F44 (now opt-out, was
-#     experimental for years); the mutter scale-monitor-framebuffer
-#     experimental feature flag (legacy)
-#   - per-monitor scaling on wayland (mixed-DPI works); the
-#     XWayland blur on legacy apps under fractional scale and
-#     the GDK_DPI_SCALE / GDK_SCALE / QT_AUTO_SCREEN_SCALE_FACTOR
-#     workarounds
-#   - HiDPI font rendering: subpixel order, hinting, fontconfig
-#     overrides in ~/.config/fontconfig
-#   - color management: ICC profiles via colord, GNOME Settings →
-#     Color, displaycal for calibration hardware (i1Display,
-#     ColorMunki, SpyderX)
-#   - night light / blue-light filter; gammastep on non-GNOME
-#   - HDR on wayland: F44 ships KMS HDR plumbing in mutter
-#     (experimental); when it actually works, what's blocked
-#   - VRR / FreeSync / G-SYNC: KMS-level VRR support, mutter's
-#     variable refresh rate flag, per-app enablement
-#   - refresh-rate matching for video: mutter's adaptive rate,
-#     mpv --display-fps
-#   - tools: wlr-randr (sway/wlroots), gnome-randr-rs (gnome
-#     wayland session), kanshi for laptop-dock auto-arrangements
-#   - X11/XWayland fallback: xrandr (X11 only); GDM Wayland vs
-#     Xorg session picker on the login screen
-#   - multi-GPU laptops: PRIME render offload, DRI_PRIME=1,
-#     __NV_PRIME_RENDER_OFFLOAD=1 (nvidia)
-#   - external display via USB-C / Thunderbolt; DisplayPort MST
-#     hubs; bolt for thunderbolt authorization
-#   - troubleshooting recipes:
-#     - "display doesn't wake after sleep" → kernel cmdline +
-#       drm.debug
-#     - "scaling looks blurry" → check if it's XWayland; force
-#       a wayland-native build or scale to integer
-#     - "external monitor not detected" → kscreen-doctor / wlr-randr
-#       to verify the kernel sees it; check journalctl for EDID errors
-#   - cross-references: WAYLAND, NVIDIA, GNOME TIPS, POWER MANAGEMENT
+# the display-side complement to WAYLAND. how to drive 1-N
+# monitors with mixed DPI on fedora 44 without misery.
+
+
+# THE DISPLAY STACK — WHO DOES WHAT
+
+# from kernel up:
+#
+#   KMS / DRM           — the kernel driver for the GPU. mode
+#                         setting, EDID parsing, framebuffer
+#                         management. /sys/class/drm/...
+#   mesa / vulkan       — userspace graphics stack; renders to
+#                         GPU buffers.
+#   mutter              — gnome's wayland compositor. owns
+#                         arrangement, scaling, refresh, VRR,
+#                         HDR plumbing. eats dbus + gsettings.
+#   wayland clients     — apps that draw natively (firefox,
+#                         gnome apps, modern electron).
+#   XWayland            — translation layer for X11 apps under
+#                         a wayland compositor; source of most
+#                         scaling weirdness.
+
+# when something's wrong, ask: did the kernel see the panel
+# (KMS / EDID)? does mutter list it? does the app draw native
+# or through XWayland? — that's most of the diagnosis.
+
+
+# THE 95% PATH — GNOME SETTINGS → DISPLAYS
+
+# this UI is now genuinely good. it handles:
+#   - arrangement (drag and drop)
+#   - per-monitor scale (100% → 200%, with fractional in between)
+#   - refresh rate (per-monitor, including modes the panel reports)
+#   - rotation (portrait monitors)
+#   - "primary display" (where the top bar lives)
+#   - mirror vs join
+#   - night light schedule
+#
+# for one or two monitors, this is the whole story. drop to the
+# CLI only when you need automation or you hit something weird.
+
+
+# FRACTIONAL SCALING IN FEDORA 44
+
+# fractional scaling (125% / 150% / 175%) has been default-on in
+# GNOME on wayland since fedora 40. on F44 it's just there in
+# the Scale picker in Settings → Displays.
+
+# if you're on a downgraded gnome or you want to confirm the
+# experimental flag is on (legacy systems):
+gsettings get org.gnome.mutter experimental-features
+# should include 'scale-monitor-framebuffer'. if not:
+gsettings set org.gnome.mutter experimental-features \
+    "['scale-monitor-framebuffer']"
+
+# mixed-DPI multi-monitor "just works" on wayland: each output
+# gets its own scale. drag a window across monitors and it
+# resizes correctly — that's mutter doing per-output rendering,
+# which X11 fundamentally couldn't.
+
+
+# XWAYLAND AND THE BLURRY-LEGACY-APP PROBLEM
+
+# the most common "ugh" — an old X11 app (electron 12, jetbrains
+# tools on certain JDKs, legacy java swing apps, older steam UI)
+# looks fuzzy under fractional scaling because XWayland scales
+# the X11 buffer up before display.
+
+# inventory: what's actually running on XWayland vs wayland-native?
+xlsclients                          # wayland session lists X11 clients
+# or per-app: about:support in firefox shows "Window Protocol".
+
+# the modern workarounds, in order of preference:
+
+# 1. switch the app to a wayland-native build. firefox, chromium,
+#    electron 22+, jetbrains 2024.1+, java 21+ all have wayland.
+#    set hints per-app:
+export MOZ_ENABLE_WAYLAND=1                          # firefox/thunderbird
+export ELECTRON_OZONE_PLATFORM_HINT=wayland          # vscode, slack, etc.
+export _JAVA_AWT_WM_NONREPARENTING=1                 # old swing apps
+# (modern jetbrains: set in idea.properties)
+
+# 2. set GDK_SCALE for integer scaling on still-X11 GTK apps:
+export GDK_SCALE=2 GDK_DPI_SCALE=0.5
+# (this gives 200% via X11; clean but loses fractional steps.)
+
+# 3. force Qt apps to obey wayland-scale:
+export QT_QPA_PLATFORM="wayland;xcb"                 # try wayland, fall back
+export QT_AUTO_SCREEN_SCALE_FACTOR=1
+
+# 4. enable mutter's xwayland fractional scaling (F40+):
+gsettings set org.gnome.mutter experimental-features \
+    "['scale-monitor-framebuffer','xwayland-native-scaling']"
+# this makes XWayland speak fractional scale instead of crude
+# integer-then-downscale. the F44 default keeps it OFF; turn it
+# on if you have a workflow that's heavy in X11 apps. some apps
+# (cad, old game launchers) can misbehave with it on.
+
+
+# HiDPI FONT RENDERING
+
+# on a 4K 27" panel at 200% scale, fonts look great by default.
+# the tuning knobs that matter when they don't:
+
+# subpixel order, hinting, antialiasing — these are fontconfig:
+mkdir -p ~/.config/fontconfig
+cat > ~/.config/fontconfig/fonts.conf <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <match target="font">
+    <edit name="antialias" mode="assign"><bool>true</bool></edit>
+    <edit name="hinting" mode="assign"><bool>true</bool></edit>
+    <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+    <edit name="rgba" mode="assign"><const>rgb</const></edit>
+    <edit name="lcdfilter" mode="assign"><const>lcddefault</const></edit>
+  </match>
+</fontconfig>
+EOF
+fc-cache -fv
+
+# verify what a specific font is doing:
+fc-match 'JetBrains Mono'
+fc-match -s 'monospace' | head -5
+
+# the LOCALE / FONTS / INPUT METHODS section covers font
+# installation in more depth.
+
+
+# COLOR MANAGEMENT — colord + ICC
+
+# fedora ships colord and gnome-color-manager out of the box.
+# Settings → Color shows every output, lets you assign an ICC
+# profile per display, and runs nightly color sync.
+
+# install a calibration utility:
+sudo dnf install displaycal argyllcms
+# argyllcms supports common hardware: X-Rite/Calibrite i1Display
+# Pro, ColorMunki, DataColor SpyderX. plug in, run displaycal,
+# generate a .icc, assign in Settings → Color → "Add Profile".
+
+# command-line color tooling:
+colormgr get-devices                                 # what colord knows
+colormgr device-set-profile <DEVICE> <PROFILE>
+colormgr import-profile ~/Downloads/sRGB-v4.icc
+
+# the per-app color side (firefox color management, kdenlive
+# project color spaces, krita) is out of scope here.
+
+
+# NIGHT LIGHT / BLUE-LIGHT FILTER
+
+# GNOME's built-in: Settings → Displays → Night Light.
+# schedule (sunset/sunrise via geoclue, or manual hours) and
+# color temperature slider.
+
+# on non-GNOME wayland (sway, hyprland):
+sudo dnf install gammastep
+# gammastep <location-options>; configure via
+# ~/.config/gammastep/config.ini
+
+
+# HDR — STILL EXPERIMENTAL, GETTING REAL
+
+# fedora 44 ships kernel + mutter with KMS HDR plumbing
+# (HDR10 metadata, BT.2020, PQ EOTF). it works for some uses,
+# doesn't for others.
+
+# enable:
+gsettings set org.gnome.mutter experimental-features \
+    "['scale-monitor-framebuffer','xwayland-native-scaling','hdr']"
+
+# what works on F44:
+#   - games via gamescope (steam → properties → launch options:
+#     `gamescope -W 2560 -H 1440 -r 165 --hdr-enabled -- %command%`)
+#   - mpv with vo=gpu-next and target-prim=auto
+#   - obs studio HDR capture (with proper preset)
+#
+# what's flaky:
+#   - browser video (chromium/firefox HDR is still landing)
+#   - non-gamescope native games
+#   - SDR content on HDR mode (tone-mapping varies by output)
+#
+# this section will date faster than anything else here. the
+# fedora wiki and reddit r/linux_gaming track it best.
+
+
+# VRR — FREESYNC / G-SYNC ON LINUX
+
+# variable refresh rate is supported at the KMS level for
+# AMD (FreeSync) and recent NVIDIA (G-Sync compatible).
+
+# enable in mutter (F44+):
+gsettings set org.gnome.mutter experimental-features \
+    "['variable-refresh-rate','scale-monitor-framebuffer']"
+
+# verify the panel and cable both support it:
+xrandr --props | grep -i 'vrr\|variable'             # on Xorg session
+# (no clean wayland equivalent; mutter logs "VRR enabled for
+# output X" in journalctl -u gdm if you have debug enabled)
+
+# the per-game story — gamescope can negotiate VRR for games
+# that don't speak it natively. tearing in some apps is still
+# possible; toggle on/off if you see weirdness in non-game UIs.
+
+
+# REFRESH-RATE MATCHING FOR VIDEO
+
+# mutter can briefly switch refresh rate while a video is
+# fullscreen so 24fps content plays without judder on a 60Hz
+# panel. opt-in:
+gsettings set org.gnome.mutter experimental-features \
+    "['rt-scheduler','dma-buf-screen-sharing']"
+# (the specific 'refresh-rate-matching' flag landed and was
+# folded into default behavior in gnome 46+; check the schema
+# on your installed version.)
+
+# mpv has its own player-side matching that works well:
+echo 'video-sync=display-resample' >> ~/.config/mpv/mpv.conf
+echo 'interpolation=yes'           >> ~/.config/mpv/mpv.conf
+
+
+# TOOLS — DISPLAY MANAGEMENT FROM THE CLI
+
+# under GNOME's wayland session, randr-style CLIs are limited
+# because mutter owns layout. you have:
+
+# gnome-randr-rs (rust, gnome-specific wayland):
+sudo dnf install gnome-randr        # may need a copr; check
+gnome-randr                         # list outputs
+gnome-randr --output DP-1 --mode 3840x2160@144
+
+# wlr-randr (works on wlroots compositors — sway, hyprland.
+# NOT gnome):
+sudo dnf install wlr-randr
+wlr-randr
+
+# kanshi (auto-config laptop+dock arrangements based on
+# connected outputs — wlroots compositors):
+sudo dnf install kanshi
+# ~/.config/kanshi/config defines profiles per output set;
+# kanshi swaps automatically when you dock/undock.
+
+# X11 only — still useful in an Xorg session:
+xrandr --output DP-1 --mode 2560x1440 --rate 144 --primary
+xrandr --output HDMI-1 --rotate left
+
+
+# X11 FALLBACK — WHEN AND HOW
+
+# fedora's GDM defaults to a wayland session. for X11 use cases
+# (legacy color-management, screen-recording tools that haven't
+# moved, some commercial tools):
+
+# at login: gear icon → "GNOME on Xorg" before signing in.
+# if "GNOME on Xorg" is missing on F44, install:
+sudo dnf install gnome-session-xsession
+
+# inside an Xorg session, xrandr is fully functional and the
+# tooling generations of guides assume "just works."
+
+# WAYLAND section covers when XWayland is enough vs when you
+# actually need a full Xorg session.
+
+
+# MULTI-GPU LAPTOPS — PRIME RENDER OFFLOAD
+
+# many laptops have an integrated iGPU plus a discrete dGPU
+# (Intel + NVIDIA, AMD + AMD, etc.). the desktop runs on the
+# iGPU for battery; you offload specific apps to the dGPU.
+
+# AMD / Intel (mesa-driven):
+DRI_PRIME=1 glxinfo | grep "OpenGL renderer"          # which GPU rendered?
+DRI_PRIME=1 myapp                                     # run on the dGPU
+
+# NVIDIA hybrid (PRIME render offload):
+__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia myapp
+# steam → game launch options:
+#   __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia %command%
+# verify:
+nvidia-smi                                            # processes running on dGPU
+
+# the NVIDIA section covers driver install + the akmod path.
+# DKMS-style packaging is rare for nvidia on fedora.
+
+
+# EXTERNAL DISPLAY — USB-C, THUNDERBOLT, DP-MST
+
+# USB-C and Thunderbolt 3/4 carry DisplayPort. for thunderbolt
+# specifically, fedora gates new devices behind `bolt` (the
+# thunderbolt authorization daemon) — otherwise rogue devices
+# could DMA-attack you.
+
+# inspect connected thunderbolt devices:
+boltctl list
+boltctl authorize <UUID>                              # one-shot
+boltctl enroll <UUID> --policy auto                   # remember it
+# GNOME Settings → Privacy → Thunderbolt is the GUI.
+
+# DisplayPort MST (multi-stream — one DP cable carrying multiple
+# monitors via a hub): supported by KMS; mutter shows the
+# individual outputs after the kernel enumerates them. some
+# hubs misreport EDID; the recipe is below.
+
+
+# TROUBLESHOOTING RECIPES
+
+# 1. EXTERNAL MONITOR NOT DETECTED
+sudo dmesg | grep -iE 'drm|edid' | tail -40
+ls /sys/class/drm/                                     # connected outputs
+cat /sys/class/drm/card1-DP-1/status                  # "connected" / "disconnected"
+cat /sys/class/drm/card1-DP-1/edid | edid-decode      # what the panel reports
+# check the cable / dongle if the kernel doesn't see "connected."
+
+# 2. SCALING LOOKS BLURRY ON ONE APP
+xlsclients                                            # is the app X11?
+# if yes: enable xwayland-native-scaling (above) OR find a
+# wayland-native build. if no, check the app's HiDPI flag
+# (electron --enable-features=UseOzonePlatform).
+
+# 3. DISPLAY DOESN'T WAKE FROM SLEEP
+# common cause: dGPU suspend state. tail kernel:
+sudo journalctl -k -b -1 | grep -iE 'drm|gpu' | tail -50
+# common fix on intel:
+#   kernel cmdline: i915.enable_psr=0
+# common fix on amd:
+#   kernel cmdline: amdgpu.dpm=0  (rare, last resort)
+# common fix on nvidia hybrid:
+#   make sure nvidia-suspend.service / nvidia-resume.service
+#   are enabled (akmod package installs them).
+# see KERNEL CMDLINE for how to add args; POWER MANAGEMENT for
+# the sleep-state knobs.
+
+# 4. MONITOR FORCES A WRONG REFRESH RATE / RESOLUTION
+# usually bad EDID. tell the kernel to use a custom EDID blob:
+sudo cp my.edid /lib/firmware/edid/dp1-edid.bin
+# kernel cmdline:
+#   drm.edid_firmware=DP-1:edid/dp1-edid.bin
+# verify:
+cat /sys/class/drm/card1-DP-1/edid | edid-decode
+sudo dracut --force                                    # rebuild initramfs
+
+# 5. FRACTIONAL SCALING BROKE AFTER GNOME UPDATE
+gsettings reset org.gnome.mutter experimental-features
+# then reset to the F44 default:
+gsettings set org.gnome.mutter experimental-features \
+    "['scale-monitor-framebuffer']"
+
+
+# HONEST TRADEOFFS
+
+# wayland on fedora 44 handles mixed-DPI multi-monitor better
+# than any other linux setup, full stop. the cost is that any
+# remaining X11 app pays an XWayland scaling penalty. for most
+# users in 2026, this is fine — the X11 long tail is short.
+
+# fractional scaling looks good but bumps GPU usage on weak
+# integrated graphics (battery cost on older laptops). on a
+# fanless / older machine, integer scaling (100% or 200%) is
+# noticeably easier on the GPU.
+
+# HDR and VRR are genuinely useful but still in active dev.
+# turn them on if you want them, but don't be surprised when
+# behavior changes across two gnome point releases.
+
+# bolt's "ask before trusting" prompt on thunderbolt looks
+# annoying. it's not — DMA attacks via thunderbolt are real.
+# enroll trusted dock/peripherals with `--policy auto`, leave
+# the prompt on for everything else.
+
+
+# QUICK REFERENCE
+
+#   set scale / refresh / arrangement       → Settings → Displays
+#   confirm fractional scaling is on        → gsettings get org.gnome.mutter experimental-features
+#   turn on xwayland fractional scale       → add 'xwayland-native-scaling' to that key
+#   turn on HDR (experimental)              → add 'hdr'
+#   turn on VRR                             → add 'variable-refresh-rate'
+#   list outputs from cli                   → gnome-randr / wlr-randr / xrandr
+#   what protocol is this app using?        → xlsclients (anything listed = X11)
+#   external monitor not detected           → dmesg | grep edid; check cable
+#   thunderbolt dock not working            → boltctl list / authorize
+#   blurry app                              → XWayland; switch to native build
+#   sleep / wake regression                 → journalctl -k -b -1 | grep gpu
+#   color calibration                       → Settings → Color + displaycal
+#   automation across dock/undock           → kanshi (wlroots) / gnome-randr (gnome)
+
+
+# cross-references
+# - WAYLAND section: protocol mechanics, what XWayland still
+#   does and doesn't handle
+# - NVIDIA section: hybrid graphics, akmod, driver options,
+#   PRIME render offload setup
+# - GNOME TIPS section: top bar, hot corner, workspace behavior
+#   per monitor
+# - POWER MANAGEMENT section: panel sleep, dGPU runtime
+#   suspension, the suspend/resume cycle
+# - KERNEL CMDLINE section: i915.* / amdgpu.* / nvidia-drm.*
+#   knobs, drm.edid_firmware= for misbehaving EDIDs
+# - LOCALE / FONTS section: font installation and rendering
+#   beyond what fontconfig does at the display layer
 
 
 LOCALE / FONTS / INPUT METHODS
