@@ -7797,6 +7797,219 @@ gsettings reset org.gnome.desktop.interface color-scheme
 dconf reset -f /org/gnome/
 
 
+DCONF — DUMP, LOAD, AND VERSION YOUR PREFERENCES
+------------------------------------------------
+
+# `dconf` is the per-user settings database that backs GNOME
+# (and most GTK / libadwaita apps). `gsettings` is the higher-
+# level API over the same store with schema validation. once
+# you know dconf is "the settings DB," the dump/load workflow
+# below becomes obvious — and very useful for backups,
+# machine-to-machine migration, dotfile version control, and
+# diffing "what did clicking that toggle actually change?"
+
+
+# THE STACK
+
+#   gsettings              — high-level API. requires a schema.
+#                            the "right" way to script changes.
+#   dconf                  — raw store. lets you read/write keys
+#                            without a schema; great for backup,
+#                            export, system-wide defaults.
+#   dconf-editor (GUI)     — regedit-style browser of the same store.
+#   ~/.config/dconf/user   — the actual binary DB on disk.
+
+# the relationships you care about:
+#   gsettings set ... ↔ dconf write
+#   gsettings list-recursively ... ↔ dconf dump
+#   gsettings reset ... ↔ dconf reset
+# gsettings only sees keys that have a schema installed
+# (/usr/share/glib-2.0/schemas/). dconf sees EVERY key.
+
+
+# DUMP — BACKUP AND TRANSFER
+
+# the canonical export. always trailing slash on the path —
+# without it dconf dumps a single key, not a subtree.
+dconf dump / > ~/dconf-full.ini
+dconf dump /org/gnome/ > ~/dconf-gnome.ini
+dconf dump /org/gnome/desktop/wm/ > ~/dconf-wm.ini
+dconf dump /org/gnome/Ptyxis/ > ~/dconf-ptyxis.ini
+
+# the output is an INI file with [path] sections and key=value
+# pairs. all values are GVariant-typed text — strings are
+# 'quoted', booleans true/false, integers bare. dconf round-trips
+# its own format perfectly; resist hand-editing types you don't
+# fully understand.
+
+
+# LOAD — RESTORE OR APPLY ON A NEW MACHINE
+
+# load reads from stdin and applies to the given subtree. the
+# path you load to must match the dump's namespace.
+dconf load /org/gnome/ < ~/dconf-gnome.ini
+dconf load / < ~/dconf-full.ini
+
+# load is ADDITIVE — existing keys outside the dump are
+# preserved. to clear a subtree before loading, reset first:
+dconf reset -f /org/gnome/Ptyxis/
+dconf load   /org/gnome/Ptyxis/ < ~/dconf-ptyxis.ini
+
+
+# THE WORKFLOWS YOU'LL ACTUALLY USE
+
+# 1. BACKUP BEFORE A RISKY GNOME UPGRADE
+dconf dump / > ~/dconf-before-f$(rpm -E %fedora)-upgrade.ini
+
+# 2. MIGRATE TO A FRESH FEDORA INSTALL
+# on OLD machine:
+dconf dump / > ~/Sync/dconf-$(hostname).ini
+# move file over (rsync, syncthing, restic, the BACKUPS section).
+# on NEW machine, after installing gnome and your apps:
+dconf load / < ~/Sync/dconf-laptop.ini
+# log out and back in. ~95% of "make this machine feel like my
+# old one" is now done.
+
+# 3. SHARE JUST THE BITS YOU CARE ABOUT
+dconf dump /org/gnome/desktop/input-sources/ > kbd.ini
+dconf dump /org/gnome/desktop/wm/keybindings/ > keybindings.ini
+dconf dump /org/gnome/Ptyxis/                > ptyxis.ini
+# commit these to your dotfiles repo as the canonical source.
+
+# 4. PUT YOUR GNOME PREFS IN GIT
+mkdir -p ~/.config/dconf-dotfiles && cd ~/.config/dconf-dotfiles
+dconf dump /org/gnome/shell/        > shell.ini
+dconf dump /org/gnome/terminal/     > terminal.ini
+dconf dump /org/gnome/desktop/wm/   > wm.ini
+git init && git add . && git commit -m "snapshot"
+# replay later:
+for f in *.ini; do
+    p="/${f%.ini}/"
+    dconf load "$p" < "$f"
+done
+
+# 5. SEE EXACTLY WHAT A SETTINGS TOGGLE CHANGES
+# in one terminal:
+dconf watch /
+# go click the toggle in GNOME Settings. dconf prints the key
+# and new value as it changes. this is the best way to figure
+# out "what key do I script to get this effect?"
+
+
+# DIFF TWO DUMPS — "WHAT'S DIFFERENT?"
+
+# the killer feature for migrations and "did this app change a
+# setting on me?" investigations:
+diff -u ~/dconf-yesterday.ini ~/dconf-now.ini | less
+
+# more readable for big diffs:
+sudo dnf install dconf-cli git
+git diff --no-index ~/dconf-yesterday.ini ~/dconf-now.ini
+
+# pair with a periodic cron / systemd timer if you're the kind
+# of person who likes to see WHY your desktop drifted over a
+# year:
+mkdir -p ~/.local/state/dconf-snapshots
+( crontab -l 2>/dev/null
+  echo "0 3 * * * dconf dump / > ~/.local/state/dconf-snapshots/$(date +\\%F).ini" ) \
+  | crontab -
+
+
+# SYSTEM-WIDE DEFAULTS (FLEET / LAB MACHINES)
+
+# /etc/dconf/ holds locked-down defaults that override per-user
+# choices (or just set them as initial values). useful for
+# kiosks, lab machines, or any fleet where you want every user
+# to start with the same setup.
+
+# 1. define your profile
+sudo tee /etc/dconf/profile/user >/dev/null <<'EOF'
+user-db:user
+system-db:fleet
+EOF
+
+# 2. drop the defaults under /etc/dconf/db/fleet.d/
+sudo mkdir -p /etc/dconf/db/fleet.d
+sudo tee /etc/dconf/db/fleet.d/10-favourites >/dev/null <<'EOF'
+[org/gnome/shell]
+favorite-apps=['firefox.desktop', 'org.gnome.Ptyxis.desktop', 'code.desktop']
+
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,maximize,close'
+EOF
+
+# 3. (optional) LOCK keys so users can't override:
+sudo tee /etc/dconf/db/fleet.d/locks/lab >/dev/null <<'EOF'
+/org/gnome/shell/favorite-apps
+EOF
+
+# 4. compile and propagate:
+sudo dconf update
+# subsequent user sessions pick this up; users still in a
+# session need to log out and back in.
+
+
+# WATCH AND READ — INSPECT WITHOUT EDITING
+
+dconf list /org/gnome/                         # immediate children only
+dconf read /org/gnome/desktop/interface/color-scheme
+dconf watch /                                  # live feed of every change
+
+# pair `dconf watch /` with a recording of your own
+# Settings → toggle sessions to build muscle memory of which
+# key controls what. this is how every GNOME tinkerer learns
+# the schema namespace.
+
+
+# HONEST TRADEOFFS
+
+# dconf dumps are NOT cross-version-safe in the strict sense —
+# GNOME 47's keys are mostly GNOME 46's keys plus a few additions,
+# but some keys move or get removed across major versions.
+# expect to skim a diff after restoring across more than one
+# release.
+
+# extensions store state under /org/gnome/shell/extensions/.
+# include this path if you want your extension config to migrate;
+# the extensions THEMSELVES still need to be installed
+# separately (gnome-extensions-app or `gnome-extensions install`).
+
+# `dconf load` cannot remove a key that's not in the input file —
+# it's additive. if you're rebuilding a clean state, reset
+# first (`dconf reset -f /org/gnome/`), then load.
+
+# everything here is per-USER. system identity (users, sudo,
+# polkit) is unrelated; see USERS, GROUPS, AND SUDO.
+
+
+# QUICK REFERENCE
+
+#   backup everything                  → dconf dump / > file.ini
+#   restore everything                 → dconf load / < file.ini
+#   backup one subtree                 → dconf dump /org/gnome/Ptyxis/ > ptyxis.ini
+#   what changes when I click this?    → dconf watch /
+#   diff two snapshots                 → diff -u old.ini new.ini
+#   single-key inspect                 → dconf read /path/to/key
+#   single-key reset                   → dconf reset /path/to/key
+#   reset a whole subtree              → dconf reset -f /org/gnome/Ptyxis/
+#   system-wide defaults               → /etc/dconf/db/<name>.d/ + dconf update
+#   GUI to browse the store            → dconf-editor
+
+
+# cross-references
+# - GNOME TIPS section: the friendly UI on top of these same
+#   keys (gnome-tweaks, gnome-extensions-app, dconf-editor)
+# - BACKUPS section: include ~/.config/dconf/user in restic /
+#   borg backups; or dump to a known path your backup tool
+#   already grabs
+# - SHELL AND DEV-ENVIRONMENT PHILOSOPHY section: dconf dumps
+#   in your dotfiles repo, alongside .config/, are the modern
+#   "ricing in git" pattern
+# - MIGRATION FROM WINDOWS / MACOS section: this is the
+#   per-user "registry" linux equivalent; dconf dump → load is
+#   the closest thing to copying HKCU\Software across machines
+
+
 WAYLAND — WHAT'S STILL DIFFERENT
 --------------------------------
 
