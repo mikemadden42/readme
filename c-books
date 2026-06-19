@@ -1,0 +1,45 @@
+# c books
+
+# goal: learn c to ~k&r fluency, then write it correctly/safely.
+# see why-learn-c for the case, and c-to-rust-rewrite for what comes after.
+
+
+# best book to actually LEARN c from today
+# C Programming: A Modern Approach, 2nd Edition
+# - K. N. King
+# - beginner-friendly, thorough, excellent exercises, covers C99
+# - the usual "one book to learn c" pick. start here if learning fresh.
+
+
+# modern, correct, current-standard c
+# Modern C
+# - Jens Gustedt
+# - covers C11 / C17 / C23, very current
+# - free legal PDF online. read after the basics.
+
+
+# secure / correct c, by a standards-committee expert
+# Effective C, 2nd Edition (2024)
+# - Robert Seacord (No Starch)
+# - modern standards + heavy focus on undefined behavior and security
+# - good "now write it correctly" follow-up
+
+
+# the classic — own it, but not as your first teacher
+# The C Programming Language, 2nd Edition (1988)
+# - Brian Kernighan & Dennis Ritchie ("K&R")
+# - iconic, concise, beautiful prose; great reference
+# - dated: C89, terse, assumes you can already program, some idioms now
+#   considered bad practice (gets, implicit int). read as a supplement.
+
+
+# systems depth (not strictly a c book)
+# Computer Systems: A Programmer's Perspective ("CS:APP")
+# - Bryant & O'Hallaron
+# - best book for WHY c behaves as it does at the machine level
+
+
+# the path
+# - learning fresh:  K. N. King (main) + Modern C (free, brings you current)
+# - K&R alongside for prose / history
+# - Effective C once the basics are solid, to write safe modern c

@@ -8,6 +8,7 @@ See [TODO.md](TODO.md) for known stale content.
 
 - [a-out-history](a-out-history) — where the `a.out` filename came from
 - [why-learn-c](why-learn-c) — the case for learning C in 2026
+- [c-books](c-books) — C reading list
 - [c-to-rust-rewrite](c-to-rust-rewrite) — will all C be rewritten in Rust?
 - [zig-notes](zig-notes) — Zig's place in the C/Rust discussion, ergonomics wins
 - [go-notes](go-notes) — Go's place in the C/Rust/Zig discussion
