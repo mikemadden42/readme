@@ -1,0 +1,51 @@
+# modern swift: what's new since swift 5.3 (2020)
+
+# context: the Big Nerd Ranch Guide (3rd ed, 2020) teaches swift 5 / 5.3.
+# the fundamentals it covers are still 100% valid in 2026 — optionals,
+# value vs reference types, structs/classes/enums, protocols, generics,
+# closures, error handling, pattern matching, value semantics.
+# everything below is ADDITIVE — language features that landed after the book.
+# work through these after finishing the book, concurrency FIRST.
+
+
+# 1. concurrency (swift 5.5, 2021) — THE big gap
+# - async / await replaces completion-handler callbacks
+# - structured concurrency: Task, TaskGroup, async let
+# - actors + @MainActor for isolating shared mutable state
+# - Sendable, AsyncSequence
+# - modern swift is unrecognizable here vs 2020. don't skip.
+
+# 2. swift 6 language mode / strict data-race safety (swift 6.0, 2024)
+# - compile-time data-race checking, default for new projects
+# - the thing that frustrates everyone: Sendable errors, actor isolation
+# - tightly tied to #1; learn them together
+
+# 3. macros + observation (swift 5.9, 2023)
+# - macros: compile-time code generation (@attached / #freestanding)
+# - @Observable replaces ObservableObject / @Published for state
+
+# 4. quality-of-life syntax you'll see everywhere
+# - if let foo { ... }        shorthand, no "= foo"  (5.7)
+# - if / switch as expressions that return a value    (5.9)
+# - first-class Regex type + regex literals           (5.7)
+# - typed throws: throws(MyError)                      (6.0)
+# - explicit any / some existential keywords
+
+# 5. adjacent: SwiftUI
+# - out of scope for the language book, but real-world UI is SwiftUI-first
+# - leans heavily on #1 (concurrency) and #3 (@Observable)
+
+
+# best free / current resources to fill the gaps
+# - The Swift Programming Language book (free, swift.org) — kept current,
+#   includes the concurrency chapters
+# - Apple WWDC sessions: async/await, actors, "migrating to Swift 6"
+
+
+# rough version timeline for reference
+# 5.5  (2021)  async/await, actors, structured concurrency
+# 5.6  (2022)  existential any, type placeholders
+# 5.7  (2022)  if let shorthand, regex, Clock/Duration, some/any cleanup
+# 5.9  (2023)  macros, if/switch expressions, parameter packs, @Observable
+# 5.10 (2024)  full data isolation checking
+# 6.0  (2024)  swift 6 mode (strict concurrency), typed throws, embedded swift

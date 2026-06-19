@@ -36,6 +36,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [gem](gem) — Ruby gems
 - [swift-package-manager](swift-package-manager) — SwiftPM
 - [swift-books](swift-books) — Swift reading list
+- [swift-modern-since-5.3](swift-modern-since-5.3) — language features added after Swift 5.3 (2020)
 - [gui-frameworks](gui-frameworks), [qt](qt) — GUI framework picks per OS
 
 ## Python
