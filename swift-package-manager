@@ -3,16 +3,29 @@
 # create a new project
 mkdir hello && cd hello
 swift package init --type executable
+# other templates: library, tool, build-tool-plugin, command-plugin, macro, empty
+swift package init --type library
+
+# check / set the minimum SwiftPM tools version (top of Package.swift)
+swift package tools-version
+swift package tools-version --set-current
+
+# build and run the executable in one step (forwards args after --)
+swift run
+swift run hello --some-flag
+swift run -c release
 
 # reformat code
 swiftformat --swiftversion 5 -v .
 
-# lint code
-swiftLint .
+# lint code (binary is lowercase)
+swiftlint .
 
 # build with debug or release configuration
 swift build -c debug
 swift build -c release
+swift build --product hello        # build one product
+swift build --target hello         # build one target
 
 # create & sign universal binary
 # https://www.smileykeith.com/2020/12/24/swiftpm-cross-compile/
@@ -23,10 +36,36 @@ codesign -s - .build/apple/Products/Release/hello
 # build with debug or release configuration
 swift test -c debug
 swift test -c release
+swift test --filter MyTests           # run a subset by regex
+swift test --list-tests               # list without running
+swift test --parallel                 # run test cases in parallel
+swift test --enable-code-coverage     # emit coverage data
+
+# dependencies
+swift package resolve                 # resolve to Package.resolved
+swift package update                  # update to latest allowed versions
+swift package update SomeLib          # update a single dependency
+swift package show-dependencies       # print the dependency tree
+swift package add-dependency https://github.com/apple/swift-argument-parser --from 1.0.0
+
+# inspect the package
+swift package describe                 # human-readable summary
+swift package describe --type json
+swift package dump-package             # Package.swift as JSON
+
+# edit a dependency locally (point at a checkout, then revert)
+swift package edit SomeLib --path ../SomeLib
+swift package unedit SomeLib
+
+# checksum a binary target / artifact bundle for Package.swift
+swift package compute-checksum SomeLib.zip
+
+# detect public API breakage vs a baseline ref
+swift package diagnose-api-breaking-changes main
 
 # clean up project
-swift package clean
-swift package reset
+swift package clean                    # remove build artifacts
+swift package reset                    # also drop resolved deps + cache
 
 # format project
 swiftformat --swiftversion 5 -v .
