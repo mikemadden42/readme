@@ -4,3 +4,6 @@
 # - Matthew Mathias, Mikey Ward, John Gallagher
 # - Big Nerd Ranch Guides series
 # - published Oct 16, 2020
+
+# note: covers swift 5 / 5.3. for what's changed since (concurrency, swift 6
+# mode, macros, etc.) see swift-modern-since-5.3
