@@ -35,6 +35,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [dotnet](dotnet) — .NET CLI
 - [gem](gem) — Ruby gems
 - [swift-package-manager](swift-package-manager) — SwiftPM
+- [swift-books](swift-books) — Swift reading list
 - [gui-frameworks](gui-frameworks), [qt](qt) — GUI framework picks per OS
 
 ## Python
