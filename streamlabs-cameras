@@ -48,6 +48,13 @@ NO VIDEO — 60-SECOND TRIAGE
 #     to TCP/554? from PowerShell:
 Test-NetConnection -ComputerName 192.168.1.50 -Port 554
 #     "TcpTestSucceeded : True" = clear. False = firewall or routing.
+#     NOTE: Test-NetConnection defaults to TCP, which is exactly what
+#     you want here — TCP/554 is the RTSP control channel. you can't
+#     usefully pre-probe the RTP data port because it's UDP and the
+#     port number is negotiated dynamically per session in the SETUP
+#     handshake. forcing -rtsp_transport tcp in the Input Args (step 6
+#     below) makes the UDP question moot — everything rides the single
+#     TCP/554 socket you just verified.
 #     if you're on a VPN, RTSP traffic may be getting dropped by the
 #     VPN's split-tunnel policy. disconnect VPN, retest.
 
