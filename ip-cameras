@@ -170,26 +170,61 @@ ip -4 -br addr show | grep -v UNKNOWN
 # example output: enp3s0  UP  192.168.1.42/24
 # so the subnet is 192.168.1.0/24
 
+# A NOTE ON SCAN TYPES (worth understanding before you run anything):
+#
+#   nmap -sn ...           ARP on local LAN (layer 2), ICMP off-LAN.
+#                          NOT TCP. host discovery only.
+#   nmap -p ...            default = TCP only. -sS SYN scan if root,
+#                          -sT connect scan if not. UDP is never
+#                          probed unless you ask for it explicitly.
+#   nmap -sU -p ...        UDP scan. needs root. MUCH slower (UDP
+#                          gives no positive ACK; nmap waits for
+#                          ICMP "port unreachable" or a protocol
+#                          reply, both rate-limited by the target).
+#   nmap --script ...      NSE scripts run independently of the
+#                          port scan layer; broadcast-* scripts
+#                          send raw multicast packets directly.
+#
+# practical implication: ONVIF discovery (UDP/3702) and mDNS (UDP/5353)
+# will NEVER appear in a TCP port scan. they require -sU, or — better —
+# a targeted NSE broadcast script that doesn't care about port state.
+
 # step 2: ping sweep for live hosts (fast, no port scan)
 sudo nmap -sn 192.168.1.0/24
 # -sn = "no port scan", just host discovery via ARP on the local LAN
 # (sudo because raw ARP needs CAP_NET_RAW)
 
-# step 3: scan the typical IP-camera ports across the subnet
-sudo nmap -p 80,443,554,1935,2020,3702,5000,5543,7001,8000,8080,8081,8443,8888,9000,34567,37777 \
+# step 3a: TCP port scan for the camera control / web / proprietary ports
+sudo nmap -p 80,443,554,1935,2020,8000,8080,8081,8443,8888,9000,34567,37777 \
   -T4 --open 192.168.1.0/24
-# port cheat-sheet:
+# all TCP. port cheat-sheet:
 #   80 / 8080 / 8000   — web UI (Hikvision uses 80, Dahua uses 80, some
 #                        ONVIF stacks live on 8000/8080)
 #   443 / 8443         — TLS web UI
-#   554                — RTSP. the BIG signal
+#   554                — RTSP control channel. the BIG signal
 #   1935               — RTMP (some cameras still expose it)
-#   2020               — Dahua ONVIF
-#   3702               — WS-Discovery (ONVIF)
-#   5000 / 5543        — Reolink p2p
+#   2020               — Dahua ONVIF over HTTP
 #   8081               — Reolink HTTP snapshot port
 #   34567              — Xiongmai / "Sricam" / generic Chinese OEM
-#   37777              — Dahua proprietary (DH-IPC)
+#   37777              — Dahua proprietary DH-IPC
+
+# step 3b: UDP port scan for the discovery / P2P protocols (separate
+# run — different scan type, much slower, requires root)
+sudo nmap -sU -p 3702,5353,5000,5543 -T4 --open 192.168.1.0/24
+# all UDP. port cheat-sheet:
+#   3702               — WS-Discovery (ONVIF Profile S discovery)
+#   5353               — mDNS / Bonjour (cameras advertising .local)
+#   5000 / 5543        — Reolink P2P data channel
+# REMEMBER: UDP scans take a long time and are noisier than TCP. on a
+# /24 expect minutes per port. for ONVIF specifically you almost always
+# want the NSE script instead — it gets you the answer in one packet:
+nmap --script broadcast-wsdd-discover
+
+# step 3c: combined TCP+UDP scan in a single command (when you want it
+# all in one report, at the cost of much longer runtime):
+sudo nmap -sS -sU \
+  -p T:80,443,554,1935,2020,8000,8080,8081,8443,8888,9000,34567,37777,U:3702,5353,5000,5543 \
+  -T4 --open 192.168.1.0/24
 
 # step 4: fingerprint a candidate
 sudo nmap -sV -p 80,443,554,8000,8080 -A 192.168.1.50
@@ -564,9 +599,12 @@ HONEST TRADEOFFS — WHICH TOOL FOR WHICH JOB
 QUICK REFERENCE
 ---------------
 
-  # find cameras on LAN
+  # find cameras on LAN (TCP — web, RTSP, vendor proprietary)
   sudo nmap -sn 192.168.1.0/24
   sudo nmap -p 80,443,554,8080 -sV --open 192.168.1.0/24
+
+  # find cameras on LAN (UDP — discovery / P2P; slow, needs root)
+  sudo nmap -sU -p 3702,5353 --open 192.168.1.0/24
 
   # brute-force RTSP path
   sudo nmap -p 554 --script rtsp-url-brute 192.168.1.50
