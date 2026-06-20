@@ -107,6 +107,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [winget](winget) — package manager
 - [powershell](powershell) — PowerShell notes
 - [apt-cyg](apt-cyg) — Cygwin package manager
+- [streamlabs-cameras](streamlabs-cameras) — IP cameras in Streamlabs Desktop: triage, RTSP setup, vendor URLs, MediaMTX relay
 
 ## CLI tools
 
