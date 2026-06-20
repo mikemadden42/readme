@@ -1,0 +1,535 @@
+# ip-cameras — discovering, viewing, and recording RTSP/ONVIF streams on Linux
+#
+# this primer covers the open-source toolkit for working with IP cameras on
+# Linux: nmap to find them, ONVIF probes to identify them, vlc and mpv to
+# view them, and ffmpeg to record and re-stream them. it works for the
+# universe of "real" IP cameras (Hikvision, Dahua, Amcrest, Reolink, Axis,
+# Foscam, generic Chinese OEM, etc.) — not the cloud-only consumer junk
+# (Ring, Wyze v3 without RTSPS firmware, Arlo, Nest) which deliberately
+# blocks direct LAN access. if your camera streams RTSP, MJPEG-over-HTTP,
+# or implements ONVIF Profile S, the tools below will work with it.
+#
+# THE TOOLS AT A GLANCE
+#
+#   nmap     — find cameras on the LAN, fingerprint open ports
+#   onvif    — vendor-neutral discovery + control protocol (WS-Discovery
+#              over UDP 3702, SOAP over HTTP)
+#   vlc      — the everything-and-the-kitchen-sink GUI / CLI player; first
+#              thing to try when you just want a picture on screen
+#   mpv      — leaner, scriptable, far better for low-latency tuning and
+#              multi-camera tiling via lua / IPC
+#   ffmpeg   — the recording, transcoding, restreaming swiss-army knife;
+#              also ffprobe for "what codec is this stream actually?"
+#   ffplay   — ships with ffmpeg, useful when you want to sanity-check a
+#              URL using the same library that will later record it
+#
+# THE PROTOCOLS YOU'LL ACTUALLY SEE
+#
+#   RTSP                  — TCP/554 control channel, RTP over UDP (or
+#                           interleaved over the same TCP socket). the
+#                           dominant protocol for IP cameras
+#   ONVIF                 — WS-Discovery on UDP 3702 + SOAP over HTTP
+#                           (usually port 80 or 8080, sometimes 8000); the
+#                           "find me your RTSP URL" protocol
+#   MJPEG over HTTP       — older / cheaper cameras; a multipart HTTP
+#                           response, trivially viewable in a browser
+#   HTTP snapshot         — single JPEG, polled. /cgi-bin/snapshot.cgi
+#                           and friends
+#   RTSPS / SRTP          — TLS-wrapped RTSP. rare on cheap cameras,
+#                           normal on enterprise Axis / Bosch
+#   WebRTC / HLS / DASH   — cloud-only consumer cameras and Reolink's NVR
+#                           web UI; not what we deal with here
+
+
+INSTALL
+-------
+
+# ubuntu (22.04, 24.04, 26.04):
+sudo apt update
+sudo apt install -y nmap vlc mpv ffmpeg
+
+# the codec story on ubuntu: vlc and ffmpeg ship with H.264 / H.265 / AAC
+# baked in. nothing extra needed for IP camera streams.
+
+# fedora (44):
+sudo dnf install -y nmap vlc mpv ffmpeg
+# on fedora, `ffmpeg` from the official repo is `ffmpeg-free` (no H.264 /
+# H.265 / AAC). IP cameras OVERWHELMINGLY send H.264 or H.265, so you
+# need the full ffmpeg from RPM Fusion:
+sudo dnf install -y \
+  https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+  https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing
+sudo dnf swap -y mesa-va-drivers mesa-va-drivers-freeworld --allowerasing
+
+# verify ffmpeg can actually decode H.264 / H.265:
+ffmpeg -hide_banner -decoders 2>/dev/null | grep -E '^ V.+(h264|hevc)'
+# expect lines like:
+#   V..... h264                 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+#   V..... hevc                 HEVC (High Efficiency Video Coding)
+
+# optional but useful add-ons (both distros — same package names):
+#   tcpdump      packet capture (great for debugging RTSP handshakes)
+#   wireshark    GUI version of same; understands RTSP/RTP natively
+#   curl         hit HTTP endpoints (snapshots, ONVIF SOAP, vendor APIs)
+#   python3-onvif-zeep / python-onvif-zeep   ONVIF client library
+#   v4l2loopback-dkms (ubuntu) / akmod-v4l2loopback (fedora) — expose an
+#     IP camera as a /dev/video* device for apps that only speak v4l2
+#   gstreamer + plugins-good/bad/ugly — pipeline-based alternative to
+#     ffmpeg; useful when you outgrow CLI
+
+
+DISCOVERY WITH NMAP
+-------------------
+
+# step 1: find your subnet
+ip -4 -br addr show | grep -v UNKNOWN
+# example output: enp3s0  UP  192.168.1.42/24
+# so the subnet is 192.168.1.0/24
+
+# step 2: ping sweep for live hosts (fast, no port scan)
+sudo nmap -sn 192.168.1.0/24
+# -sn = "no port scan", just host discovery via ARP on the local LAN
+# (sudo because raw ARP needs CAP_NET_RAW)
+
+# step 3: scan the typical IP-camera ports across the subnet
+sudo nmap -p 80,443,554,1935,2020,3702,5000,5543,7001,8000,8080,8081,8443,8888,9000,34567,37777 \
+  -T4 --open 192.168.1.0/24
+# port cheat-sheet:
+#   80 / 8080 / 8000   — web UI (Hikvision uses 80, Dahua uses 80, some
+#                        ONVIF stacks live on 8000/8080)
+#   443 / 8443         — TLS web UI
+#   554                — RTSP. the BIG signal
+#   1935               — RTMP (some cameras still expose it)
+#   2020               — Dahua ONVIF
+#   3702               — WS-Discovery (ONVIF)
+#   5000 / 5543        — Reolink p2p
+#   8081               — Reolink HTTP snapshot port
+#   34567              — Xiongmai / "Sricam" / generic Chinese OEM
+#   37777              — Dahua proprietary (DH-IPC)
+
+# step 4: fingerprint a candidate
+sudo nmap -sV -p 80,443,554,8000,8080 -A 192.168.1.50
+# -sV  probe service versions (RTSP banners are very chatty)
+# -A   OS + traceroute + scripts
+#
+# RTSP servers happily disclose make/model in the OPTIONS response:
+#   Server: GStreamer RTSP server
+#   Server: H264DVR 1.0
+#   Server: Hipcam RealServer/V1.0
+#   Server: Dahua Rtsp Server
+#   Server: Hikvision-Webs
+
+# nmap script for RTSP URL brute-forcing (built in, no extra install):
+sudo nmap -p 554 --script rtsp-url-brute,rtsp-methods 192.168.1.50
+# rtsp-methods    lists what verbs the server supports (OPTIONS, DESCRIBE,
+#                 SETUP, PLAY, ...)
+# rtsp-url-brute  tries ~600 known stream paths from vendor manuals. great
+#                 for unbranded / OEM cameras with no public docs.
+
+# nmap script for HTTP — pulls titles, may reveal vendor / model:
+sudo nmap -sV --script http-title,http-headers,http-auth -p 80,8080 192.168.1.50
+
+# HONEST TRADEOFF — nmap is loud. on a corporate / managed network it
+# WILL trip an IDS. on your own LAN this doesn't matter. if you are
+# auditing someone else's network, get authorization in writing first.
+
+
+IDENTIFYING THE CAMERA AND ITS STREAM URL
+-----------------------------------------
+
+# once nmap has flagged 192.168.1.50 as having TCP/554 open, you need
+# the actual stream URL. options, in order of effort:
+
+# OPTION A — read the vendor's docs / sticker
+# most cameras print a default URL on a sticker, in the box, or in a
+# /cgi-bin/ endpoint accessible via the web UI. cheap, fast, boring.
+
+# OPTION B — ONVIF probe
+# if the camera implements ONVIF (Profile S is the relevant one for
+# video streaming), you can ASK it for its stream URL. WS-Discovery
+# multicast on 3702:
+nmap --script broadcast-wsdd-discover
+# alternatively, with the python-onvif-zeep library:
+python3 -c "
+from onvif import ONVIFCamera
+cam = ONVIFCamera('192.168.1.50', 80, 'admin', 'password')
+media = cam.create_media_service()
+profile = media.GetProfiles()[0]
+req = media.create_type('GetStreamUri')
+req.ProfileToken = profile.token
+req.StreamSetup = {'Stream': 'RTP-Unicast',
+                   'Transport': {'Protocol': 'RTSP'}}
+print(media.GetStreamUri(req).Uri)
+"
+# this is THE WAY for unknown / generic cameras. ONVIF was designed for
+# exactly this question.
+
+# OPTION C — known vendor URL patterns
+# Hikvision:
+#   rtsp://USER:PASS@HOST:554/Streaming/Channels/101         (main)
+#   rtsp://USER:PASS@HOST:554/Streaming/Channels/102         (sub)
+#   http://USER:PASS@HOST/ISAPI/Streaming/channels/101/picture   (snapshot)
+# Dahua / Amcrest:
+#   rtsp://USER:PASS@HOST:554/cam/realmonitor?channel=1&subtype=0
+#   rtsp://USER:PASS@HOST:554/cam/realmonitor?channel=1&subtype=1
+#   http://USER:PASS@HOST/cgi-bin/snapshot.cgi?channel=1
+# Reolink:
+#   rtsp://USER:PASS@HOST:554/h264Preview_01_main
+#   rtsp://USER:PASS@HOST:554/h264Preview_01_sub
+#   rtsp://USER:PASS@HOST:554/h265Preview_01_main             (newer fw)
+#   http://HOST/cgi-bin/api.cgi?cmd=Snap&channel=0&user=...&password=...
+# Axis:
+#   rtsp://USER:PASS@HOST/axis-media/media.amp
+#   http://HOST/axis-cgi/jpg/image.cgi
+# Foscam:
+#   rtsp://USER:PASS@HOST:88/videoMain
+# Wyze (only if you flashed the "RTSP firmware" — official builds DO NOT
+# support RTSP):
+#   rtsp://USER:PASS@HOST/live
+# generic Xiongmai / 34567 boxes:
+#   rtsp://USER:PASS@HOST:554/user=USER&password=PASS&channel=1&stream=0.sdp
+
+# OPTION D — packet-sniff the official app
+# point the vendor's phone app at the camera while running:
+sudo tcpdump -i any -A -s 0 'tcp port 554' -w /tmp/cam.pcap
+# open the pcap in wireshark, follow the RTSP stream, read the URL the
+# app used. works when nothing else does.
+
+
+VLC — THE "JUST SHOW ME THE PICTURE" PLAYER
+-------------------------------------------
+
+# GUI:
+#   Media → Open Network Stream → paste rtsp://USER:PASS@HOST:554/...
+
+# CLI (this is the form you actually want):
+vlc rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+
+# force TCP transport (use this if you get garbled video / packet loss —
+# RTSP over UDP across wifi is unreliable):
+vlc --rtsp-tcp rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+
+# minimize VLC's caching for near-real-time view (default is 1000 ms;
+# 200 ms is a good IP-camera value, 0 stalls):
+vlc --network-caching=200 --rtsp-tcp rtsp://...
+
+# headless / kiosk:
+vlc --intf dummy --fullscreen --no-osd --no-video-title-show \
+    --network-caching=200 --rtsp-tcp \
+    rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+
+# loop a multi-camera playlist:
+cat > ~/cams.m3u <<'EOF'
+#EXTM3U
+#EXTINF:-1,Front door
+rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+#EXTINF:-1,Driveway
+rtsp://admin:password@192.168.1.51:554/cam/realmonitor?channel=1&subtype=0
+EOF
+vlc --loop --random ~/cams.m3u
+
+# snapshot key in the GUI: Shift+S (saves to ~/Pictures/vlcsnap-*.png)
+
+# HONEST TRADEOFF — VLC is forgiving and pretty. it's also a CPU pig
+# (extra layer of decode + render) and its latency floor (~150-250 ms
+# even tuned) is worse than mpv. use it for one-off viewing, not for
+# 16-camera grids.
+
+
+MPV — LOW-LATENCY, SCRIPTABLE, GRID-FRIENDLY
+--------------------------------------------
+
+# basic:
+mpv rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+
+# the low-latency recipe — copy these flags verbatim, they matter:
+mpv \
+  --rtsp-transport=tcp \
+  --profile=low-latency \
+  --no-cache \
+  --untimed \
+  --vd-lavc-threads=1 \
+  --demuxer-lavf-o=fflags=+nobuffer+flush_packets \
+  rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+# notes:
+#   --profile=low-latency       built-in profile, sets a sane baseline
+#   --rtsp-transport=tcp        same reasoning as VLC; lossless over wifi
+#   --no-cache --untimed        skip mpv's playback cache, render as
+#                               frames arrive
+#   --vd-lavc-threads=1         multi-thread decode adds 1-2 frames of
+#                               latency; single-thread is faster for
+#                               1080p H.264 from a camera
+
+# multi-camera tile via a script (put this in ~/bin/cam-grid):
+#!/usr/bin/env bash
+geom=(1280x720+0+0 1280x720+1280+0 1280x720+0+720 1280x720+1280+720)
+urls=(
+  rtsp://admin:p@192.168.1.50:554/Streaming/Channels/101
+  rtsp://admin:p@192.168.1.51:554/cam/realmonitor?channel=1
+  rtsp://admin:p@192.168.1.52:554/h264Preview_01_main
+  rtsp://admin:p@192.168.1.53:554/Streaming/Channels/101
+)
+for i in 0 1 2 3; do
+  mpv --no-border --no-osc --geometry=${geom[$i]} \
+      --rtsp-transport=tcp --profile=low-latency \
+      "${urls[$i]}" &
+done
+wait
+
+# IPC mode (drive mpv from another program — keystroke into a grid,
+# cycle through cameras, etc.):
+mpv --input-ipc-server=/tmp/mpv-cam1.sock rtsp://...
+# then from another shell:
+echo '{ "command": ["screenshot", "subtitles"] }' | socat - /tmp/mpv-cam1.sock
+
+# HONEST TRADEOFF — mpv has zero GUI for "find a camera, type a URL".
+# you script it. for a kiosk wall this is a feature; for casual viewing
+# it's friction.
+
+
+FFPROBE — "WHAT IS ACTUALLY IN THIS STREAM?"
+--------------------------------------------
+
+# before you record, know what you're recording:
+ffprobe -v error -show_streams -show_format \
+  -rtsp_transport tcp \
+  rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+
+# concise one-liner — codec, resolution, fps, audio codec:
+ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,r_frame_rate \
+  -of default=nw=1 \
+  -rtsp_transport tcp \
+  rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101
+
+# common surprises this catches:
+#   - "1080p" camera actually streaming 1920x1072 (some Hikvision)
+#   - r_frame_rate=15/1 when the web UI promised 25
+#   - codec_name=hevc when you assumed h264
+#   - no audio stream at all — many cameras drop audio in the sub-stream
+
+
+FFMPEG — RECORDING, REMUXING, RESTREAMING
+-----------------------------------------
+
+# RECORD AS-IS (no transcode — this is what you want 99% of the time;
+# CPU = ~0, quality lossless because the bits are not re-encoded):
+ffmpeg -rtsp_transport tcp \
+  -i rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101 \
+  -c copy \
+  -movflags +frag_keyframe+empty_moov \
+  /tmp/cam_$(date +%Y%m%d_%H%M%S).mp4
+# -c copy                         stream-copy, no decode/encode
+# -movflags +frag_keyframe...     fragmented MP4 so the file is playable
+#                                 even if you SIGKILL ffmpeg
+
+# RECORD WITH A TIME LIMIT (30 seconds):
+ffmpeg -rtsp_transport tcp -i rtsp://... -c copy -t 30 /tmp/out.mp4
+
+# RECORD UNTIL A FILE SIZE (1 GB):
+ffmpeg -rtsp_transport tcp -i rtsp://... -c copy -fs 1G /tmp/out.mp4
+
+# CONTINUOUS RECORDING, SEGMENTED INTO 10-MINUTE FILES (great for an
+# always-on "dashcam-style" archive on a NAS):
+ffmpeg -rtsp_transport tcp -i rtsp://... \
+  -c copy -f segment -segment_time 600 -segment_format mp4 \
+  -strftime 1 /srv/cam-archive/front_door_%Y%m%d_%H%M%S.mp4
+# -strftime 1 lets the filename pattern use strftime() tokens
+
+# SNAPSHOT — pull a single still frame from a live stream:
+ffmpeg -y -rtsp_transport tcp \
+  -i rtsp://admin:password@192.168.1.50:554/Streaming/Channels/101 \
+  -frames:v 1 -q:v 2 /tmp/snap.jpg
+# -frames:v 1   exactly one video frame, then quit
+# -q:v 2        high-quality JPEG (range 2-31, lower = better)
+# add -ss 1.0 BEFORE -i to seek to the first keyframe and skip garbled
+# leading frames on some Reolink streams
+
+# MOTION-TRIGGERED SNAPSHOTS (one frame every 5 seconds):
+ffmpeg -y -rtsp_transport tcp -i rtsp://... \
+  -vf fps=1/5 -q:v 3 /tmp/cam_%05d.jpg
+
+# RECODE FOR SIZE (browser-friendly H.264, sane bitrate). only do this
+# if the camera is shipping you 20 Mbps you don't need:
+ffmpeg -rtsp_transport tcp -i rtsp://... \
+  -c:v libx264 -preset veryfast -crf 24 -g 50 \
+  -c:a aac -b:a 64k \
+  -movflags +faststart \
+  /tmp/recoded.mp4
+
+# HARDWARE-ACCELERATED RECODE (intel quicksync — much lower CPU):
+ffmpeg -hwaccel qsv -rtsp_transport tcp -i rtsp://... \
+  -c:v h264_qsv -b:v 4M -c:a aac /tmp/qsv.mp4
+# vaapi version (intel/AMD on Linux, see [[fedora]] HARDWARE-ACCELERATED
+# VIDEO for the codec-freedom story):
+ffmpeg -hwaccel vaapi -hwaccel_device /dev/dri/renderD128 \
+  -rtsp_transport tcp -i rtsp://... \
+  -vf 'format=nv12,hwupload' -c:v h264_vaapi -b:v 4M /tmp/vaapi.mp4
+
+# RESTREAM TO RTMP (e.g. into a local nginx-rtmp / SRS / MediaMTX server
+# so multiple viewers can watch without each hitting the camera, which
+# many cheap cameras can't handle):
+ffmpeg -rtsp_transport tcp -i rtsp://camera/... \
+  -c copy -f flv rtmp://localhost/live/front_door
+
+# RESTREAM TO HLS (browser-watchable from a static web server):
+mkdir -p /var/www/cam/front
+ffmpeg -rtsp_transport tcp -i rtsp://camera/... \
+  -c:v copy -c:a aac -f hls \
+  -hls_time 2 -hls_list_size 6 -hls_flags delete_segments \
+  /var/www/cam/front/index.m3u8
+
+# EXPOSE AS A V4L2 LOOPBACK DEVICE (so meet.google.com, OBS, etc. see
+# the camera as a normal webcam):
+sudo modprobe v4l2loopback devices=1 video_nr=42 card_label=ip_cam exclusive_caps=1
+ffmpeg -rtsp_transport tcp -i rtsp://... \
+  -f v4l2 -vcodec rawvideo -pix_fmt yuv420p /dev/video42
+# now /dev/video42 is selectable in any v4l2-aware app
+
+
+COMMON GOTCHAS — IN ORDER OF HOW OFTEN THEY BITE
+------------------------------------------------
+
+# (1) RTSP over UDP across wifi == garbage. ALWAYS use TCP transport for
+# IP cameras unless you've measured zero packet loss on the path:
+#   vlc       --rtsp-tcp
+#   mpv       --rtsp-transport=tcp
+#   ffmpeg    -rtsp_transport tcp     (BEFORE -i)
+
+# (2) authentication: most cameras still default to basic auth and ship
+# with default creds. these are the famous ones — change them:
+#   admin / admin
+#   admin / (blank)
+#   admin / 12345
+#   admin / 888888   (Dahua)
+#   root / pass
+# special characters in passwords MUST be URL-encoded in the rtsp:// URL,
+# or the parse will break. example: pass "p@ss!word" →  p%40ss%21word
+python3 -c "import urllib.parse; print(urllib.parse.quote('p@ss!word', safe=''))"
+
+# (3) clock skew. some cameras refuse digest auth if their internal clock
+# is more than 5 minutes off yours. either set NTP on the camera or pull
+# the audio/video without auth on the "anonymous" sub-stream (vendor
+# specific).
+
+# (4) the camera ONLY accepts one or two concurrent RTSP clients. if VLC
+# is open, mpv may get refused; if a recording is running, the GUI is
+# locked out. this is a firmware limit, not a Linux problem. solution:
+# restream through ffmpeg → MediaMTX / nginx-rtmp / rtsp-simple-server,
+# point everything else at the local restream.
+
+# (5) substream vs mainstream. cameras almost always offer a
+# high-bitrate "main" stream (e.g. 1080p/4K, 4-20 Mbps) and a low-
+# bitrate "sub" stream (e.g. 640x360, 200-500 Kbps). use sub for grids
+# and motion detection, main for forensics / recording.
+
+# (6) audio. many IP cameras ship audio as G.711 (PCMU / PCMA) or
+# G.726. ffmpeg handles these fine; some hardware players don't, and
+# audio mismatch is the #1 reason "the video plays but the file won't
+# open in QuickTime" — transcode to AAC if you need cross-platform
+# playback.
+
+# (7) firewalld / ufw zones. if you're restreaming, open the listening
+# port. fedora:
+sudo firewall-cmd --add-port=1935/tcp --permanent && sudo firewall-cmd --reload
+# ubuntu:
+sudo ufw allow 1935/tcp
+
+# (8) NAT. RTSP-over-UDP needs the SETUP-negotiated RTP ports forwarded
+# back. if you're behind NAT, force TCP. if you're using rtsps:// across
+# the internet, also force TCP — UDP+TLS is not what RTSPS means.
+
+# (9) keyframe interval. if the camera's GOP is 50 frames at 25 fps,
+# segmented recording will produce files starting on the next I-frame
+# (up to 2 sec lag). set the camera's keyframe interval to 1-2 sec for
+# clean segments.
+
+# (10) the SELinux gotcha on fedora. recording into a custom path under
+# /srv or /var that doesn't carry the right label will silently get
+# denied:
+sudo semanage fcontext -a -t var_log_t '/srv/cam-archive(/.*)?'
+sudo restorecon -Rv /srv/cam-archive
+# see [[fedora]] SELINUX for the broader story.
+
+
+HONEST TRADEOFFS — WHICH TOOL FOR WHICH JOB
+-------------------------------------------
+
+#   "I need to know what's on the network"        → nmap
+#   "I need to know what kind of camera it is"    → nmap -sV, then ONVIF
+#   "I just want a window with the picture"       → vlc
+#   "I want a 4x4 wall of camera feeds"           → mpv (scripted)
+#   "I want the lowest latency possible"          → mpv with the low-
+#                                                   latency profile
+#   "I want to record 24/7 to a NAS"              → ffmpeg segment muxer
+#                                                   with -c copy
+#   "I want a still image every minute"           → ffmpeg -frames:v 1
+#                                                   in cron
+#   "I want a browser to play it"                 → ffmpeg → HLS
+#   "I want OBS / Google Meet to see the camera"  → ffmpeg → v4l2loopback
+#   "I want multiple viewers without overloading
+#    the camera"                                  → ffmpeg → MediaMTX /
+#                                                   nginx-rtmp restream
+#   "I want motion detection + clip storage +
+#    web UI + push notifications"                 → stop reinventing
+#                                                   the wheel; install
+#                                                   Frigate, MotionEye,
+#                                                   Shinobi, or ZoneMinder
+
+
+QUICK REFERENCE
+---------------
+
+  # find cameras on LAN
+  sudo nmap -sn 192.168.1.0/24
+  sudo nmap -p 80,443,554,8080 -sV --open 192.168.1.0/24
+
+  # brute-force RTSP path
+  sudo nmap -p 554 --script rtsp-url-brute 192.168.1.50
+
+  # ask camera for its URL (ONVIF)
+  nmap --script broadcast-wsdd-discover
+
+  # view in vlc
+  vlc --rtsp-tcp --network-caching=200 rtsp://U:P@HOST:554/PATH
+
+  # view in mpv (low latency)
+  mpv --rtsp-transport=tcp --profile=low-latency \
+      --no-cache --untimed rtsp://U:P@HOST:554/PATH
+
+  # inspect with ffprobe
+  ffprobe -v error -rtsp_transport tcp -show_streams rtsp://U:P@HOST:554/PATH
+
+  # record (stream copy)
+  ffmpeg -rtsp_transport tcp -i rtsp://... -c copy out.mp4
+
+  # snapshot
+  ffmpeg -y -rtsp_transport tcp -i rtsp://... -frames:v 1 snap.jpg
+
+  # segmented 24/7 archive
+  ffmpeg -rtsp_transport tcp -i rtsp://... -c copy \
+    -f segment -segment_time 600 -strftime 1 cam_%Y%m%d_%H%M%S.mp4
+
+  # restream to HLS
+  ffmpeg -rtsp_transport tcp -i rtsp://... -c copy -f hls \
+    -hls_time 2 -hls_flags delete_segments index.m3u8
+
+  # expose as /dev/video42
+  sudo modprobe v4l2loopback video_nr=42 exclusive_caps=1
+  ffmpeg -rtsp_transport tcp -i rtsp://... \
+    -f v4l2 -pix_fmt yuv420p /dev/video42
+
+
+CROSS-REFERENCES
+----------------
+
+  [[fedora]]        — HARDWARE-ACCELERATED VIDEO (mesa-va-drivers-freeworld,
+                      libva-nvidia-driver), SELINUX (semanage fcontext),
+                      firewalld zones
+  [[ubuntu]]        — package install patterns
+  [[ufw]]           — firewall rule patterns when restreaming
+  [[curl]]          — HTTP snapshot / vendor-API patterns
+  [[openssl]]       — RTSPS / TLS debugging (s_client)
+  [[docker]]        — Frigate / MediaMTX / nginx-rtmp containers
+  [[dd]]            — moving footage off the camera's SD card image

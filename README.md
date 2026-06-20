@@ -117,6 +117,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [cpio](cpio) — archives
 - [openssl](openssl) — encryption / certs
 - [youtube-dl](youtube-dl) — video downloads
+- [ip-cameras](ip-cameras) — discovering and viewing RTSP/ONVIF streams with nmap, vlc, mpv, ffmpeg (Ubuntu + Fedora)
 - [ruby_http_server](ruby_http_server) — one-liner HTTP server
 
 ## Automation & config management
