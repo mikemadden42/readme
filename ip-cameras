@@ -41,6 +41,89 @@
 #                           web UI; not what we deal with here
 
 
+TCP VS UDP — WHAT'S ACTUALLY GOING OVER EACH
+--------------------------------------------
+
+# "IP camera" only means the camera speaks IP (layer 3) instead of analog
+# coax. IP is agnostic about whether the bits ride TCP or UDP — both are
+# used heavily, often in the same session. understanding which goes where
+# is the single most-leveraged piece of background knowledge for
+# debugging "no video" / "buffering forever" / "works on LAN, fails on
+# wifi" symptoms.
+
+# THE RTSP/RTP SPLIT (the one that matters most)
+#
+#   RTSP control channel   — TCP/554
+#     DESCRIBE, SETUP, PLAY, GET_PARAMETER, TEARDOWN. small, infrequent,
+#     reliable. always TCP.
+#
+#   RTP video/audio        — UDP, BY DEFAULT
+#     two ephemeral high ports negotiated in the SETUP step (one for RTP
+#     data, one for RTCP feedback). this is the actual stream. fast, no
+#     handshake per packet, no retransmission — so a single dropped
+#     packet shows up as a green smear or a stutter, not a pause.
+#
+#   RTCP feedback          — UDP, paired with the RTP port (RTP_port + 1)
+#
+# this is why a vanilla `rtsp://host/path` URL opens its control session
+# on TCP/554, then the actual video arrives via UDP from a different
+# port. firewalls that allow TCP/554 but not UDP back will give you a
+# clean RTSP handshake followed by a permanently black picture.
+
+# WHAT `-rtsp_transport tcp` ACTUALLY DOES
+#
+# it tells the camera "don't open separate UDP ports — interleave the
+# RTP packets back over the same TCP/554 socket, prefixed with a `$`
+# byte + channel id + length header" (RFC 2326 §10.12). pros:
+#   - one socket, NAT-friendly, VPN-friendly, firewall-friendly
+#   - TCP retransmits dropped packets → no green-smear corruption
+# cons:
+#   - higher latency floor (TCP head-of-line blocking — a single lost
+#     packet stalls the whole stream until it's recovered)
+#   - more CPU on the camera
+# net: TCP wins for reliability on wifi / NAT / VPN. UDP wins for
+# absolute minimum latency on a wired LAN with zero packet loss. for
+# 99% of IP camera work, force TCP.
+
+# OTHER UDP IN THE IP-CAMERA ECOSYSTEM
+#
+#   UDP/3702    ONVIF WS-Discovery multicast (the broadcast-wsdd-discover
+#               nmap script lives here)
+#   UDP/5353    mDNS / Bonjour / Avahi (cameras advertising
+#               `camera-front.local`)
+#   UDP/123     NTP (cameras syncing their clock — important, because a
+#               clock skew > 5 min breaks RTSP digest auth)
+#   UDP/161     SNMP (Axis / Bosch / enterprise monitoring)
+#   UDP/5000,5543  Reolink P2P punch-through to vendor cloud
+#   UDP/37777-ish  Dahua P2P / DH-IPC (proprietary, varies)
+#   UDP varying    Hikvision Hik-Connect P2P
+#   UDP varying    STUN / TURN for WebRTC (Ring / Wyze stock fw — these
+#                  refuse RTSP entirely, they only speak WebRTC to the
+#                  vendor cloud)
+#
+# practical implication: if your camera works on the vendor's phone app
+# from outside the LAN, but not via LAN RTSP, the vendor app is using
+# its UDP P2P channel and routing through cloud relays — not RTSP at
+# all. RTSP works ONLY if (a) the camera supports it natively and
+# (b) you have direct IP reachability.
+
+# QUICK PORT REFERENCE (for firewall / VPN debugging)
+#
+#   TCP/80, 443, 8080      camera web UI, ONVIF SOAP, HTTP snapshots
+#   TCP/554                RTSP control (every RTSP-capable camera)
+#   TCP/8000, 8443         alt web UI, ONVIF (Dahua/Hikvision variants)
+#   UDP ephemeral          RTP video stream (unless you forced TCP)
+#   UDP/3702               ONVIF discovery
+#   UDP/5353               mDNS
+
+# WHEN UDP TRANSPORT IS FINE
+#   - wired ethernet, single switch, no VLAN hops
+#   - same subnet as the camera
+#   - no VPN in the path
+#   - no aggressive firewall doing stateful UDP filtering
+# if any one of those is false, force TCP.
+
+
 INSTALL
 -------
 

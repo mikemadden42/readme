@@ -26,9 +26,17 @@ NO VIDEO — 60-SECOND TRIAGE
 #     if VLC also fails: STOP. fix the URL/auth/network first. nothing
 #     in Streamlabs will help until VLC works.
 
-# (2) is the URL using TCP transport? Streamlabs' default is UDP, which
-#     drops half its packets on wifi or busy LANs. the FFmpeg input arg
-#     that fixes this is at the bottom of this section — set it FIRST.
+# (2) is the URL using TCP transport? "IP camera" does not mean "TCP
+#     camera" — RTSP's control channel is TCP/554, but the actual video
+#     packets ride RTP-over-UDP by default on two ephemeral ports
+#     negotiated during the handshake. Streamlabs' Media Source inherits
+#     this UDP default. UDP drops half its packets on wifi / busy LANs /
+#     across VPNs / through stateful firewalls, which is exactly what
+#     produces "handshake succeeds, picture stays black". the FFmpeg
+#     input arg `-rtsp_transport tcp` switches RTP to interleave back
+#     over the same TCP/554 socket — the single most important flag in
+#     this primer. set it FIRST. (deeper protocol layering in
+#     [[ip-cameras]] "TCP VS UDP" section.)
 
 # (3) is the camera maxed on concurrent clients? cheap cameras
 #     (Hikvision OEM, generic Xiongmai, Wyze RTSP firmware) cap at 1-2
