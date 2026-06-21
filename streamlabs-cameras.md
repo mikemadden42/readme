@@ -373,6 +373,13 @@ admin / admin       admin / (blank)       admin / 12345
 admin / 888888 (Dahua)         root / pass          admin / password
 ```
 
+### Buying new cameras without a PoE switch?
+
+See the "Recommended cameras — no PoE switch required" section in
+[[ip-cameras]] — Wi-Fi-powered Reolink / Amcrest / Tapo picks that work
+cleanly with the Input Args recipe above. All pure DC-adapter powered; all
+have a clear upgrade path if you add a PoE switch later.
+
 ## The 12 common failure modes (and their fix)
 
 1. **Black preview, no error**
