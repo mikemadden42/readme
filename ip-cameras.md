@@ -105,6 +105,25 @@ reachability.
 | UDP/3702 | ONVIF discovery |
 | UDP/5353 | mDNS |
 
+### Quick TCP reachability check (Linux equiv of Windows Test-NetConnection)
+
+The Windows-side companion [[streamlabs-cameras]] uses PowerShell's
+`Test-NetConnection -ComputerName 192.168.1.50 -Port 554` to confirm the RTSP
+control channel is reachable. On Linux, same idea:
+
+```bash
+nc -zv -w 3 192.168.1.50 554        # netcat: -z scan only, -w 3 = 3s timeout
+ncat -zv 192.168.1.50 554           # nmap-project netcat (Fedora/RHEL default)
+timeout 3 bash -c '</dev/tcp/192.168.1.50/554' && echo open || echo closed
+nmap -p 554 192.168.1.50            # if you want service detection too
+```
+
+All four test the TCP/554 control channel ONLY — like `Test-NetConnection`,
+they say nothing about the UDP RTP data path. That's exactly why you force
+`-rtsp_transport tcp`: it moves the video onto the single TCP socket you just
+verified. For UDP, add `nc -u` (but UDP gives no clean ACK, so the result is
+unreliable — prefer the `nmap -sU` approach in DISCOVERY).
+
 ### When UDP transport is fine
 
 - Wired ethernet, single switch, no VLAN hops
