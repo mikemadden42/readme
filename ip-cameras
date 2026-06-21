@@ -250,6 +250,111 @@ RECOMMENDED CAMERAS — NO POE SWITCH REQUIRED
 #     clean (see COMMON GOTCHAS #9 above)
 
 
+RECOMMENDED POE SWITCHES — UNDER $100, 8-PORT, UNMANAGED
+--------------------------------------------------------
+
+# the foot-guns to know BEFORE you click buy:
+#
+#   (1) "8-PORT POE" OFTEN MEANS "8 PORTS, 4 OF WHICH ARE POE".
+#       read the spec sheet. you want a part number that says "8 PoE
+#       ports" or "all PoE" explicitly. cheap brands love to ship 8
+#       gigabit ports with only the first 4 powered, sold under the
+#       same "8-port PoE switch" headline as a true all-PoE switch.
+#
+#   (2) POE BUDGET = TOTAL WATTS ACROSS ALL POWERED PORTS.
+#       not per-port. if the switch says "65W PoE budget" and you
+#       plug in 8 cameras at 10W each, you need 80W of budget —
+#       cameras will go offline or boot-loop. typical camera draws:
+#         fixed bullet/turret indoor    3-6 W
+#         outdoor bullet w/ IR          5-9 W
+#         pan/tilt indoor               6-10 W
+#         outdoor PTZ w/ heater         15-25 W (need PoE+)
+#         video doorbell                4-7 W
+#
+#   (3) "POE" VS "POE+" VS "POE++" — get POE+ AT LEAST.
+#         802.3af  PoE       15.4 W per port (12.95 W at the device)
+#         802.3at  PoE+      30 W per port (25.5 W at the device)
+#         802.3bt  PoE++     60-90 W per port (overkill for cameras)
+#       PoE+ futureproofs you for PTZ / heated outdoor cams. the
+#       price gap vs plain PoE is now $5-10.
+#
+#   (4) AVOID "PASSIVE POE" SWITCHES OR INJECTORS.
+#       passive PoE is NOT a standard — it's just DC voltage on the
+#       unused ethernet pairs, no negotiation. plug a standard
+#       802.3af/at camera into a passive 24V injector and the camera
+#       will refuse to power up. plug it into a passive 48V injector
+#       on the wrong pinout and the camera dies. (Ubiquiti's older
+#       AirMax gear is the famous passive-PoE example — DON'T
+#       repurpose those injectors for security cameras.)
+#
+#   (5) FANLESS OR FANNED MATTERS BY LOCATION.
+#       8-port switches at the high end of their PoE budget often
+#       have a small fan that audibly whines. fine in a closet,
+#       maddening on a desk. fanless models cap at a lower budget
+#       (typically 65-90 W) — that's still 6-8 cameras at average
+#       indoor draw, fine for most home setups.
+
+# PICKS — KNOWN BRAND, WARRANTY-BACKED
+#
+#   TP-Link TL-SG1008MP                    ~$80-100
+#     8 gigabit ports, ALL 8 are PoE+, 126 W total budget.
+#     the practical default. lifetime warranty in the US.
+#     has a fan but it's usually idle in normal use.
+#
+#   Netgear GS308PP                        ~$95-110
+#     8 gigabit ports, ALL 8 are PoE+, 83 W total budget. FANLESS.
+#     pricier and lower budget than the TP-Link, but silent. great
+#     if it sits in a living room or home office.
+#     (budget math: 83 W / 8 cameras = ~10 W/cam ceiling — fine
+#     for indoor turrets, tight for PTZ/heated cams.)
+#
+#   TRENDnet TPE-TG83                      ~$80-95
+#     8 gigabit ports, ALL 8 are PoE+, 65 W total budget. fanless.
+#     lower budget — best for 4-6 cameras, not 8 heavy ones.
+
+# PICKS — BUDGET / SHENZHEN ODM (Amazon-popular)
+#
+#   YuanLey YS25-08T (and similar)         ~$50-70
+#     8 gigabit ports, ALL 8 PoE+, 96-120 W budget depending on
+#     revision. fanless on most SKUs. lifetime warranty in writing
+#     (vendor honors it, mostly).
+#     same physical hardware shows up rebranded under STEAMEMO,
+#     MokerLink, SODOLA, Linkke, BV-Tech — all from the same
+#     Shenzhen factories. quality is surprisingly good for the price.
+#     downside: support is email-only and slow; firmware updates
+#     are rare.
+#
+#   MokerLink 2G08210PMS                   ~$50-65
+#     8 gigabit PoE+ ports + 2 gigabit uplinks, 96-120 W budget.
+#     similar quality story to YuanLey.
+
+# HONEST MENTION — THE FOUR-POE-PORT GOTCHA
+#
+#   TP-Link TL-SG1008P                     ~$55-70
+#     this IS a fine switch — but only 4 of its 8 ports are PoE+
+#     (64 W shared budget). do NOT buy it if you have 5+ cameras.
+#     listed here because it's the most-confused product in the
+#     space; Amazon search will surface it next to the TL-SG1008MP
+#     and the part numbers differ by one letter.
+
+# HONEST MENTION — IF YOU'RE WILLING TO GO MANAGED
+#
+#   TP-Link TL-SG108PE                     ~$60-80
+#     "Easy Smart" — barely managed, web UI for basic VLAN / QoS,
+#     8 ports, 4 PoE+, 64 W budget. nice if you want to put
+#     cameras on their own VLAN (a smart thing to do — cameras
+#     are notoriously chatty to vendor cloud, isolate them).
+#     only 4 PoE ports — same gotcha as the unmanaged sibling.
+
+# QUICK DECISION
+#
+#   I want simple, warranty, name brand          TP-Link TL-SG1008MP
+#   I need it silent (living room placement)     Netgear GS308PP
+#   I want the cheapest legit option             YuanLey YS25-08T
+#   I want VLAN isolation for cameras            TP-Link TL-SG108PE
+#                                                 (but only 4 PoE)
+
+
 INSTALL
 -------
 
