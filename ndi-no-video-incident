@@ -1,0 +1,109 @@
+# ndi-no-video-incident — OBS shows black cameras while NDI is healthy (live incident log)
+#
+# status: OPEN. fault isolated to the OBS NDI RECEIVER (discovery). cameras,
+# network, RTSP, the RTSP->NDI converter, and the NDI runtime are all PROVEN
+# healthy. see companion [[streamlabs-cameras]], [[ip-cameras]], [[powershell]].
+#
+# the rig (as understood):
+#   cameras (RTSP, static IPs)  ->  [ RTSP->NDI converter ]  ->  NDI  ->  OBS
+#     Left   10.0.220.51 :554 /stream1   (switch port 5)
+#     Center 10.0.220.52 :554 /stream1   (switch port 7)
+#     Right  10.0.220.53 :554 /stream1   (switch port 6)
+#   StreamMachine (Windows 10, runs OBS):
+#     NIC A 172.16.23.37  (switch port 2)  <- internet/control, holds default gw
+#     NIC B 10.0.220.24   (switch port 3, mac f6:77)  <- camera LAN
+#   symptom: OBS cameras black; graphics-PC PiP works; rebooting PC + cameras
+#   3x changed nothing.
+
+
+WHAT WE PROVED HEALTHY (elimination ladder)
+-------------------------------------------
+
+# all of these PASSED, so each layer is exonerated.
+
+# from carl (Linux, on a subnet ROUTED to the camera LAN):
+#   (1) ping -c4 10.0.220.51/52/53        -> all reply, ttl=63 (1 router hop)
+#   (2) nc -vz -w 3 10.0.220.5x 554       -> all "succeeded!" (RTSP port open)
+#   (3) ffprobe -rtsp_transport tcp \
+#         rtsp://10.0.220.51:554/stream1  -> valid stream: H.264 Main,
+#                                            1920x1080, 30fps, + AAC stereo.
+#                                            NO creds required, /stream1 correct.
+#   => cameras, switch, camera LAN, RTSP all healthy. (VLC failed to open the
+#      MRL — a VLC 3.0.x quirk with forced-TCP + SDP c=IN IP4 0.0.0.0, NOT a
+#      camera fault; ffprobe/ffplay/mpv read it fine.)
+#   CAVEAT: carl ROUTES to 10.0.220.x, so this proves the cameras, not the
+#   StreamMachine's path. (see below — NDI rendered that moot anyway.)
+
+# on the StreamMachine itself (same Windows box as OBS):
+#   (4) NDI Studio Monitor -> shows live video for ALL THREE cameras.
+#   => on the OBS box: cameras + RTSP->NDI converter + NDI discovery + NDI data
+#      path + the NICs are ALL working. nothing outside OBS is at fault.
+#      the dual-NIC / wrong-subnet theory is DEAD for this incident.
+
+
+WHERE THE FAULT IS
+------------------
+
+# Studio Monitor (uses the system NDI RUNTIME) finds + renders all 3.
+# OBS (uses its own NDI PLUGIN = DistroAV / obs-ndi, a SEPARATE NDI finder)
+# does NOT find the cameras by name. => the fault is the OBS NDI RECEIVER's
+# DISCOVERY, on the same machine where Studio Monitor works fine.
+
+
+OPEN SUSPECTS / NEXT STEPS (resume here)
+----------------------------------------
+
+# in order of likelihood for "Studio Monitor sees them, OBS finds nothing":
+
+# (A) OBS NDI plugin not loaded / version mismatch with the NDI runtime.
+#     - OBS -> Tools menu: is there an NDI / DistroAV entry? if NOT, the plugin
+#       didn't load -> that alone explains an empty dropdown.
+#     - Help -> Log Files -> View Current Log: grep for "NDI" (logs runtime
+#       version found, or load error).
+#     - fix: reinstall the OBS NDI plugin and let it install ITS bundled NDI
+#       runtime version (NDI 5 vs NDI 6 mismatch is the classic cause).
+
+# (B) Windows Firewall blocking obs64.exe discovery (per-APP rules).
+#     - the camera NIC may be on the "Public" firewall profile.
+#     - Defender Firewall -> Allow an app -> obs64.exe checked for Domain,
+#       Private, AND Public.
+
+# (C) NDI Access Manager -> Receive tab: enable the group the converter uses
+#     (default "Public"); or set a Discovery Server to bypass flaky mDNS.
+
+# (D) plain restart of OBS to force a discovery re-scan (cheap, try first).
+
+# if OBS DOES list the names but feed is still black: stale source name
+# (re-select in the source Properties dropdown), wrong scene, hidden (eye),
+# broken Transform (-> Fit to Screen), or z-order. (this turned out NOT to be
+# the case — OBS isn't finding them by name at all.)
+
+
+LIVE WORKAROUNDS (to air video without fixing OBS NDI)
+------------------------------------------------------
+
+# (1) WINDOW CAPTURE of NDI Studio Monitor  <- used during this incident.
+#     Studio Monitor already renders all 3 on the OBS box. In OBS add a
+#     Window Capture source targeting the Studio Monitor window (run 3
+#     monitors, one per camera, or one + crop). bypasses the NDI plugin
+#     entirely. guaranteed to work since Studio Monitor is proven working.
+#
+# (2) MEDIA SOURCE straight to RTSP (bypass NDI):
+#       add Media Source -> uncheck Local File -> Input =
+#       rtsp://USER:PASS@10.0.220.51:554/stream1, Input Format rtsp,
+#       Input Args -rtsp_transport tcp ...   (see [[streamlabs-cameras]])
+#     CAVEAT: requires the StreamMachine itself to reach 10.0.220.x directly
+#     (NIC B). Studio Monitor proves NDI arrives, NOT that OBS can route RTSP
+#     to the cameras — if the converter is a different box, this may fail.
+#     window-capture (1) is the safer instant save.
+
+
+CROSS-REFERENCES
+----------------
+
+  [[streamlabs-cameras]]   — RTSP setup in Streamlabs/OBS, Input Args, vendor
+                             URLs, "no video" triage, dual-NIC fault
+  [[ip-cameras]]           — Linux verify ladder (ping/554/ffprobe), nmap
+                             discovery, the dual-NIC fault writeup
+  [[powershell]]           — Get-NetIPConfiguration, Find-NetRoute,
+                             Test-NetConnection (StreamMachine-side checks)
