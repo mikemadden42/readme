@@ -147,6 +147,21 @@
 # PSREF: https://psref.lenovo.com/syspool/Sys/PDF/ThinkPad/ThinkPad_T14s_Gen_6_Intel/ThinkPad_T14s_Gen_6_Intel_Spec.pdf
 
 
+# PORTS (PSREF)
+#
+# standard ports:
+#   2x USB-C Thunderbolt 4 / USB4 (40Gbps), USB PD 15-65W, DisplayPort 2.1
+#   1x USB-A (USB 5Gbps / 3.2 Gen 1)
+#   1x USB-A (USB 5Gbps / 3.2 Gen 1), Always On (charges devices when off)
+#   1x HDMI 2.1, up to 4K @ 60Hz
+#   1x headphone / microphone combo jack (3.5mm)   <- single combo jack
+# optional ports (selected models):
+#   1x Nano-SIM card slot (WWAN-support models)
+#   1x smart card reader
+# NOT present: Ethernet (use USB-C dongle), SD/microSD card reader, NFC.
+# charging is USB-C PD only (no barrel plug) — 65W adapter in box.
+
+
 # EXTERNAL DISPLAY SUPPORT (PSREF Monitor Support)
 #
 # 255U (Arrow Lake): up to 4 INDEPENDENT displays total =
