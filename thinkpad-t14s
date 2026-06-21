@@ -162,6 +162,18 @@
 # charging is USB-C PD only (no barrel plug) — 65W adapter in box.
 
 
+# KEYBOARD / INPUT (PSREF)
+#
+#   6-row, spill-resistant, multimedia Fn keys, Copilot key
+#   key travel 1.5mm (1.35mm on the Fn row & G/H/B keys)
+#   LED BACKLIGHT (standard — not flagged optional)
+#   TrackPoint pointing device + glass-like multi-touch 3-button
+#     trackpad, 60 x 115 mm (2.36 x 4.53 in)
+#   no pen support
+# Linux: backlight toggles via Fn+Space in firmware; brightness levels
+# also exposed through the kernel LED interface, so it works regardless.
+
+
 # CAMERA (PSREF)
 #
 # options:
