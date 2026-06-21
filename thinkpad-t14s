@@ -108,6 +108,45 @@
 # gaining ~0.6 lb. easy yes unless the 4K panel is a dealbreaker.
 
 
+# FINGERPRINT READER / DISPLAY OPTIONS (PSREF detail)
+#
+# from the official PSREF spec sheet (T14s Gen 6 Intel). these are
+# configurable, so the exact panel/sensor depends on the SKU — confirm
+# before buying.
+#
+# FINGERPRINT READER — two options only:
+#   - touch-style fingerprint reader integrated in the POWER BUTTON,
+#     match-on-chip (the print is matched on the sensor module, never
+#     leaves it — good for security and for Linux)
+#   - no fingerprint reader
+#   => NOT guaranteed on every SKU (Lenovo offers a "no reader" build,
+#      usually enterprise/special-bid), but present on virtually all
+#      retail configs. the power button IS the reader.
+#   Linux: power-button readers on recent ThinkPads generally work via
+#   fprintd / libfprint (sudo + GNOME login unlock). Goodix sensors can
+#   lag in support — verify against the exact sensor once in hand.
+#   NOTE: IR camera for Windows Hello (facial) is OPTIONAL — probably not
+#   on a base SKU, and irrelevant on Linux anyway.
+#
+# DISPLAY — "WUXGA" hides FOUR different 14" 1920x1200 panels, plus an
+# OLED. the cheap base panel is the one reviewers call dull:
+#   1. WUXGA 400nit, 45% NTSC, non-touch        <- base / "dull" panel,
+#                                                  almost certainly what a
+#                                                  base retail SKU ships
+#   2. WUXGA 400nit, 45% NTSC, on-cell touch
+#   3. WUXGA 500nit, 100% sRGB, non-touch (low power)   <- much better
+#   4. WUXGA 500nit, 100% sRGB, 1500:1, Privacy Guard, on-cell touch
+#   5. 2.8K (2880x1800) OLED, 120Hz VRR, 100% DCI-P3, touch  (Arrow Lake
+#                                                             only)
+#   => the earlier "dull / 45% NTSC" critique applies ONLY to panels 1-2.
+#      coming from a 4K panel, confirm WHICH WUXGA the SKU has; if it's
+#      the 45% NTSC one, price a Lenovo-direct build with panel 3 (500nit
+#      100% sRGB) — it's the single biggest fixable compromise.
+#   (2.8K OLED display is Arrow Lake only, per PSREF note.)
+#
+# PSREF: https://psref.lenovo.com/syspool/Sys/PDF/ThinkPad/ThinkPad_T14s_Gen_6_Intel/ThinkPad_T14s_Gen_6_Intel_Spec.pdf
+
+
 # BOTTOM LINE
 #
 # good buy for a Linux work laptop if the price is acceptable and you
