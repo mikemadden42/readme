@@ -139,6 +139,117 @@ nmap -p 554 192.168.1.50            # if you want service detection too
 # if any one of those is false, force TCP.
 
 
+RECOMMENDED CAMERAS — NO POE SWITCH REQUIRED
+--------------------------------------------
+
+# every camera below: speaks RTSP natively (no firmware flashing),
+# supports ONVIF Profile S, powered by a 12V DC wall wart, connects
+# via Wi-Fi. all picks chosen to play nicely with this primer's
+# toolkit (vlc / mpv / ffmpeg) and with Frigate / Home Assistant /
+# MediaMTX downstream.
+
+# WHAT TO LOOK FOR IN THE SPEC SHEET
+#   - the words "RTSP" or "ONVIF Profile S" (not just "ONVIF" — Profile
+#     S is the streaming profile; Profile T is newer, also fine)
+#   - 12V DC barrel input — means later you can use a $10 PoE splitter
+#     (RJ45 in → ethernet + 12V DC out) and your "Wi-Fi" cam becomes a
+#     wired PoE cam in place
+#   - dual-band Wi-Fi (5 GHz available) — 2.4-only is fine for one or
+#     two cams; with five it's a nightmare
+#   - H.264 in the codec list. H.265 is fine for raw quality but H.264
+#     has wider player support and is the only universally safe choice
+#     for older Streamlabs / OBS builds
+#   - "no cloud account REQUIRED to function" — many vendors gate
+#     features behind their cloud; you want the camera to keep working
+#     if their servers go away
+
+# WHAT TO AVOID
+#   Ring / Nest / Arlo / Wyze (stock fw)    cloud-only, no RTSP
+#   Reolink battery cams (Argus, Go,        no RTSP — WebRTC-only
+#     Duo battery, battery doorbells)
+#   Eufy cameras (most models)              cloud-mostly, plus the
+#                                           2022 privacy incident
+#   No-name AliExpress / Amazon "smart"     usually "Yoosee" / "iCSee"
+#     cams under $30                        ecosystem; RTSP support is
+#                                           inconsistent or undocumented
+#   Wyze v3 + "RTSP firmware"               works, but Wyze abandoned
+#                                           it ~2022; not safe to expose
+#                                           on the network long-term
+
+# INDOOR PAN/TILT (best $/feature ratio)
+#
+#   Reolink E1 Pro / E1 Zoom               ~$50-70
+#     4 MP, dual-band Wi-Fi, pan + tilt, 2-way audio
+#     rtsp://USER:PASS@IP:554/h264Preview_01_main
+#     rtsp://USER:PASS@IP:554/h264Preview_01_sub
+#
+#   Amcrest IP2M-841 / IP3M-941            ~$60-80
+#     Dahua OEM, standard Dahua RTSP path
+#     IP2M-841 is 2.4 GHz only; ProHD variants are dual-band
+#     rtsp://USER:PASS@IP:554/cam/realmonitor?channel=1&subtype=0
+
+# OUTDOOR BULLET / TURRET (Wi-Fi, IP66/67)
+#
+#   Reolink RLC-510WA                      ~$60-80
+#     5 MP, dual-band Wi-Fi, IP66, person/vehicle detection on-camera
+#     same Reolink URL scheme as the indoor pan/tilt
+#
+#   Amcrest IP5M-T1179EW                   ~$100
+#     5 MP turret, IP67, dual-band Wi-Fi, Dahua URL scheme
+#
+#   TP-Link Tapo C320WS                    ~$45-60
+#     2K, dual-band Wi-Fi, color night vision. CHEAP and decent.
+#     RTSP must be ENABLED in the Tapo app first:
+#       Settings → Camera Account → create a "Camera Account"
+#       (this is SEPARATE from your Tapo login; RTSP uses ONLY the
+#        Camera Account credentials)
+#     rtsp://CAM_ACCT:CAM_PASS@IP:554/stream1   (main)
+#     rtsp://CAM_ACCT:CAM_PASS@IP:554/stream2   (sub)
+
+# DOORBELL (Wi-Fi, hardwired to existing 16-24 VAC bell transformer)
+#
+#   Reolink Video Doorbell Wi-Fi           ~$100
+#     the WIRED model — NOT the battery doorbell. does RTSP.
+#     rtsp://USER:PASS@IP:554/h264Preview_01_main
+#
+#   Amcrest AD410                          ~$80
+#     Dahua doorbell, standard Dahua RTSP path
+
+# UPGRADE PATH WHEN YOU EVENTUALLY GET A POE SWITCH
+#   - every Reolink and Amcrest model above has a near-identical
+#     wired/PoE sibling (typically the same model number minus the
+#     "W"). same RTSP URL scheme = zero migration friction
+#   - the PoE versions usually ship a better sensor / lens than the
+#     Wi-Fi equivalent. if a PoE switch is in your near-term plans,
+#     wait and buy PoE
+#   - PoE-to-DC splitter (~$10 each) lets you put your current Wi-Fi
+#     cam on PoE without buying a new camera. you trade Wi-Fi for
+#     wired reliability while keeping the same hardware
+
+# HONEST TRADEOFFS — Wi-Fi VS POE FOR IP CAMERAS
+#   Wi-Fi (today)      no rewiring, instant install, no switch to buy,
+#                      power outlet anywhere works. cons: 2.4 GHz
+#                      interference, RSSI dropouts in walls, wakeup lag
+#                      from power-save, every camera adds load to your
+#                      AP. fine for 2-3 cams; painful at 6+
+#   PoE (eventually)   one CAT5e/CAT6 run per cam carries data + power.
+#                      utterly reliable, no power outlet needed at
+#                      camera location. cons: cable pulls + switch
+#                      ($60-150 for an 8-port 802.3af). this is the
+#                      right answer for permanent outdoor installs
+
+# WI-FI RELIABILITY TIPS (for the cameras you're buying NOW)
+#   - put every camera on the 5 GHz band if it can do dual-band —
+#     2.4 GHz is shared with microwaves, baby monitors, BT, etc.
+#   - reserve a DHCP lease per camera so the IP never changes (so
+#     your rtsp:// URLs don't break overnight)
+#   - drop the camera's frame rate in its web UI to 15 fps (you do
+#     not need 30 fps for security footage; halves the bitrate)
+#   - drop the bitrate to 2-4 Mbps for 1080p / 4-6 Mbps for 4K
+#   - keyframe interval (GOP) = 2 seconds — keeps recording segments
+#     clean (see COMMON GOTCHAS #9 above)
+
+
 INSTALL
 -------
 

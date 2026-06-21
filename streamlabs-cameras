@@ -206,6 +206,12 @@ RTSP URL CHEAT SHEET — BY VENDOR
 #   admin / admin       admin / (blank)       admin / 12345
 #   admin / 888888 (Dahua)         root / pass          admin / password
 
+# BUYING NEW CAMERAS WITHOUT A POE SWITCH?
+# see the "RECOMMENDED CAMERAS — NO POE SWITCH REQUIRED" section in
+# [[ip-cameras]] — Wi-Fi-powered Reolink / Amcrest / Tapo picks that
+# work cleanly with the Input Args recipe above. all pure DC-adapter
+# powered; all have a clear upgrade path if you add a PoE switch later.
+
 
 THE 12 COMMON FAILURE MODES (AND THEIR FIX)
 -------------------------------------------
