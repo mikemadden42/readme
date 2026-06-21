@@ -737,6 +737,43 @@ ffmpeg -rtsp_transport tcp -i rtsp://... \
     ```
     See [[fedora]] SELINUX for the broader story.
 
+## Recommended cameras — well-supported, RTSP + ONVIF, no cloud account
+
+Criteria: speaks RTSP + ONVIF Profile S, exposes the stream without a
+mandatory cloud account, PoE / wired preferred. **Avoid cloud-only junk**
+(Ring, Arlo, Nest, stock Wyze, and Reolink battery / doorbell models — those
+are WebRTC and refuse RTSP).
+
+### Best "just works" (order on Amazon)
+
+- **Amcrest PoE (Dahua OEM)** — the Linux / Frigate gold standard. Native RTSP
+  + ONVIF, stream exposed in the web UI with **no cloud account**, stable
+  firmware. URL pattern is the Dahua one above
+  (`/cam/realmonitor?channel=1&subtype=0`). Picks: IP5M-1190EW (5MP turret),
+  IP8M-2496 (4K). ~$60–90.
+- **Reolink PoE** — very popular, RTSP + ONVIF, URL pattern above
+  (`/h264Preview_01_main`). **Stick to wired PoE models:** RLC-810A, RLC-520A.
+  ~$50–70. Quirk: Reolink HTTP-FLV is sometimes steadier than RTSP, but RTSP
+  works. **Avoid their battery / doorbell cams.**
+
+### Cheapest / in-store at Micro Center
+
+- **TP-Link Tapo — wired models only** (C120, C210 indoor; C320WS wired
+  outdoor). ~$25–40. Two catches: (1) RTSP / ONVIF is only on **wired** Tapo
+  models, not the battery ones; (2) you must create a **"camera account"** in
+  the Tapo app to enable RTSP (local creds, but the app step is mandatory).
+  URL:
+  ```
+  rtsp://USER:PASS@HOST:554/stream1     (main)
+  rtsp://USER:PASS@HOST:554/stream2     (sub)
+  ```
+
+### Rules of thumb
+
+- Prefer PoE / wired over wifi (your video rides one cable, powered)
+- Always force `-rtsp_transport tcp`
+- Avoid anything that needs a cloud account just to turn on RTSP
+
 ## Honest tradeoffs — which tool for which job
 
 | Goal | Tool |
