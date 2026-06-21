@@ -244,6 +244,45 @@
 #   Eyesafe 2.0 and Intel Evo.
 
 
+# LINUX DISTRO COMPATIBILITY
+#
+# on Arrow Lake-U the CPU, Xe graphics, and WiFi (BE201) all work on any
+# recent kernel (>= 6.10, ideally 6.11+). the IPU6 webcam is the ONE
+# persistent pain point across every distro.
+#
+#   distro              CPU/GPU/WiFi   IPU6 webcam        verdict
+#   ------              ------------   -----------        -------
+#   Ubuntu 22.04        NO (k5.15      no                 AVOID — too old;
+#                       predates ARL)                     ARL/IPU6 starts
+#                                                         at kernel 6.10
+#   Ubuntu 24.04        YES (HWE                           YES — proven
+#                       ->6.11+; on    best-supported     path (my current
+#                       6.17 now)      (Lenovo OEM        setup)
+#                                      24.04.x image)
+#   Ubuntu 26.04        YES (~6.14+,   improving, verify  YES
+#                       Mesa 25.x)
+#   Fedora 44           YES (modern    Fedora does extra  YES (camera
+#                       kernel/Mesa)   IPU6 work, verify  aside)
+#   EndeavourOS (now)   YES (rolling,  via AUR (ipu6/     YES; camera
+#                       newest)        icamera), manual   needs hands-on
+#
+# IPU6 WEBCAM = DUMPSTER FIRE. this is the Intel MIPI camera stack; even
+# Phoronix (2025) calls it "a challenging experience" on new Intel
+# laptops. i've personally struggled to get it working on recent Dell
+# Precision laptops under Ubuntu — same IPU6 silicon, same fight. so far
+# the only turnkey support is Lenovo's own Ubuntu OEM image. on anything
+# else: budget real time, or just plug in a cheap USB webcam and move on.
+#
+# everything else that matters works: compute, graphics, WiFi,
+# Thunderbolt, external display-out, TPM 2.0 / LUKS, fingerprint (pending
+# sensor model check). skip 22.04 on this machine — the [[ip-cameras]]
+# "ubuntu (22.04, 24.04, 26.04)" line is about camera-TOOLING package
+# availability, NOT about installing the OS on Arrow Lake-U hardware.
+#
+# refs: Phoronix "Intel IPU6 Camera Challenge" (2025);
+#       github.com/intel/ipu6-drivers; Launchpad bug #2085845.
+
+
 # BOTTOM LINE
 #
 # good buy for a Linux work laptop if the price is acceptable and you
