@@ -68,6 +68,46 @@
 # survey in [[arch-distros]]; Fedora specifics in [[fedora]].
 
 
+# VS MY CURRENT LAPTOP — X1 CARBON 7th GEN (2019)
+#
+# current daily driver: ThinkPad X1 Carbon 7th Gen, 20QD001XUS
+#   i7-8665U (4C/8T, 14nm Whiskey Lake-U), UHD Graphics 620
+#   16GB soldered, 3840x2160 (4K) 16:9 display, ~2.4 lb (1.09 kg)
+#   WiFi 5 (AC 9560), Ubuntu 24.04.4, kernel 6.17
+#
+#   axis        X1 Carbon 7th (current)     T14s Gen 6 (255U)        verdict
+#   ----        -----------------------     -----------------        ------
+#   CPU         i7-8665U 4C/8T (2019)       Ultra 7 255U 12C/14T     BIG WIN
+#                                           (Arrow Lake-U, 2025)     ~2.5-3x
+#                                                                    multi,
+#                                                                    ~40-50%
+#                                                                    single
+#   RAM         16GB soldered (~5GB used)   32GB soldered            2x
+#   battery     2019 cell, aging + 4K       ~11+ hrs, cool/quiet     BIG WIN
+#   GPU         UHD 620 (Gen9.5)            Intel Graphics (Xe)      win
+#   WiFi        WiFi 5 (AC 9560)            WiFi 7 (802.11be)        win
+#   NPU         none                        yes, <40 TOPS            minor
+#   display     3840x2160 4K, 16:9          1920x1200 WUXGA, 16:10   DOWNGRADE
+#                                                                    (res) /
+#                                                                    16:10 gain
+#   weight      ~2.4 lb (1.09 kg)           3.08 lb (1.40 kg)        X1 WINS
+#   build/kbd   premium carbon ThinkPad     premium carbon ThinkPad  wash
+#
+# the two trade-offs that aren't slam dunks:
+#   1. resolution drops 4K -> WUXGA. on 14" 4K is arguably overkill and a
+#      battery drain; T14s gains 16:10 (more vertical) + ~400 nits. but if
+#      the 4K panel is precious to you, it's the one spec going backward.
+#   2. the X1 is ~0.6 lb (270g) lighter.
+#
+# Linux: i'm on Ubuntu 24.04 / kernel 6.17 — already new enough for clean
+# Arrow Lake-U support, so the 255U works out of the box. stick with Intel,
+# not the Snapdragon variant.
+#
+# bottom line on the upgrade: a clear generational jump (CPU, RAM, battery,
+# WiFi, GPU) after 6 years. only real costs are losing the 4K screen and
+# gaining ~0.6 lb. easy yes unless the 4K panel is a dealbreaker.
+
+
 # BOTTOM LINE
 #
 # good buy for a Linux work laptop if the price is acceptable and you
