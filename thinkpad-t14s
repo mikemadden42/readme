@@ -1,0 +1,93 @@
+# thinkpad-t14s — buying notes / consensus (Gen 6, 2025)
+#
+# config under consideration:
+#   Lenovo ThinkPad T14s Gen 6, 14", Eclipse Black
+#   Intel Core Ultra 7 255U (2.0 GHz)   ← NOTE: Arrow Lake-U, NOT Lunar Lake
+#   32GB RAM (soldered LPDDR5x)
+#   Intel integrated graphics (NOT Arc)
+#   1TB SSD
+#   14" WUXGA (1920x1200) display
+#   WiFi 7 (802.11be), Bluetooth 5.4
+#   3.08 lb (1.40 kg)
+#   Windows 11 Pro
+#
+# consensus from reviews (Notebookcheck, PCWorld, XDA, Laptop Mag,
+# Tom's Hardware): a premium, durable, quiet, all-day work laptop with a
+# great keyboard and a mediocre screen, at a price that's its main
+# detractor. the 32GB/1TB/Intel spec is well chosen — especially for Linux.
+
+
+# THE CHIP CAVEAT (read this first — it reframes the reviews)
+#
+# the 255U is Intel ARROW LAKE-U, not Lunar Lake. most of the glowing
+# "21-hour battery / best T14s yet" press is about either the Lunar Lake
+# V-series (256V/258V) or the Snapdragon model. don't transfer that hype
+# to this chip.
+#
+#   255U (this config)   efficiency/value tier. 12 cores (2P+8E+2LP),
+#                        plain "Intel Graphics" (NOT Arc 140V), and an
+#                        NPU below 40 TOPS — so NOT Copilot+ certified.
+#                        good, modest, cool-running. no generational
+#                        leap over Meteor Lake.
+#   256V/258V (Lunar)    the battery / iGPU / AI champion the headlines
+#                        rave about. different chip.
+#   Snapdragon X          longest battery, cheapest — but bad for Linux
+#                        (see below). avoid if you run Linux.
+
+
+# CONSENSUS PROS
+#
+# - build & ergonomics: classic ThinkPad. carbon-fiber / magnesium,
+#   ~3.08 lb, best-in-class keyboard + TrackPoint, user-replaceable
+#   keyboard. universally praised.
+# - runs cool, quiet, and long vs earlier T14s gens. real-world ~11+ hrs
+#   (a full workday); video playback into the high teens.
+# - 32GB is the right call: Intel models use SOLDERED LPDDR5x, NOT
+#   upgradeable. buying 32GB now is buying it forever. done correctly.
+# - WiFi 7, good port selection, serviceable (replaceable) SSD, solid 1TB.
+
+
+# CONSENSUS CONS
+#
+# - display is the weak point: WUXGA ~400 nits, anti-glare, but reviewers
+#   consistently call the colors dull / lifeless. fine for work, not for
+#   media or color work.
+# - price: the recurring complaint. ~$1,500-1,880 depending on sale; some
+#   say the Snapdragon model does most of the job for much less.
+# - Arrow Lake-U is not a performance leap over Meteor Lake.
+
+
+# LINUX ANGLE (the deciding factor for this repo's use)
+#
+# the Intel 255U is the RIGHT T14s to buy for Linux:
+# - Intel iGPU + standard x86 = excellent kernel support out of the box.
+# - AVOID the Snapdragon / ARM variant for Linux — support is still rough.
+# - ThinkPads are among the best-supported Linux laptops generally; this
+#   one is a clean target (soldered RAM aside).
+# day-one Linux checklist lives in [[fedora-to-endeavouros]]; distro
+# survey in [[arch-distros]]; Fedora specifics in [[fedora]].
+
+
+# BOTTOM LINE
+#
+# good buy for a Linux work laptop if the price is acceptable and you
+# don't need a great screen or Copilot+/Arc-class graphics. just calibrate
+# expectations: the 255U is the sensible/value variant, not the
+# Lunar-Lake battery/AI record-setter the headlines describe.
+
+
+# SOURCES
+#
+#   https://www.notebookcheck.net/Intel-empire-strikes-back-with-21-hrs-of-battery-life-Lenovo-ThinkPad-T14s-Gen-6-laptop-review.1008078.0.html
+#   https://www.pcworld.com/article/2875403/lenovo-thinkpad-t14s-review.html
+#   https://www.xda-developers.com/lenovo-thinkpad-t14s-gen-6-intel-review/
+#   https://www.laptopmag.com/laptops/business-laptops/lenovo-thinkpad-t14s-gen-6-review
+#   https://www.tomshardware.com/laptops/ultrabooks-ultraportables/lenovo-thinkpad-t14s-gen-6-snapdragon-review
+
+
+# CROSS-REFERENCES
+#
+#   [[fedora-to-endeavouros]]  — Linux day-one checklist, distro migration
+#   [[arch-distros]]           — Arch family survey
+#   [[fedora]]                 — Fedora specifics (hardware accel, drivers)
+#   [[mechanical-keyboards]]   — the other hardware-picks note

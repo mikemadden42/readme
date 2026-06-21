@@ -17,6 +17,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [ai-integration-skill](ai-integration-skill) — integrating AI into systems vs learning tools
 - [anthropic-models](anthropic-models) — current Claude 4.x lineup and when to pick each
 - [mechanical-keyboards](mechanical-keyboards) — G610 successor picks
+- [thinkpad-t14s](thinkpad-t14s) — buying notes/consensus for the T14s Gen 6 (Intel), with Linux angle
 
 ## Packaging walkthroughs
 
