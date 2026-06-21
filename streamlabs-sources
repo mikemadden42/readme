@@ -1,0 +1,218 @@
+# streamlabs-sources — managing sources (esp. network cameras) in Streamlabs Desktop
+#
+# Streamlabs Desktop (the rebranded "Streamlabs OBS" / SLOBS) organizes
+# everything you put on screen as SOURCES, grouped into SCENES. this note is
+# the mechanical "how do I see / edit / add / remove a source" reference,
+# with an emphasis on NETWORK CAMERA sources (RTSP / IP cameras). for the
+# RTSP setup recipe, vendor URLs, Input Args, and "no video" triage, see the
+# companion [[streamlabs-cameras]].
+#
+# scope: Streamlabs Desktop on Windows 10 / 11. (No Linux build — on Linux
+# use OBS Studio; the concepts map 1:1, the menus are near-identical.)
+
+
+THE MENTAL MODEL — SCENES, SOURCES, MIXER
+-----------------------------------------
+
+# SCENES         a named layout. you switch between scenes live. bottom-LEFT
+#                panel by default. examples: "Single", "2x2 grid", "PiP".
+# SOURCES        the things drawn in the currently-selected scene (a camera,
+#                a capture card, an image, text, a browser overlay). bottom-
+#                CENTER panel. ORDER MATTERS: top of the list = front-most on
+#                screen (drawn last, on top).
+# MIXER          audio levels for any source that carries audio. bottom-
+#                RIGHT panel.
+#
+# KEY FACT: sources are PER-SCENE, but a single source can be REFERENCED in
+# multiple scenes ("Add Existing", below). the same camera feed shown in
+# three scenes is usually ONE source referenced three times — edit it once,
+# all three update. this matters a lot for edit/remove (below).
+
+# SOURCE TYPES USED FOR NETWORK CAMERAS
+#   Media Source        the default for RTSP / IP cameras. FFmpeg under the
+#                       hood. holds the rtsp:// URL + Input Format + Input
+#                       Args. this is what 99% of IP-camera sources are.
+#   VLC Video Source    libVLC under the hood. fallback when Media Source
+#                       won't negotiate RTSP/auth, and the better choice for
+#                       MJPEG-over-HTTP cameras. holds a playlist of URLs.
+#   (NOT "Video Capture Device" — that's USB webcams / capture cards, not
+#    network cameras.)
+
+
+VERIFY THE CURRENT NETWORK CAMERA SOURCES
+-----------------------------------------
+
+# there is NO global "list every source in the whole project" view in
+# Streamlabs — sources are shown per scene. so you walk the scenes:
+
+# (1) click through each entry in the SCENES panel (bottom-left). camera
+#     sources may be split across scenes ("Cameras", "Grid", "PiP", ...).
+#
+# (2) in the SOURCES panel, the camera sources are the ones typed
+#     "Media Source" or "VLC Video Source". the icons on each row:
+#       eye        visible / hidden in this scene (hidden != removed)
+#       lock       locked from being moved / resized on the canvas
+#
+# (3) to see WHICH camera / IP a source actually points at, double-click it
+#     (or right-click -> Properties) and read the INPUT field — that's the
+#     live rtsp://USER:PASS@IP:554/... URL. this is how you confirm each
+#     source is bound to the right camera IP.
+#
+# (4) health read at a glance: a source whose preview is black with a red
+#     error, while OTHER sources render, isolates the dead feed.
+
+# TIE-IN WITH THE DUAL-NIC / "NO VIDEO" PROBLEM
+# when cameras go black, step (3) is the high-value check: open Properties on
+# each camera source and confirm the Input URL's IP matches the camera's
+# CURRENT static IP. if the URLs are correct and the feeds are still black,
+# the fault is upstream (the streaming box reaching the camera subnet), not
+# the Streamlabs sources — see [[streamlabs-cameras]] "LIVESTREAM: NO CAMERA
+# VIDEO — FIELD TRIAGE" and "THE DUAL-NIC / WRONG-SUBNET FAULT".
+
+# SEEING A SOURCE'S NAME -> URL MAPPING QUICKLY
+# Streamlabs has no export of "source name = URL". to audit them, double-
+# click each in turn. if you maintain many, keep an external crib sheet:
+#   Left   -> rtsp://USER:PASS@10.0.220.51:554/...
+#   Center -> rtsp://USER:PASS@10.0.220.52:554/...
+#   Right  -> rtsp://USER:PASS@10.0.220.53:554/...
+
+
+EDIT A SOURCE
+-------------
+
+# OPEN PROPERTIES
+#   double-click the source in the Sources panel
+#   (or right-click -> Properties)
+# for a camera this is the Media Source dialog. the fields you edit:
+#   Input          the rtsp:// URL — change this if the camera's IP moved
+#   Input Format   rtsp
+#   Input Args     e.g. -rtsp_transport tcp -fflags +nobuffer -flags low_delay
+#                  (full recommended string in [[streamlabs-cameras]])
+#   checkboxes     "Close file when inactive", "Use hardware decoding when
+#                  available", "Restart playback when source becomes active"
+#   click Done to apply.
+
+# RENAME
+#   right-click -> Rename (some builds: double-click the name text).
+
+# REPOSITION / RESIZE ON THE CANVAS
+#   click the source in the PREVIEW, drag the red corner handles.
+#   right-click -> Transform -> Edit Transform   for exact px values
+#   right-click -> Transform -> Fit to Screen / Center / Stretch
+#   the lock icon in the Sources panel prevents accidental moves.
+
+# REORDER (z-order / what's on top)
+#   drag the row up/down in the Sources panel, OR right-click ->
+#   Order -> Move Up / Move to Top. top of the list = front-most on screen.
+
+# AUDIO
+#   the embedded camera audio shows in the MIXER. mute it there, or
+#   right-click the source -> Properties for per-source audio, or use
+#   Advanced Audio Properties for sync offset (negative ms delays audio).
+
+# REMEMBER: if the source is REFERENCED in multiple scenes, editing its
+# Properties (URL, args) changes it EVERYWHERE. transform (position/size) is
+# per-scene, but the underlying feed/settings are shared.
+
+
+ADD MORE SOURCES
+----------------
+
+# (1) select the SCENE you want the camera in (Scenes panel).
+#
+# (2) in the SOURCES panel, click the "+" (Add Source).
+#
+# (3) pick the type:
+#       Media Source        default for RTSP / IP cameras
+#       VLC Video Source    fallback / MJPEG-over-HTTP cameras
+#
+# (4) name it, and choose ADD NEW vs ADD EXISTING:
+#       Add New         creates a brand-new source with its own camera
+#                       connection. use this for a camera not yet in the
+#                       project.
+#       Add Existing    re-uses a source already defined in another scene.
+#                       SAME feed, ONE connection to the camera, shown in
+#                       multiple scenes. use this to put the same camera in
+#                       your "Single", "Grid", and "PiP" scenes WITHOUT
+#                       opening three separate RTSP sessions to the camera
+#                       (cheap cameras cap concurrent clients — see
+#                       [[streamlabs-cameras]]).
+#
+# (5) in Properties: UNCHECK "Local File", paste the rtsp:// URL into INPUT,
+#     set Input Format = rtsp and the Input Args, click Done.
+#
+# full Input Args recipe + checkbox settings: [[streamlabs-cameras]]
+# "ADDING AN IP CAMERA AS A STREAMLABS MEDIA SOURCE".
+
+# ADD-EXISTING IS THE RIGHT DEFAULT FOR MULTI-SCENE CAMERA SETUPS
+# if you want Left/Center/Right in several layouts, define each camera ONCE
+# (Add New in your first scene), then Add Existing into every other scene.
+# one camera = one source = one RTSP session, regardless of how many scenes
+# show it.
+
+
+REMOVE A SOURCE
+---------------
+
+# HIDE vs REMOVE — KNOW THE DIFFERENCE
+#   eye icon (hide)   removes it from view in THIS scene only. the source
+#                     still exists and KEEPS its connection to the camera.
+#                     non-destructive, instantly reversible.
+#   Remove            deletes the source from THIS scene.
+#                     select it -> press Delete, OR right-click -> Remove.
+
+# THE REFERENCE GOTCHA
+# if a source is REFERENCED in multiple scenes (Add Existing), removing it
+# from ONE scene only drops THAT reference — the source survives in the
+# other scenes. the underlying source (and its camera connection) is gone
+# only once it's removed from EVERY scene that references it.
+
+# NO UNDO
+# most builds do NOT undo a removed source. if you might want it back:
+#   - HIDE it (eye) instead of removing, or
+#   - copy its Input URL out of Properties first (so you can re-add it).
+
+# REMOVE A WHOLE SCENE
+#   right-click the scene in the Scenes panel -> Remove. this deletes the
+#   scene and the source REFERENCES in it; sources also referenced elsewhere
+#   survive. exclusively-in-that-scene sources are gone.
+
+
+SCENE COLLECTIONS (THE BIGGER CONTAINER)
+----------------------------------------
+
+# a SCENE COLLECTION is the whole set of scenes+sources, saved as a unit.
+# top menu: Scene Collection -> manage / new / duplicate / import / export.
+# use cases for a camera rig:
+#   - DUPLICATE a working collection before re-cabling / re-IPing cameras,
+#     so you can roll back if the edits break it
+#   - EXPORT to back up your entire camera layout (scenes, sources, URLs,
+#     transforms) to a file, or move it to another machine
+#   - keep separate collections per event / room / camera count
+
+
+RIGHT-CLICK SOURCE MENU — QUICK REFERENCE
+-----------------------------------------
+
+#   Properties              edit URL / Input Args / settings (cameras)
+#   Filters                 add color correction, crop/pad, chroma key, etc.
+#   Rename                  change the display name
+#   Remove                  delete from this scene (mind references)
+#   Transform               position / size / fit / center / flip
+#   Order                   z-order (move up/down/top/bottom)
+#   Lock / Unlock           prevent canvas moves
+#   Hide / Show             same as the eye icon
+#   Create Source Shortcut  (some builds) hotkey to toggle visibility
+
+
+CROSS-REFERENCES
+----------------
+
+  [[streamlabs-cameras]]   — IP cameras in Streamlabs: RTSP setup, Input
+                             Args recipe, vendor URL cheat sheet, "no video"
+                             field triage, dual-NIC / wrong-subnet fault,
+                             MediaMTX relay
+  [[ip-cameras]]           — the Linux companion: nmap discovery, ONVIF,
+                             vlc / mpv / ffmpeg, restreaming
+  [[windows_commands]]     — Windows CLI reference
+  [[powershell]]           — Test-NetConnection, Get-NetAdapter, Find-NetRoute

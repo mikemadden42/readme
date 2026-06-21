@@ -109,6 +109,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [powershell](powershell) — PowerShell notes
 - [apt-cyg](apt-cyg) — Cygwin package manager
 - [streamlabs-cameras](streamlabs-cameras) — IP cameras in Streamlabs Desktop: triage, RTSP setup, vendor URLs, MediaMTX relay
+- [streamlabs-sources](streamlabs-sources) — managing sources in Streamlabs Desktop: verify/edit/add/remove, scenes vs sources, shared references
 
 ## CLI tools
 
