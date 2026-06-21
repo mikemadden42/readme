@@ -205,6 +205,45 @@
 # kernel 6.17 — no proprietary driver needed.
 
 
+# PSREF — OTHER NOTABLE DETAILS
+#
+# LINUX-RELEVANT:
+# - Lenovo OFFERS UBUNTU LINUX / Linux preload on this model (alongside
+#   Win 11 Pro/Home and no-OS). but PSREF caveat: some features may not
+#   be supported on Linux preload, including Intel RST RAID, MIPI
+#   computer vision camera, WWAN, and Human Presence Detection.
+# - CAMERA IS THE ONE REAL LINUX ROUGH EDGE: the webcam uses Intel's
+#   IPU6 / MIPI stack — historically NOT plug-and-play on Linux (needs
+#   libcamera + the ipu6 driver stack; older kernels didn't support it
+#   out of the box). on kernel 6.17 it's likely fine, but VERIFY rather
+#   than assume. (GPU/WiFi genuinely do just work; the camera is the
+#   exception.)
+# - storage is UPGRADEABLE: single M.2 2280 slot, Opal 2.0 SED (hardware
+#   self-encrypting), PCIe 4.0 x4 on the U-series. only RAM is locked.
+# - discrete TPM 2.0 (TCG + FIPS 140-3), ENABLED BY DEFAULT — clean for
+#   LUKS / disk encryption. (Pluton TPM is Lunar Lake only.)
+# - MIL-STD-810H military durability tested.
+#
+# SPEC CORRECTIONS / ADDITIONS:
+# - WEIGHT: Arrow Lake starts at 1.24 kg (2.72 lb) — the retailer's
+#   "3.08 lb" is high. real gap vs the X1 Carbon is ~0.3 lb, not 0.6.
+# - battery: 58Wh, Rapid Charge to 80% in ~1hr, 65W USB-C. PSREF
+#   255U/16GB config: MobileMark 25 up to 16.68h, video up to 28.9h
+#   @150nits (so real-world ~11h is conservative-realistic).
+# - memory runs at LPDDR5X-7467 on Arrow Lake (downclocked from 8533
+#   "due to platform limitation") — minor.
+# - optional WWAN (antenna-ready): 4G/5G via Quectel M.2 + eSIM. WiFi is
+#   Intel BE201 (WiFi 7) + BT 5.4; vPro optional.
+#
+# NICE-TO-HAVE:
+# - audio: Realtek ALC3287, stereo 2W x2 Dolby Atmos, dual-mic 360°
+#   far-field array.
+# - build: carbon-fiber-hybrid or aluminium top, aluminium bottom; heavy
+#   recycled content; 100% plastic-free FSC packaging.
+# - certs: ENERGY STAR 9.0, EPEAT Gold, TCO gen 10, RoHS, ErP; optional
+#   Eyesafe 2.0 and Intel Evo.
+
+
 # BOTTOM LINE
 #
 # good buy for a Linux work laptop if the price is acceptable and you
