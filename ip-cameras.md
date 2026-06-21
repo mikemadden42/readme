@@ -133,6 +133,144 @@ unreliable — prefer the `nmap -sU` approach in DISCOVERY).
 
 If any one of those is false, force TCP.
 
+## Livestream / NVR: no camera video — field triage
+
+The scenario: a box that pulls the cameras (OBS / Streamlabs, an NVR, Frigate,
+a vlc/mpv wall) suddenly shows NO video from the IP cameras, while everything
+else on that box still works. You have rebooted the box and power-cycled the
+cameras several times, with no change.
+
+### The one observation that solves most of these
+
+If **any** non-camera source still works (a graphics PC in PiP, a webcam, a
+local file, the app's own UI), then the box, the app, and the output are all
+**healthy**. The fault is isolated to the **camera signal path** — which for
+IP cameras is the network / RTSP path, **not** camera power. Rebooting the box
+cannot fix a network-path or routing problem, which is exactly why "I
+restarted it 3 times" changes nothing.
+
+> **Trap: "I can ping the cameras from my phone / laptop."** Another device
+> pinging the cameras proves the **cameras** are up and the camera LAN is
+> healthy. It does **not** prove the **box running the stream** can reach them
+> — the two may sit on different subnets / NICs / VLANs. The only reachability
+> test that matters is run **from the box pulling the streams**.
+
+### Triage, in order (run everything from the box pulling the streams)
+
+1. **Confirm the split.** Is at least one NON-camera source still live? If yes,
+   STOP rebooting — it's the camera path. If NOTHING works, it's the app /
+   output; a different problem.
+
+2. **Inventory the box's own network interfaces.** A camera/streaming box very
+   often has TWO NICs (one to the internet / control LAN, one to the camera
+   LAN). Know which IP is on which subnet.
+   ```bash
+   # Linux
+   ip -br addr ; ip -br link
+   ```
+   ```powershell
+   # Windows
+   Get-NetIPAddress -AddressFamily IPv4 | Select IPAddress, InterfaceAlias, AddressState
+   Get-NetAdapter | Select Name, Status, MacAddress, LinkSpeed
+   ```
+   Look for the camera-subnet NIC present, UP, with link, and NOT on a
+   link-local address (no addr on Linux / 169.254.x.x APIPA on Windows).
+
+3. **Ask the OS which interface it will USE to reach a camera.**
+   ```bash
+   # Linux — must egress the camera-subnet NIC, not the internet NIC
+   ip route get 10.0.220.52
+   ```
+   ```powershell
+   # Windows — the returned source IP MUST be the camera-subnet NIC
+   Find-NetRoute -RemoteIPAddress 10.0.220.52
+   ```
+   Wrong NIC = a routing problem (see the dual-NIC fault below).
+
+4. **TCP/554 reachability, from the box that matters** (same probe as the
+   Quick TCP reachability check above).
+   ```bash
+   # Linux
+   nc -zv -w 3 10.0.220.52 554
+   ```
+   ```powershell
+   # Windows
+   Test-NetConnection -ComputerName 10.0.220.52 -Port 554
+   ```
+   Success = the RTSP control channel is reachable; the problem is URL / creds
+   / transport in the app. Failure = network / NIC / routing / switch / cable.
+
+5. **If 554 is reachable but still no picture,** validate the actual stream
+   with ffprobe / vlc (see the ffprobe and vlc sections below).
+
+## The dual-NIC / wrong-subnet fault (the silent killer)
+
+### The shape of it
+
+The box has two NICs on two different subnets, e.g.:
+
+```
+NIC A (internet / control):  172.16.23.37   <- holds the default gateway
+NIC B (camera LAN):          10.0.220.24    <- same subnet as the cameras
+cameras:                     10.0.220.51-53
+```
+
+If NIC B is down / lost link / lost its static config after a reboot, the box
+has **no local route to 10.0.220.0/24**, so camera-bound traffic falls back to
+the default route out NIC A (172.16.23.x) — which cannot reach the camera
+subnet. Result: every camera goes black, while a phone on the 10.0.220.x LAN
+pings them just fine. **That mismatch is the tell.**
+
+### Why it survives every reboot
+
+The cameras are fine, the switch is fine, the app is fine. Nothing a reboot
+touches is broken. The break is a missing/incorrect route or a downed second
+NIC — state a reboot may not restore (especially if the static IP config
+didn't persist, or the cable on that port is loose).
+
+### Diagnose
+
+```bash
+# Linux
+ip -br addr ; ip -br link
+ip route get 10.0.220.52        # which dev / src does it choose?
+ip route show                   # is 10.0.220.0/24 a local route?
+```
+```powershell
+# Windows
+Get-NetAdapter | Select Name, Status, MacAddress, LinkSpeed
+#   camera NIC must be "Up" with real LinkSpeed (cable/switch port ok)
+Get-NetIPConfiguration -InterfaceAlias "<camera NIC>"
+#   IPv4Address on the camera subnet? IPv4DefaultGateway should be EMPTY
+Get-NetRoute -DestinationPrefix 10.0.220.0/24
+Find-NetRoute -RemoteIPAddress 10.0.220.52
+#   source IP it returns MUST be the camera-NIC IP (10.0.220.24)
+```
+
+### The gotcha — default gateway on the camera NIC
+
+The camera-LAN NIC should have an IP + subnet mask but **no default gateway**.
+Only the internet NIC should own the default route. If BOTH NICs carry a
+gateway, the OS picks one by route metric and may send camera traffic out the
+wrong NIC. (On Windows, also watch the camera NIC's "Public" firewall
+profile.)
+
+### Fix
+
+- Bring the camera NIC back up / re-seat its cable on the switch port:
+  ```bash
+  sudo ip link set <dev> up           # Linux
+  ```
+  ```powershell
+  Enable-NetAdapter -Name "<camera NIC>"   # Windows (or Restart-NetAdapter)
+  ```
+- Confirm the camera NIC's static IP + mask persisted across the reboot;
+  re-apply if it reverted to DHCP / link-local.
+- Remove any default gateway from the camera NIC; keep the default route
+  **only** on the internet NIC.
+- Confirm a local route to the camera subnet exists out the camera NIC.
+- Re-test: `ip route get` / `Find-NetRoute`, then `nc` / `Test-NetConnection`.
+
 ## Install
 
 ### Ubuntu (22.04, 24.04, 26.04)

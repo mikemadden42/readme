@@ -65,6 +65,147 @@ steps.
 
    (Full step-by-step in the next section.)
 
+## Livestream: no camera video — field triage
+
+The scenario: a live production suddenly shows NO video from the IP cameras,
+while everything else — a graphics PC fed in over a capture card / NDI, a PiP
+source, the slides — renders fine. You have rebooted the streaming PC and
+power-cycled the cameras several times, with no change.
+
+### The one observation that solves most of these
+
+If **any** non-camera source still renders and goes to air (the graphics PC in
+PiP, a webcam, a media file), then the streaming box, Streamlabs, the scene,
+the encoder, and the stream output are all **healthy**. The fault is isolated
+to the **camera signal path** — which for IP cameras is the network / RTSP
+path, **not** camera power. Rebooting the PC cannot fix a network-path or
+routing problem, which is exactly why "I restarted it 3 times" changes
+nothing.
+
+> **Trap: "I can ping the cameras from my phone."** Your phone pinging the
+> cameras proves the **cameras** are up and the camera LAN is healthy. It does
+> **not** prove the **streaming box** can reach them — the phone and the
+> streaming box may sit on different subnets / NICs / VLANs. The only
+> reachability test that matters is run **from the streaming box**.
+
+### Triage, in order (run everything from the streaming machine)
+
+1. **Confirm the split.** Is at least one NON-camera source still live? If yes,
+   STOP rebooting the PC — it's the camera path. If NO source works at all,
+   it's the app / encoder / output — a different problem (see the 60-second
+   triage above).
+
+2. **Inventory the streaming box's own network interfaces.** A streaming PC
+   very often has TWO NICs (one to the internet / control LAN, one to the
+   camera LAN). You need to know which IP is on which subnet.
+   ```powershell
+   # Windows
+   Get-NetIPAddress -AddressFamily IPv4 | Select IPAddress, InterfaceAlias, AddressState
+   Get-NetAdapter | Select Name, Status, MacAddress, LinkSpeed
+   ```
+   ```bash
+   # Linux
+   ip -br addr ; ip -br link
+   ```
+   Look for: the NIC on the camera's subnet present, UP, with link, and NOT
+   holding an APIPA / link-local address (169.254.x.x on Windows).
+
+3. **Ask the OS which interface it will USE to reach a camera.**
+   ```powershell
+   # Windows — the returned source IP MUST be the camera-subnet NIC
+   Find-NetRoute -RemoteIPAddress 10.0.220.52
+   ```
+   ```bash
+   # Linux — must egress the camera-subnet NIC, not the internet NIC
+   ip route get 10.0.220.52
+   ```
+   Wrong NIC = a routing problem (see the dual-NIC fault below).
+
+4. **TCP/554 reachability, from the box that matters.**
+   ```powershell
+   # Windows
+   Test-NetConnection -ComputerName 10.0.220.52 -Port 554
+   ```
+   ```bash
+   # Linux
+   nc -zv -w 3 10.0.220.52 554
+   ```
+   Success = the RTSP control channel is reachable; the problem is URL / creds
+   / transport in Streamlabs. Failure = network / NIC / routing / switch /
+   cable.
+
+5. **If 554 is reachable but still no picture,** validate the actual stream
+   OUTSIDE Streamlabs (ffprobe / VLC) — see "Validating the URL" below.
+
+## The dual-NIC / wrong-subnet fault (the silent killer)
+
+### The shape of it
+
+The streaming box has two NICs on two different subnets, e.g.:
+
+```
+NIC A (internet / control):  172.16.23.37   <- holds the default gateway
+NIC B (camera LAN):          10.0.220.24    <- same subnet as the cameras
+cameras:                     10.0.220.51-53
+```
+
+If NIC B is down / lost link / lost its static config after a reboot, the box
+has **no local route to 10.0.220.0/24**, so camera-bound traffic falls back to
+the default route out NIC A (172.16.23.x) — which cannot reach the camera
+subnet. Result: every camera goes black, while a phone sitting on the
+10.0.220.x LAN pings them just fine. **That mismatch is the whole tell.**
+
+### Why it survives every reboot
+
+The cameras are fine, the switch is fine, Streamlabs is fine. Nothing a reboot
+touches is broken. The break is a missing/incorrect route or a downed second
+NIC — state a reboot may not restore (especially if the static IP config
+didn't persist, or the cable on that port is loose).
+
+### The Windows-specific gotcha — default gateway on the camera NIC
+
+On a multi-NIC Windows box, the camera-LAN NIC should have an IP + subnet mask
+but **no default gateway**. Only the internet NIC should own the default
+route. If BOTH NICs carry a gateway, Windows picks one by interface metric and
+may route camera traffic out the wrong NIC. Also: Windows can tag the camera
+NIC's profile "Public" and let the firewall block it.
+
+### Diagnose
+
+```powershell
+# Windows
+Get-NetAdapter | Select Name, Status, MacAddress, LinkSpeed
+#   camera NIC must be "Up" with real LinkSpeed (cable/switch port ok)
+Get-NetIPConfiguration -InterfaceAlias "<camera NIC>"
+#   IPv4Address on the camera subnet? IPv4DefaultGateway should be EMPTY
+Get-NetRoute -DestinationPrefix 10.0.220.0/24
+#   a route to the camera subnet must exist via the camera NIC
+Find-NetRoute -RemoteIPAddress 10.0.220.52
+#   source IP it returns MUST be the camera-NIC IP (10.0.220.24)
+```
+```bash
+# Linux
+ip -br addr ; ip -br link
+ip route get 10.0.220.52        # which dev / src does it choose?
+ip route show                   # is 10.0.220.0/24 a local route?
+```
+
+### Fix
+
+- Bring the camera NIC back up / re-seat its cable on the switch port:
+  ```powershell
+  Enable-NetAdapter -Name "<camera NIC>"   # or Restart-NetAdapter
+  ```
+  ```bash
+  sudo ip link set <dev> up
+  ```
+- Confirm the camera NIC's static IP + mask persisted across the reboot;
+  re-apply if it reverted to DHCP / APIPA (169.254.x.x).
+- Remove any default gateway from the camera NIC; keep the default route
+  **only** on the internet NIC.
+- Confirm a local route to the camera subnet exists out the camera NIC.
+- Re-test: `Find-NetRoute` / `ip route get`, then `Test-NetConnection` / `nc`.
+
 ## Validating the URL outside Streamlabs first
 
 Always do this before touching Streamlabs. On Windows, install both VLC and

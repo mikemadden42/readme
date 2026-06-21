@@ -71,6 +71,121 @@ Test-NetConnection -ComputerName 192.168.1.50 -Port 554
 #     (full step-by-step in the next section)
 
 
+LIVESTREAM: NO CAMERA VIDEO — FIELD TRIAGE
+------------------------------------------
+
+# the scenario: a live production suddenly shows NO video from the IP
+# cameras, while everything else — a graphics PC fed in over a capture
+# card / NDI, a PiP source, the slides — renders fine. you have rebooted
+# the streaming PC and power-cycled the cameras several times, no change.
+
+# THE ONE OBSERVATION THAT SOLVES MOST OF THESE
+# if ANY non-camera source still renders and goes to air (the graphics PC
+# in PiP, a webcam, a media file), then the streaming box, Streamlabs, the
+# scene, the encoder, and the stream output are all HEALTHY. the fault is
+# isolated to the CAMERA SIGNAL PATH — which for IP cameras is the
+# network / RTSP path, NOT camera power. rebooting the PC cannot fix a
+# network-path or routing problem, which is exactly why "I restarted it 3
+# times" changes nothing.
+
+# TRAP: "I can ping the cameras from my phone"
+# your phone pinging the cameras proves the CAMERAS are up and the camera
+# LAN is healthy. it does NOT prove the STREAMING BOX can reach them — the
+# phone and the streaming box may sit on different subnets / NICs / VLANs.
+# the only reachability test that matters is run FROM the streaming box.
+
+# TRIAGE, IN ORDER (run everything FROM the streaming machine)
+#
+# (1) confirm the split: is at least one NON-camera source still live? if
+#     yes, STOP rebooting the PC — it's the camera path. if NO source
+#     works at all, it's the app / encoder / output — a different problem
+#     (see the 60-second triage above).
+#
+# (2) inventory the streaming box's own network interfaces. a streaming PC
+#     very often has TWO NICs (one to the internet / control LAN, one to
+#     the camera LAN). you need to know which IP is on which subnet.
+#       Windows (PowerShell):
+#         Get-NetIPAddress -AddressFamily IPv4 |
+#           Select IPAddress, InterfaceAlias, AddressState
+#         Get-NetAdapter | Select Name, Status, MacAddress, LinkSpeed
+#       Linux:
+#         ip -br addr ; ip -br link
+#     look for: the NIC on the camera's subnet present, UP, with link, and
+#     NOT holding an APIPA / link-local address (169.254.x.x on Windows).
+#
+# (3) ask the OS which interface it will USE to reach a camera:
+#       Windows:  Find-NetRoute -RemoteIPAddress 10.0.220.52
+#                 # the returned source IP MUST be the camera-subnet NIC
+#       Linux:    ip route get 10.0.220.52
+#                 # must egress the camera-subnet NIC, not the internet NIC
+#     wrong NIC = a routing problem (see DUAL-NIC fault below).
+#
+# (4) TCP/554 reachability, from the box that matters:
+#       Windows:  Test-NetConnection -ComputerName 10.0.220.52 -Port 554
+#       Linux:    nc -zv -w 3 10.0.220.52 554
+#     success = the RTSP control channel is reachable; the problem is URL /
+#     creds / transport in Streamlabs. failure = network / NIC / routing /
+#     switch / cable.
+#
+# (5) if 554 is reachable but still no picture, validate the actual stream
+#     OUTSIDE Streamlabs (ffprobe / VLC) — see VALIDATING THE URL below.
+
+
+THE DUAL-NIC / WRONG-SUBNET FAULT (the silent killer)
+-----------------------------------------------------
+
+# THE SHAPE OF IT
+# the streaming box has two NICs on two different subnets, e.g.:
+#     NIC A (internet / control):  172.16.23.37   <- holds the default gw
+#     NIC B (camera LAN):          10.0.220.24    <- same subnet as cameras
+#     cameras:                     10.0.220.51-53
+# if NIC B is down / lost link / lost its static config after a reboot,
+# the box has NO local route to 10.0.220.0/24, so camera-bound traffic
+# falls back to the default route out NIC A (172.16.23.x) — which can't
+# reach the camera subnet. result: every camera goes black, while a phone
+# sitting on the 10.0.220.x LAN pings them just fine. that mismatch is the
+# whole tell.
+
+# WHY IT SURVIVES EVERY REBOOT
+# the cameras are fine, the switch is fine, Streamlabs is fine. nothing a
+# reboot touches is broken. the break is a missing/incorrect route or a
+# downed second NIC — state a reboot may not restore (especially if the
+# static IP config didn't persist, or the cable on that port is loose).
+
+# THE WINDOWS-SPECIFIC GOTCHA — DEFAULT GATEWAY ON THE CAMERA NIC
+# on a multi-NIC Windows box, the camera-LAN NIC should have an IP + subnet
+# mask but NO default gateway. only the internet NIC should own the default
+# route. if BOTH NICs carry a gateway, Windows picks one by interface
+# metric and may route camera traffic out the wrong NIC. also: Windows can
+# tag the camera NIC's profile "Public" and let the firewall block it.
+
+# DIAGNOSE
+#   Windows (PowerShell):
+#     Get-NetAdapter | Select Name, Status, MacAddress, LinkSpeed
+#       # camera NIC must be "Up" with real LinkSpeed (cable/switch port ok)
+#     Get-NetIPConfiguration -InterfaceAlias "<camera NIC>"
+#       # IPv4Address on the camera subnet? IPv4DefaultGateway should be EMPTY
+#     Get-NetRoute -DestinationPrefix 10.0.220.0/24
+#       # a route to the camera subnet must exist via the camera NIC
+#     Find-NetRoute -RemoteIPAddress 10.0.220.52
+#       # source IP it returns MUST be the camera-NIC IP (10.0.220.24)
+#   Linux:
+#     ip -br addr ; ip -br link
+#     ip route get 10.0.220.52        # which dev / src does it choose?
+#     ip route show                   # is 10.0.220.0/24 a local route?
+
+# FIX
+#   - bring the camera NIC back up / re-seat its cable on the switch port
+#       Windows:  Enable-NetAdapter -Name "<camera NIC>"   (or Restart-NetAdapter)
+#       Linux:    sudo ip link set <dev> up
+#   - confirm the camera NIC's static IP + mask persisted across the reboot;
+#     re-apply if it reverted to DHCP / APIPA (169.254.x.x)
+#   - remove any default gateway from the camera NIC; keep the default route
+#     ONLY on the internet NIC
+#   - confirm a local route to the camera subnet exists out the camera NIC
+#   - re-test: Find-NetRoute / ip route get, then Test-NetConnection / nc
+
+
 VALIDATING THE URL OUTSIDE STREAMLABS FIRST
 -------------------------------------------
 
