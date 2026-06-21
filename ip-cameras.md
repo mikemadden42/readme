@@ -133,6 +133,65 @@ unreliable — prefer the `nmap -sU` approach in DISCOVERY).
 
 If any one of those is false, force TCP.
 
+## Verify a camera from a Linux host — the ladder
+
+Four layers, each proving strictly more than the one before. Run them in order; stop when one fails — that layer names the fault. (This is the exact sequence used to exonerate three cameras during a real "no video on the livestream box" incident: all four layers passed from a Linux host, which isolated the fault to the **streaming box's** path to the camera subnet — see [field triage](#livestream--nvr-no-camera-video--field-triage) and [the dual-NIC fault](#the-dual-nic--wrong-subnet-fault-the-silent-killer) below.)
+
+> **"Passes from this host" only proves the camera is healthy and reachable _from this host_.** If a different box (the streamer / NVR) is the one showing black, run the ladder **from that box** — a routed / dual-NIC host can pass every layer while the streaming box reaches nothing.
+
+**Layer 1 — is it up and routable? (ICMP, layer 3)**
+
+```bash
+ping -c4 10.0.220.51
+```
+
+- reply + `ttl=64` → camera on the same L2 segment as you
+- reply + `ttl<64` → N hops away; you're **routing** to it (`ttl=63` = 1 hop). Routing works, but you're **not** on the camera's subnet.
+- no reply → camera down, wrong IP, or no route. Stop here.
+
+*Proves: powered + IP-reachable. Proves nothing about RTSP.*
+
+**Layer 2 — is the RTSP port actually open? (TCP/554, layer 4)**
+
+```bash
+nc -vz -w 3 10.0.220.51 554        # "succeeded!" = service is listening
+```
+
+(See [Quick TCP reachability check](#quick-tcp-reachability-check-linux-equiv-of-windows-test-netconnection) above for `ncat` / `/dev/tcp` / `nmap` variants.)
+
+*Proves: the RTSP control channel is open end-to-end. Does not prove a valid stream, correct path, or that auth will pass.*
+
+**Layer 3 — is it serving a real, decodable stream? (application layer)**
+
+```bash
+ffprobe -rtsp_transport tcp -loglevel verbose rtsp://USER:PASS@10.0.220.51:554/stream1
+```
+
+- prints SDP + a `Stream #0:0: Video: h264 ... 1920x1080 ... 30 fps` line → **conclusive**: the camera is delivering a valid, decodable stream.
+- `401 Unauthorized` → creds problem; add/fix `USER:PASS`
+- `404` / `Stream Not Found` / `method DESCRIBE failed` → wrong path; discover it
+
+The path (`/stream1` here) and creds are vendor-specific — see [Identifying the camera and its stream URL](#identifying-the-camera-and-its-stream-url), or brute it:
+
+```bash
+nmap -p 554 --script rtsp-url-brute 10.0.220.51
+```
+
+*Proves: the stream is genuinely there and decodable. This is the test that actually settles "is the camera working".*
+
+**Layer 4 — eyes-on (optional, confirms the picture)**
+
+```bash
+ffplay -rtsp_transport tcp rtsp://USER:PASS@10.0.220.51:554/stream1
+mpv --rtsp-transport=tcp --profile=low-latency rtsp://USER:PASS@10.0.220.51:554/stream1
+```
+
+> If ffprobe (layer 3) succeeds but **VLC** fails to open the MRL, that's a VLC quirk, **not** a camera fault — VLC 3.0.x can choke on a forced-TCP option combined with an SDP that advertises `c=IN IP4 0.0.0.0`, while ffmpeg-based players (ffprobe / ffplay / mpv) read it fine. Prefer mpv / ffplay to confirm.
+
+(Full player options in the [vlc](#vlc--the-just-show-me-the-picture-player), [mpv](#mpv--low-latency-scriptable-grid-friendly), and [ffprobe](#ffprobe--what-is-actually-in-this-stream) sections below.)
+
+**The bottom line:** ping → 554 open → ffprobe shows a stream = cameras, switch, and camera LAN are all exonerated. If a streaming box still shows black after this passes from another host, the fault is **that box's** path to the camera subnet, not the cameras. Go to field triage / dual-NIC below.
+
 ## Livestream / NVR: no camera video — field triage
 
 The scenario: a box that pulls the cameras (OBS / Streamlabs, an NVR, Frigate,
