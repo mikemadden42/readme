@@ -147,6 +147,24 @@
 # PSREF: https://psref.lenovo.com/syspool/Sys/PDF/ThinkPad/ThinkPad_T14s_Gen_6_Intel/ThinkPad_T14s_Gen_6_Intel_Spec.pdf
 
 
+# EXTERNAL DISPLAY SUPPORT (PSREF Monitor Support)
+#
+# 255U (Arrow Lake): up to 4 INDEPENDENT displays total =
+#   built-in 14" panel + 3 EXTERNAL monitors.
+# connections (3 video-capable ports):
+#   HDMI 2.1            -> up to 4K @ 60Hz
+#   2x Thunderbolt 4    -> up to 8K @ 60Hz each (DisplayPort 2.1)
+# caveats:
+#   - 8K uses 2 display pipes, so one 8K monitor drops the simultaneous
+#     count by 1 (3 externals -> 2).
+#   - this is Arrow-Lake-specific; Lunar Lake V-series tops out at 2
+#     externals / 3 total (not this chip).
+#   - a single Thunderbolt 4 dock can fan out to multiple monitors over
+#     one cable, but you're still capped at 4 total / 3 external.
+# Linux: Intel iGPU handles multi-monitor over HDMI + TB/DP cleanly on
+# kernel 6.17 — no proprietary driver needed.
+
+
 # BOTTOM LINE
 #
 # good buy for a Linux work laptop if the price is acceptable and you
