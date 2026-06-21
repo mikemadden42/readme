@@ -162,6 +162,19 @@
 # charging is USB-C PD only (no barrel plug) — 65W adapter in box.
 
 
+# CAMERA (PSREF)
+#
+# options:
+#   5.0MP + IR discrete, with privacy shutter, fixed focus   (IR = Windows
+#                                                             Hello facial)
+#   5.0MP, with privacy shutter, fixed focus
+#   no camera (special-bid only)
+# => the physical privacy shutter (Lenovo "ThinkShutter", a sliding cover)
+#    is STANDARD on every camera variant. the IR / Windows Hello bit is
+#    the optional add — and irrelevant on Linux anyway.
+# (5.0MP camera is Arrow Lake only, per PSREF.)
+
+
 # EXTERNAL DISPLAY SUPPORT (PSREF Monitor Support)
 #
 # 255U (Arrow Lake): up to 4 INDEPENDENT displays total =
