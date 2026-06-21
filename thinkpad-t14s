@@ -122,9 +122,25 @@
 #   => NOT guaranteed on every SKU (Lenovo offers a "no reader" build,
 #      usually enterprise/special-bid), but present on virtually all
 #      retail configs. the power button IS the reader.
-#   Linux: power-button readers on recent ThinkPads generally work via
-#   fprintd / libfprint (sudo + GNOME login unlock). Goodix sensors can
-#   lag in support — verify against the exact sensor once in hand.
+#   Linux — IT'S A SENSOR LOTTERY. Lenovo's own driver page confirms the
+#   T14s Gen 6 ships an integrated SYNAPTICS *OR* GOODIX reader; a given
+#   unit has one or the other, and they behave very differently:
+#     - Synaptics  -> generally WORKS OUT OF THE BOX with stock fprintd +
+#                     libfprint (in-tree `synaptics` driver covers most
+#                     recent ThinkPad match-on-chip readers). good outcome.
+#     - Goodix     -> needs the closed TOD (Touch-on-Device) driver
+#                     `libfprint-2-tod1-goodix`. AUR on EndeavourOS/Arch;
+#                     Lenovo/OEM packages on Ubuntu. some models work, some
+#                     don't. finicky outcome.
+#   verify on arrival: `lsusb`, grab the reader's VID:PID, check it against
+#   https://fprint.freedesktop.org/supported-devices.html . Synaptics ID =
+#   likely plug-and-play; Goodix ID = expect to install the TOD driver and
+#   possibly some fiddling.
+#   gotchas regardless of sensor: a "device already claimed" enroll error
+#   (close competing processes), and a KDE Plasma 6 pam_faillock bug —
+#   GNOME (my Ubuntu setup) is the smoother DE here.
+#   => don't COUNT on fingerprint login sight-unseen; budget setup time if
+#      it turns out to be Goodix.
 #   NOTE: IR camera for Windows Hello (facial) is OPTIONAL — probably not
 #   on a base SKU, and irrelevant on Linux anyway.
 #
