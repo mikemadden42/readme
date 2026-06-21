@@ -355,6 +355,133 @@ RECOMMENDED POE SWITCHES — UNDER $100, 8-PORT, UNMANAGED
 #                                                 (but only 4 PoE)
 
 
+RECOMMENDED MANAGED POE SWITCHES — 8-PORT, OVER $100
+----------------------------------------------------
+
+# WHY PAY MORE FOR MANAGED?
+# for an IP-camera deployment, the single feature worth the upcharge is:
+#
+#   VLAN ISOLATION FOR CAMERAS.
+#
+# IP cameras are notoriously chatty to vendor cloud (Hikvision Hik-Connect,
+# Dahua P2P, Reolink p2p, Amcrest's analytics). their security history
+# is dire (Mirai, persistent CVEs on web UIs, hardcoded credentials).
+# you do NOT want them sharing a broadcast domain with your laptop. a
+# managed switch lets you put cameras on a "camera VLAN" with no
+# internet route OR a tightly-controlled route — they can still serve
+# RTSP to your NVR / Frigate / Streamlabs box, but they can't phone
+# home or get reached from the internet.
+#
+# secondary features worth having:
+#
+#   PER-PORT POE CONTROL    remotely power-cycle a hung camera from
+#                           the web UI ("turn it off and on again"
+#                           without going to the closet)
+#   PER-PORT POE METERING   see actual watts drawn per camera (useful
+#                           for PoE-budget sanity checks)
+#   SNMP                    feed switch + camera draw stats into
+#                           home assistant / prometheus / grafana
+#   IGMP SNOOPING           reduces multicast noise if you use ONVIF
+#                           multicast streams (rare on home setups)
+#   PORT MIRRORING          for packet-capturing a misbehaving camera
+#                           with wireshark — invaluable for debugging
+
+# THE "MANAGED" SPECTRUM (terminology varies by vendor)
+#
+#   EASY SMART / PLUS       web UI only. VLANs, basic QoS. no SNMP, no
+#                           CLI, no STP/RSTP. (TP-Link "Easy Smart",
+#                           Netgear "Plus") — these creep under $100;
+#                           covered briefly in the unmanaged section.
+#   SMART MANAGED           full web UI, VLANs, SNMP, basic STP, often
+#                           cloud-controllable. no CLI. (TP-Link Omada
+#                           Pro lite, Netgear "Smart")
+#   L2/L2+ FULLY MANAGED    everything above + CLI, full STP/RSTP/MSTP,
+#                           ACLs, LACP, layer-3 lite (static routing,
+#                           DHCP server). (Cisco CBS, Aruba 1930,
+#                           MikroTik, UniFi Pro)
+
+# PICKS — KNOWN-BRAND, ALL-POE+, UNDER $200
+#
+#   TP-Link TL-SG2210MP                    ~$140-170
+#     8 gigabit PoE+ ports + 2 SFP uplinks, 150 W budget.
+#     OMADA managed: works standalone via web UI, OR
+#     controller-managed alongside Omada APs / gateways (Omada
+#     controller runs free on Linux/Docker/Windows — see [[docker]]).
+#     PRACTICAL DEFAULT in this tier. lifetime US warranty.
+#     all 8 PoE ports, generous budget, full VLAN/SNMP/QoS/ACL.
+#
+#   Ubiquiti UniFi USW-Lite-8-PoE          ~$170-200
+#     8 gigabit ports, 4 PoE+ (52 W budget). UniFi-managed
+#     (controller is free; self-host on Linux/Docker, or buy a
+#     Cloud Key, or use Ubiquiti hosted).
+#     GOTCHA: only 4 PoE — same trap as the unmanaged tier. fine
+#     for 3-4 cameras + a UniFi AP. if you have 8 cams, you need
+#     the USW-Enterprise-8-PoE (~$500) or the older USW-PoE-Gen2
+#     (8 ports all PoE+, ~$300). this is the entry-level pick.
+#     BUY THIS if you already run UniFi gear elsewhere — the
+#     single-pane-of-glass story is real.
+#
+#   Netgear GS308EPP                       ~$110-140
+#     8 gigabit, ALL 8 PoE+, 123 W budget. "Plus Managed" =
+#     web UI smart, no SNMP/CLI. enough for VLANs + per-port
+#     control. CHEAPEST true-managed-with-all-PoE pick. fanless.
+#     downside: no SNMP, so no prometheus integration; no Omada/
+#     UniFi-style ecosystem story.
+#
+#   Aruba Instant On 1830 8G PoE 65W       ~$160-200
+#     part number JL811A. 8 PoE+ ports, 65 W budget. fully managed
+#     L2+, cloud-managed via Aruba Instant On mobile app + web.
+#     HPE/Aruba ecosystem if you already have Instant On APs.
+#     budget is tight at 65 W — fine for 6 indoor cams, marginal
+#     for 8.
+
+# PICKS — IF YOU WANT TO LEARN REAL NETWORKING
+#
+#   MikroTik CSS610-8P-2S+IN               ~$180-200
+#     8 gigabit PoE-out ports + 2 SFP+, 110 W budget. runs SwOS
+#     (the simpler, switch-only OS — not full RouterOS). fully
+#     managed: VLAN, QoS, link aggregation, port mirroring, SNMP.
+#     web UI is sparse and the documentation is a wiki, but the
+#     hardware is rock-solid and outlives any TP-Link.
+#     BUY THIS if you find networking interesting; SKIP if you
+#     just want it to work without reading manuals.
+
+# PICKS — CISCO SMB (if your shop already runs Cisco)
+#
+#   Cisco CBS250-8P-E-2G                   ~$200-260
+#     8 PoE+ + 2 gigabit uplinks, 67 W budget. fully managed L2+.
+#     CBS = "Cisco Business Switching" — the new low-end line
+#     replacing the old SG-series. familiar Cisco web UI + CLI.
+#     pricey for budget, but it's a Cisco at the bottom of the
+#     curve. five-year limited warranty + next-business-day RMA.
+
+# HONEST TRADEOFFS — MANAGED VS UNMANAGED FOR CAMERAS
+#
+#   stick with unmanaged if:
+#     - 1-4 cameras, all behind your home firewall
+#     - your router does VLAN tagging already (some prosumer
+#       routers like Mikrotik / Ubiquiti EdgeRouter / OPNsense
+#       can isolate at the router instead of the switch)
+#     - you don't run an SNMP / monitoring stack
+#
+#   step up to managed if:
+#     - 5+ cameras AND you care about network hygiene
+#     - you want to block cameras from reaching the internet
+#       at the SWITCH level (defense in depth)
+#     - you want SNMP feeds into prometheus / home assistant
+#     - you ever want to packet-capture a misbehaving camera
+
+# QUICK DECISION — MANAGED
+#
+#   safe default, all features, name brand     TP-Link TL-SG2210MP
+#   you already run UniFi gear                  UniFi USW-Lite-8-PoE
+#                                                (only 4 PoE — watch out)
+#   cheapest "real" managed                     Netgear GS308EPP
+#   you already run Aruba Instant On            Aruba 1830 (JL811A)
+#   you want to learn networking                MikroTik CSS610-8P-2S+IN
+#   your shop runs Cisco                        Cisco CBS250-8P-E-2G
+
+
 INSTALL
 -------
 
