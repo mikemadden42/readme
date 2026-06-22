@@ -934,42 +934,317 @@ ffmpeg -rtsp_transport tcp -i rtsp://... \
     ```
     See [[fedora]] SELINUX for the broader story.
 
-## Recommended cameras — well-supported, RTSP + ONVIF, no cloud account
+## Recommended cameras — no PoE switch required
 
-Criteria: speaks RTSP + ONVIF Profile S, exposes the stream without a
-mandatory cloud account, PoE / wired preferred. **Avoid cloud-only junk**
-(Ring, Arlo, Nest, stock Wyze, and Reolink battery / doorbell models — those
-are WebRTC and refuse RTSP).
+Every camera below: speaks RTSP natively (no firmware flashing), supports
+ONVIF Profile S, powered by a 12V DC wall wart, connects via Wi-Fi. All picks
+chosen to play nicely with this primer's toolkit (vlc / mpv / ffmpeg) and
+with Frigate / Home Assistant / MediaMTX downstream.
 
-### Best "just works" (order on Amazon)
+### What to look for in the spec sheet
 
-- **Amcrest PoE (Dahua OEM)** — the Linux / Frigate gold standard. Native RTSP
-  + ONVIF, stream exposed in the web UI with **no cloud account**, stable
-  firmware. URL pattern is the Dahua one above
-  (`/cam/realmonitor?channel=1&subtype=0`). Picks: IP5M-1190EW (5MP turret),
-  IP8M-2496 (4K). ~$60–90.
-- **Reolink PoE** — very popular, RTSP + ONVIF, URL pattern above
-  (`/h264Preview_01_main`). **Stick to wired PoE models:** RLC-810A, RLC-520A.
-  ~$50–70. Quirk: Reolink HTTP-FLV is sometimes steadier than RTSP, but RTSP
-  works. **Avoid their battery / doorbell cams.**
+- The words "RTSP" or "ONVIF Profile S" (not just "ONVIF" — Profile S is the
+  streaming profile; Profile T is newer, also fine).
+- 12V DC barrel input — means later you can use a $10 PoE splitter (RJ45 in
+  → ethernet + 12V DC out) and your "Wi-Fi" cam becomes a wired PoE cam in
+  place.
+- Dual-band Wi-Fi (5 GHz available) — 2.4-only is fine for one or two cams;
+  with five it's a nightmare.
+- H.264 in the codec list. H.265 is fine for raw quality but H.264 has wider
+  player support and is the only universally safe choice for older
+  Streamlabs / OBS builds.
+- "No cloud account REQUIRED to function" — many vendors gate features
+  behind their cloud; you want the camera to keep working if their servers
+  go away.
 
-### Cheapest / in-store at Micro Center
+### What to avoid
 
-- **TP-Link Tapo — wired models only** (C120, C210 indoor; C320WS wired
-  outdoor). ~$25–40. Two catches: (1) RTSP / ONVIF is only on **wired** Tapo
-  models, not the battery ones; (2) you must create a **"camera account"** in
-  the Tapo app to enable RTSP (local creds, but the app step is mandatory).
-  URL:
+| Avoid | Why |
+| --- | --- |
+| Ring / Nest / Arlo / Wyze (stock fw) | Cloud-only, no RTSP |
+| Reolink battery cams (Argus, Go, Duo battery, battery doorbells) | No RTSP — WebRTC-only |
+| Eufy cameras (most models) | Cloud-mostly, plus the 2022 privacy incident |
+| No-name AliExpress / Amazon "smart" cams under $30 | Usually "Yoosee" / "iCSee" ecosystem; RTSP support is inconsistent or undocumented |
+| Wyze v3 + "RTSP firmware" | Works, but Wyze abandoned it ~2022; not safe to expose on the network long-term |
+
+### Indoor pan/tilt (best $/feature ratio)
+
+- **Reolink E1 Pro / E1 Zoom** — ~$50–70. 4 MP, dual-band Wi-Fi, pan + tilt,
+  2-way audio.
   ```
-  rtsp://USER:PASS@HOST:554/stream1     (main)
-  rtsp://USER:PASS@HOST:554/stream2     (sub)
+  rtsp://USER:PASS@IP:554/h264Preview_01_main
+  rtsp://USER:PASS@IP:554/h264Preview_01_sub
+  ```
+- **Amcrest IP2M-841 / IP3M-941** — ~$60–80. Dahua OEM, standard Dahua RTSP
+  path. IP2M-841 is 2.4 GHz only; ProHD variants are dual-band.
+  ```
+  rtsp://USER:PASS@IP:554/cam/realmonitor?channel=1&subtype=0
   ```
 
-### Rules of thumb
+### Outdoor bullet / turret (Wi-Fi, IP66/67)
 
-- Prefer PoE / wired over wifi (your video rides one cable, powered)
-- Always force `-rtsp_transport tcp`
-- Avoid anything that needs a cloud account just to turn on RTSP
+- **Reolink RLC-510WA** — ~$60–80. 5 MP, dual-band Wi-Fi, IP66,
+  person/vehicle detection on-camera. Same Reolink URL scheme as the indoor
+  pan/tilt.
+- **Amcrest IP5M-T1179EW** — ~$100. 5 MP turret, IP67, dual-band Wi-Fi,
+  Dahua URL scheme.
+- **TP-Link Tapo C320WS** — ~$45–60. 2K, dual-band Wi-Fi, color night
+  vision. Cheap and decent. RTSP must be ENABLED in the Tapo app first:
+  Settings → Camera Account → create a "Camera Account" (this is SEPARATE
+  from your Tapo login; RTSP uses ONLY the Camera Account credentials).
+  ```
+  rtsp://CAM_ACCT:CAM_PASS@IP:554/stream1   (main)
+  rtsp://CAM_ACCT:CAM_PASS@IP:554/stream2   (sub)
+  ```
+
+### Doorbell (Wi-Fi, hardwired to existing 16-24 VAC bell transformer)
+
+- **Reolink Video Doorbell Wi-Fi** — ~$100. The WIRED model — NOT the
+  battery doorbell. Does RTSP.
+  ```
+  rtsp://USER:PASS@IP:554/h264Preview_01_main
+  ```
+- **Amcrest AD410** — ~$80. Dahua doorbell, standard Dahua RTSP path.
+
+### Upgrade path when you eventually get a PoE switch
+
+- Every Reolink and Amcrest model above has a near-identical wired/PoE
+  sibling (typically the same model number minus the "W"). Same RTSP URL
+  scheme = zero migration friction.
+- The PoE versions usually ship a better sensor / lens than the Wi-Fi
+  equivalent. If a PoE switch is in your near-term plans, wait and buy PoE.
+- PoE-to-DC splitter (~$10 each) lets you put your current Wi-Fi cam on PoE
+  without buying a new camera. You trade Wi-Fi for wired reliability while
+  keeping the same hardware.
+
+### Honest tradeoffs — Wi-Fi vs PoE for IP cameras
+
+- **Wi-Fi (today)** — no rewiring, instant install, no switch to buy, power
+  outlet anywhere works. Cons: 2.4 GHz interference, RSSI dropouts in walls,
+  wakeup lag from power-save, every camera adds load to your AP. Fine for
+  2–3 cams; painful at 6+.
+- **PoE (eventually)** — one CAT5e/CAT6 run per cam carries data + power.
+  Utterly reliable, no power outlet needed at camera location. Cons: cable
+  pulls + switch ($60–150 for an 8-port 802.3af). This is the right answer
+  for permanent outdoor installs.
+
+### Wi-Fi reliability tips (for the cameras you're buying NOW)
+
+- Put every camera on the 5 GHz band if it can do dual-band — 2.4 GHz is
+  shared with microwaves, baby monitors, BT, etc.
+- Reserve a DHCP lease per camera so the IP never changes (so your `rtsp://`
+  URLs don't break overnight).
+- Drop the camera's frame rate in its web UI to 15 fps (you do not need 30
+  fps for security footage; halves the bitrate).
+- Drop the bitrate to 2–4 Mbps for 1080p / 4–6 Mbps for 4K.
+- Keyframe interval (GOP) = 2 seconds — keeps recording segments clean (see
+  common gotchas above).
+
+## Recommended PoE switches — under $100, 8-port, unmanaged
+
+The foot-guns to know BEFORE you click buy:
+
+1. **"8-port PoE" often means "8 ports, 4 of which are PoE".** Read the spec
+   sheet. You want a part number that says "8 PoE ports" or "all PoE"
+   explicitly. Cheap brands love to ship 8 gigabit ports with only the first
+   4 powered, sold under the same "8-port PoE switch" headline as a true
+   all-PoE switch.
+
+2. **PoE budget = total watts across all powered ports.** Not per-port. If
+   the switch says "65W PoE budget" and you plug in 8 cameras at 10W each,
+   you need 80W of budget — cameras will go offline or boot-loop. Typical
+   camera draws:
+
+   | Camera type | Draw |
+   | --- | --- |
+   | Fixed bullet / turret indoor | 3–6 W |
+   | Outdoor bullet w/ IR | 5–9 W |
+   | Pan/tilt indoor | 6–10 W |
+   | Outdoor PTZ w/ heater | 15–25 W (need PoE+) |
+   | Video doorbell | 4–7 W |
+
+3. **"PoE" vs "PoE+" vs "PoE++" — get PoE+ at least.**
+
+   | Standard | Per-port |
+   | --- | --- |
+   | 802.3af PoE | 15.4 W (12.95 W at the device) |
+   | 802.3at PoE+ | 30 W (25.5 W at the device) |
+   | 802.3bt PoE++ | 60–90 W (overkill for cameras) |
+
+   PoE+ futureproofs you for PTZ / heated outdoor cams. The price gap vs
+   plain PoE is now $5–10.
+
+4. **Avoid "passive PoE" switches or injectors.** Passive PoE is NOT a
+   standard — it's just DC voltage on the unused ethernet pairs, no
+   negotiation. Plug a standard 802.3af/at camera into a passive 24V
+   injector and the camera will refuse to power up. Plug it into a passive
+   48V injector on the wrong pinout and the camera dies. (Ubiquiti's older
+   AirMax gear is the famous passive-PoE example — DON'T repurpose those
+   injectors for security cameras.)
+
+5. **Fanless or fanned matters by location.** 8-port switches at the high
+   end of their PoE budget often have a small fan that audibly whines. Fine
+   in a closet, maddening on a desk. Fanless models cap at a lower budget
+   (typically 65–90 W) — that's still 6–8 cameras at average indoor draw,
+   fine for most home setups.
+
+### Picks — known brand, warranty-backed
+
+- **TP-Link TL-SG1008MP** — ~$80–100. 8 gigabit ports, ALL 8 are PoE+, 126 W
+  total budget. The practical default. Lifetime warranty in the US. Has a
+  fan but it's usually idle in normal use.
+- **Netgear GS308PP** — ~$95–110. 8 gigabit ports, ALL 8 are PoE+, 83 W
+  total budget. **Fanless.** Pricier and lower budget than the TP-Link, but
+  silent. Great if it sits in a living room or home office. (Budget math:
+  83 W / 8 cameras = ~10 W/cam ceiling — fine for indoor turrets, tight for
+  PTZ/heated cams.)
+- **TRENDnet TPE-TG83** — ~$80–95. 8 gigabit ports, ALL 8 are PoE+, 65 W
+  total budget. Fanless. Lower budget — best for 4–6 cameras, not 8 heavy
+  ones.
+
+### Picks — budget / Shenzhen ODM (Amazon-popular)
+
+- **YuanLey YS25-08T (and similar)** — ~$50–70. 8 gigabit ports, ALL 8
+  PoE+, 96–120 W budget depending on revision. Fanless on most SKUs.
+  Lifetime warranty in writing (vendor honors it, mostly). Same physical
+  hardware shows up rebranded under STEAMEMO, MokerLink, SODOLA, Linkke,
+  BV-Tech — all from the same Shenzhen factories. Quality is surprisingly
+  good for the price. Downside: support is email-only and slow; firmware
+  updates are rare.
+- **MokerLink 2G08210PMS** — ~$50–65. 8 gigabit PoE+ ports + 2 gigabit
+  uplinks, 96–120 W budget. Similar quality story to YuanLey.
+
+### Honest mention — the four-PoE-port gotcha
+
+- **TP-Link TL-SG1008P** — ~$55–70. This IS a fine switch — but only 4 of
+  its 8 ports are PoE+ (64 W shared budget). Do NOT buy it if you have 5+
+  cameras. Listed here because it's the most-confused product in the space;
+  Amazon search will surface it next to the TL-SG1008MP and the part
+  numbers differ by one letter.
+
+### Honest mention — if you're willing to go managed
+
+- **TP-Link TL-SG108PE** — ~$60–80. "Easy Smart" — barely managed, web UI
+  for basic VLAN / QoS, 8 ports, 4 PoE+, 64 W budget. Nice if you want to
+  put cameras on their own VLAN (a smart thing to do — cameras are
+  notoriously chatty to vendor cloud, isolate them). Only 4 PoE ports —
+  same gotcha as the unmanaged sibling.
+
+### Quick decision
+
+| If you want | Buy |
+| --- | --- |
+| Simple, warranty, name brand | TP-Link TL-SG1008MP |
+| Silent (living-room placement) | Netgear GS308PP |
+| The cheapest legit option | YuanLey YS25-08T |
+| VLAN isolation for cameras | TP-Link TL-SG108PE (but only 4 PoE) |
+
+## Recommended managed PoE switches — 8-port, over $100
+
+### Why pay more for managed?
+
+For an IP-camera deployment, the single feature worth the upcharge is:
+
+**VLAN isolation for cameras.**
+
+IP cameras are notoriously chatty to vendor cloud (Hikvision Hik-Connect,
+Dahua P2P, Reolink p2p, Amcrest's analytics). Their security history is dire
+(Mirai, persistent CVEs on web UIs, hardcoded credentials). You do NOT want
+them sharing a broadcast domain with your laptop. A managed switch lets you
+put cameras on a "camera VLAN" with no internet route OR a tightly-controlled
+route — they can still serve RTSP to your NVR / Frigate / Streamlabs box,
+but they can't phone home or get reached from the internet.
+
+Secondary features worth having:
+
+| Feature | What it gets you |
+| --- | --- |
+| Per-port PoE control | Remotely power-cycle a hung camera from the web UI ("turn it off and on again" without going to the closet) |
+| Per-port PoE metering | See actual watts drawn per camera (useful for PoE-budget sanity checks) |
+| SNMP | Feed switch + camera draw stats into Home Assistant / Prometheus / Grafana |
+| IGMP snooping | Reduces multicast noise if you use ONVIF multicast streams (rare on home setups) |
+| Port mirroring | For packet-capturing a misbehaving camera with Wireshark — invaluable for debugging |
+
+### The "managed" spectrum (terminology varies by vendor)
+
+| Tier | What you get |
+| --- | --- |
+| Easy Smart / Plus | Web UI only. VLANs, basic QoS. No SNMP, no CLI, no STP/RSTP. (TP-Link "Easy Smart", Netgear "Plus") — these creep under $100; covered briefly in the unmanaged section. |
+| Smart Managed | Full web UI, VLANs, SNMP, basic STP, often cloud-controllable. No CLI. (TP-Link Omada Pro lite, Netgear "Smart") |
+| L2/L2+ fully managed | Everything above + CLI, full STP/RSTP/MSTP, ACLs, LACP, layer-3 lite (static routing, DHCP server). (Cisco CBS, Aruba 1930, MikroTik, UniFi Pro) |
+
+### Picks — known-brand, all-PoE+, under $200
+
+- **TP-Link TL-SG2210MP** — ~$140–170. 8 gigabit PoE+ ports + 2 SFP uplinks,
+  150 W budget. Omada managed: works standalone via web UI, OR
+  controller-managed alongside Omada APs / gateways (Omada controller runs
+  free on Linux/Docker/Windows — see [[docker]]). **Practical default in
+  this tier.** Lifetime US warranty. All 8 PoE ports, generous budget, full
+  VLAN/SNMP/QoS/ACL.
+- **Ubiquiti UniFi USW-Lite-8-PoE** — ~$170–200. 8 gigabit ports, 4 PoE+
+  (52 W budget). UniFi-managed (controller is free; self-host on
+  Linux/Docker, or buy a Cloud Key, or use Ubiquiti hosted). **Gotcha: only
+  4 PoE** — same trap as the unmanaged tier. Fine for 3–4 cameras + a UniFi
+  AP. If you have 8 cams, you need the USW-Enterprise-8-PoE (~$500) or the
+  older USW-PoE-Gen2 (8 ports all PoE+, ~$300). This is the entry-level
+  pick. **Buy this if you already run UniFi gear elsewhere** — the
+  single-pane-of-glass story is real.
+- **Netgear GS308EPP** — ~$110–140. 8 gigabit, ALL 8 PoE+, 123 W budget.
+  "Plus Managed" = web UI smart, no SNMP/CLI. Enough for VLANs + per-port
+  control. **Cheapest true-managed-with-all-PoE pick.** Fanless. Downside:
+  no SNMP, so no Prometheus integration; no Omada / UniFi-style ecosystem
+  story.
+- **Aruba Instant On 1830 8G PoE 65W** — ~$160–200. Part number JL811A. 8
+  PoE+ ports, 65 W budget. Fully managed L2+, cloud-managed via Aruba
+  Instant On mobile app + web. HPE/Aruba ecosystem if you already have
+  Instant On APs. Budget is tight at 65 W — fine for 6 indoor cams,
+  marginal for 8.
+
+### Picks — if you want to learn real networking
+
+- **MikroTik CSS610-8P-2S+IN** — ~$180–200. 8 gigabit PoE-out ports + 2
+  SFP+, 110 W budget. Runs SwOS (the simpler, switch-only OS — not full
+  RouterOS). Fully managed: VLAN, QoS, link aggregation, port mirroring,
+  SNMP. Web UI is sparse and the documentation is a wiki, but the hardware
+  is rock-solid and outlives any TP-Link. **Buy this if you find networking
+  interesting; skip if you just want it to work without reading manuals.**
+
+### Picks — Cisco SMB (if your shop already runs Cisco)
+
+- **Cisco CBS250-8P-E-2G** — ~$200–260. 8 PoE+ + 2 gigabit uplinks, 67 W
+  budget. Fully managed L2+. CBS = "Cisco Business Switching" — the new
+  low-end line replacing the old SG-series. Familiar Cisco web UI + CLI.
+  Pricey for budget, but it's a Cisco at the bottom of the curve. Five-year
+  limited warranty + next-business-day RMA.
+
+### Honest tradeoffs — managed vs unmanaged for cameras
+
+Stick with unmanaged if:
+
+- 1–4 cameras, all behind your home firewall.
+- Your router does VLAN tagging already (some prosumer routers like
+  MikroTik / Ubiquiti EdgeRouter / OPNsense can isolate at the router
+  instead of the switch).
+- You don't run an SNMP / monitoring stack.
+
+Step up to managed if:
+
+- 5+ cameras AND you care about network hygiene.
+- You want to block cameras from reaching the internet at the SWITCH level
+  (defense in depth).
+- You want SNMP feeds into Prometheus / Home Assistant.
+- You ever want to packet-capture a misbehaving camera.
+
+### Quick decision — managed
+
+| If you want | Buy |
+| --- | --- |
+| Safe default, all features, name brand | TP-Link TL-SG2210MP |
+| You already run UniFi gear | UniFi USW-Lite-8-PoE (only 4 PoE — watch out) |
+| Cheapest "real" managed | Netgear GS308EPP |
+| You already run Aruba Instant On | Aruba 1830 (JL811A) |
+| You want to learn networking | MikroTik CSS610-8P-2S+IN |
+| Your shop runs Cisco | Cisco CBS250-8P-E-2G |
 
 ## Honest tradeoffs — which tool for which job
 
