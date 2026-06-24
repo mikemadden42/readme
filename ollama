@@ -418,3 +418,80 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 #   Opus-class     NOT REACHABLE at home today at any consumer-feasible
 #                  budget. the hardware that gets close is also the
 #                  hardware you'd rent rather than own.
+
+
+# WHAT SETUP IS REQUIRED FOR A LOCAL MYTHOS-CLASS (OR FABLE-CLASS) MODEL?
+# ----------------------------------------------------------------------
+#
+# context: Anthropic's published model ordering, top-down, is
+# Mythos -> Fable -> Opus -> Sonnet -> Haiku. so "Mythos-class" sits two
+# tiers ABOVE Opus, "Fable-class" one tier above.
+#
+# HONEST ANSWER: a local Mythos-class equivalent is NOT ACHIEVABLE in
+# 2026, period. the Opus section above already landed at "not really
+# reachable at any consumer-feasible budget". Mythos sits above that,
+# and the proprietary-frontier vs open-weights gap has been WIDENING,
+# not closing, through 2025-2026. so the situation is WORSE than
+# Opus-class, not just incrementally harder.
+#
+# TIER α — "HONEST FLOOR — THERE IS NO FLOOR"
+# no budget makes this work. there is currently NO open-weights model
+# in the above-Opus tier. DeepSeek-V3/R1, Llama 4 Behemoth, Qwen 3 are
+# all ~Sonnet-tier on benchmarks and below Opus on real workflows.
+# spending $30K on Mac Studio Ultra clusters or $300K on H200s buys
+# you the same Sonnet+ models you'd run for Sonnet-class workloads,
+# NOT anything Mythos-equivalent. you can't buy hardware out of this
+# problem — the models you'd need don't exist in open weights.
+#
+# TIER β — "BEST PLAUSIBLE 2026 OPEN-WEIGHTS AT FRONTIER HARDWARE"
+#                                                          ($300K-1M)
+# if a 2026 open-weights release (Llama 5, DeepSeek-V4, Qwen 4 Max,
+# future GPT-OSS, or something unannounced) genuinely matches Opus:
+#   - 8x H200 141 GB (~$200K+) -> 1.1 TB HBM3e, runs ~2T-param dense
+#     or MoE models at FP8.
+#   - or 8x B200 192 GB when supply is real (~$250K+) -> 1.5 TB,
+#     lower power-per-FLOP.
+#   - or 8x AMD MI325X 256 GB (released late 2025) -> 2 TB HBM3e.
+#   - 15-25 kW, colo or real server room.
+#   - even with this hardware, you'd be running an Opus-class model,
+#     NOT a Mythos-class one.
+#
+# TIER γ — "FRONTIER INFRASTRUCTURE / LAB-SCALE" ($2M-10M+)
+#   - DGX GB200 NVL72 rack ($3M) or multiple H200 clusters.
+#   - what Anthropic, OpenAI, Google DeepMind, Meta use to TRAIN
+#     Mythos-class models in the first place.
+#   - wouldn't let you replicate Mythos — you don't have the weights —
+#     but it's the infrastructure tier required if a true above-Opus
+#     model ever leaks or is open-sourced.
+#
+# THE STRUCTURAL PROBLEM
+# even if hardware were free, two hard walls remain:
+#   1. Mythos's weights AREN'T PUBLIC. given the cyber / national-
+#      security framing around recent suspensions, extraordinarily
+#      unlikely to be released openly ever.
+#   2. the closest open-weights model is, at best, Opus-class by late
+#      2026 (optimistically). the gap from Sonnet-class open-weights to
+#      Opus-class took roughly a year (DeepSeek-V3 -> V4-class). above-
+#      Opus open-weights is plausibly a 2027-2028 thing, not 2026.
+#
+# PRAGMATIC ANSWER
+# there isn't one. if your use case genuinely requires Mythos-class
+# capability and you can't get it via Anthropic's API:
+#   - wait for upstream availability to resolve (most API restrictions
+#     get unwound once technical evidence is shared).
+#   - use Opus 4.7 in the meantime — on most workflows the Opus ->
+#     Mythos delta is smaller than the Sonnet -> Opus delta.
+#   - DON'T build a local rig hoping to substitute — the hardware
+#     would be wasted because no model exists locally that does the
+#     job. this is the same situation as 2023 with GPT-4: there was
+#     no local substitute for nearly two years.
+#
+# UPDATED FULL LADDER
+#   Haiku-class    reachable for $3-10K (Tier 1-2)
+#   Sonnet-class   approachable for $10-50K with caveats (Tier A-B)
+#   Opus-class     not reachable at home; hardware-that-gets-close is
+#                  hardware-you'd-rent (Tier I-III)
+#   Fable-class    not reachable; same structural problem as Mythos
+#   Mythos-class   not reachable AT ANY PRICE today — open weights at
+#                  this tier don't exist, and proprietary weights
+#                  aren't acquirable. wait, not buy.
