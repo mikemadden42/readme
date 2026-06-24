@@ -225,3 +225,196 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 # commitment of money and physical space, and the gains over Tier 1
 # are meaningful but not enormous unless you specifically need long
 # context or MoE-class reasoning.
+
+
+# WHAT SETUP IS REQUIRED FOR A LOCAL SONNET-CLASS MODEL?
+# ------------------------------------------------------
+#
+# HONEST UPFRONT: matching Sonnet-class locally is meaningfully harder
+# than matching Haiku-class. no current open-weights model genuinely
+# matches Sonnet 4.6. closest contenders: DeepSeek-V3 671B (MoE, 37B
+# active), DeepSeek-R1, Llama 3.1 405B, Llama 4 Maverick (400B MoE).
+# they approach Sonnet on benchmarks but lag on real-world tool use,
+# multi-step refactoring, and effective long-context recall. so the
+# hardware bill below buys you "Sonnet-ish on most tasks", not "Sonnet
+# equivalent".
+#
+# the Haiku -> Sonnet jump in open-weights land roughly means going
+# from a 70B dense to a 400B+ MoE. memory requirements 5-10x from there.
+#
+# TIER A — "SONNET-ISH VIA MOE" (~$10-15K)
+# the cheapest entry point.
+#   - Mac Studio M3 Ultra 512 GB unified memory (~$10K, released 2025) —
+#     runs DeepSeek-V3 671B at Q4 (~370 GB resident), Llama 3.1 405B at
+#     Q6-Q8, or Llama 4 Maverick at Q8.
+#   - ~5-15 tok/s generation; prompt processing is the bottleneck (long
+#     inputs feel sluggish — 30-60 s to first token on 32k context).
+#   - hits ~75-85% of Sonnet on general tasks; closer on raw code,
+#     further on agentic / tool-heavy workflows.
+#   - THE ONLY "single appliance" path to Sonnet-class locally. anything
+#     else gets complicated fast.
+#
+# TIER B — "COMFORTABLE SONNET-CLASS ON NVIDIA" ($20-50K)
+#   - 4x RTX 6000 Ada 48 GB (~$28K) -> 192 GB VRAM. runs Llama 3.1 405B
+#     at Q4 cleanly with usable context, or DeepSeek-V3 at heavy quant
+#     (Q2/Q3 — quality drops).
+#   - or 2x H100 80 GB ($40-50K) -> 160 GB HBM3. same envelope, much
+#     faster.
+#   - or 2x AMD MI300X 192 GB ($30-50K) -> 384 GB HBM3. best memory
+#     headroom in this tier; ROCm tooling is the catch.
+#   - ~30-60 tok/s on 405B Q4, 80-150 tok/s on smaller models. fast
+#     prompt processing — long-context feels frontier-like.
+#   - power: 1.5-3 kW. real desktop / open-frame rig, dedicated 20A or
+#     30A circuit, real cooling.
+#
+# TIER C — "PROPER INFERENCE RIG" ($50-150K)
+#   - 4-8x H100 80 GB ($50-120K) — the canonical setup. runs DeepSeek-V3
+#     at Q8/FP8, Llama 3.1 405B at full BF16, high-throughput batched
+#     serving (can host for a team).
+#   - or 4x MI300X ($60-100K) — 768 GB HBM3, runs everything above at
+#     higher precision.
+#   - or 2x NVIDIA B200 / Blackwell (when supply normalizes) — same
+#     envelope, lower power.
+#   - 100-300+ tok/s, 8k-32k context at full quality, can fine-tune.
+#   - 5-10 kW, 240V dedicated circuit, real noise (server-grade fans).
+#
+# TIER D — "DATACENTER AT HOME / SMALL TEAM" ($150K+)
+#   - DGX H100 / DGX H200 node ($300K+), or 8x MI300X.
+#   - frontier MoE at FP8/FP16 with full context, fine-tuning, can
+#     serve a small org.
+#   - at this point seriously consider whether RENTING from Lambda /
+#     Modal / RunPod isn't 10x cheaper for hours-per-day usage.
+#
+# THE COST REALITY CHECK
+# Sonnet 4.6 via Anthropic API is roughly $3/MTok in, $15/MTok out.
+# heavy personal use ≈ $200-500/month; small team easily $2-5K/month.
+#   - Tier A ($10K)  breakeven ≈ 2-4 years vs heavy personal API spend.
+#   - Tier B ($30K)  breakeven ≈ 6-18 months vs team-scale API spend.
+#   - Tier C ($100K) only sane if serving multiple users continuously,
+#                    or hard data-residency / air-gap requirements.
+# cost is essentially never the winning argument until you're serving
+# a team or running 24/7. the case for local is the same as Haiku-class
+# (privacy / offline / no rate limits / stable weights / fine-tuning),
+# just at higher stakes.
+#
+# THE PRAGMATIC ANSWER
+#   - want to TRY Sonnet-class locally without committing real money:
+#     Mac Studio M3 Ultra 512 GB at ~$10K is the only sane consumer
+#     entry. slower than NVIDIA, but it actually fits the weights
+#     without complicated rigging; resale value holds well if you bail.
+#   - real team-scale use case: 2x H100 80 GB is the proven sweet spot —
+#     frontier-class throughput on 405B, room for fine-tuning,
+#     manageable in a colo rack.
+#   - solo: STOP HERE. Tier B+ for one person is almost never the right
+#     call vs paying Anthropic by the token.
+#
+# the consumer hardware curve is bending toward this getting much
+# cheaper over the next 18-24 months. M4 Ultra Mac Studios, NVIDIA
+# DGX Spark cluster configs, AMD Strix Halo (128 GB unified APU, 2025)
+# are all aimed at this market. if your need isn't urgent, waiting a
+# year halves the price.
+
+
+# WHAT SETUP IS REQUIRED FOR A LOCAL OPUS-CLASS MODEL?
+# ----------------------------------------------------
+#
+# HONEST UPFRONT: a true Opus 4.7 equivalent does not currently exist
+# in open weights, period. the Sonnet question had close-but-not-quite
+# contenders (DeepSeek-V3, Llama 3.1 405B, Llama 4 Maverick). the Opus
+# question doesn't really have any — the gap from Sonnet to Opus in
+# agentic reasoning, long-horizon planning, hardest-tier coding,
+# creative judgment, and refusal calibration is exactly where open-
+# weights are weakest. so what the hardware below buys you is "the
+# best open-weight model at full precision with frontier throughput",
+# which is approximately Sonnet+ on benchmarks and NOTICEABLY BELOW
+# Opus on the workflows that justify reaching for Opus in the first
+# place.
+#
+# closest contenders to aim for: DeepSeek-R1 671B at full precision
+# with extended thinking, DeepSeek-V3 671B at FP8/BF16, Llama 3.1 405B
+# at BF16, Llama 4 Behemoth (~2T total MoE, if/when it ships).
+#
+# the Sonnet -> Opus jump is less about another 10x memory and more
+# about needing FRONTIER-TIER THROUGHPUT so extended-thinking and
+# agentic workloads aren't punitively slow. that moves you from
+# "consumer-adjacent" into datacenter-grade infrastructure.
+#
+# TIER I — "THE HONEST 'APPROACHING OPUS' FLOOR" (~$15-30K)
+# same hardware as Sonnet Tier A, running the same models — there is no
+# $15K leap to Opus-class.
+#   - Mac Studio M3 Ultra 512 GB (~$10-12K) — runs DeepSeek-V3/R1 at
+#     Q4-Q6, 5-15 tok/s.
+#   - or DGX Spark cluster (4x at ~$12K, 512 GB combined) — same
+#     envelope, all-NVIDIA stack.
+#   - hits ~70-85% of Opus on simple chat/code, 30-50% on hard agentic
+#     / multi-step / long-context tasks. the Opus-tier workflows are
+#     EXACTLY the ones this tier can't keep up with.
+#   - if your goal is "Opus-class at home for solo use", this tier is
+#     the MOST you should spend — and it still isn't Opus.
+#
+# TIER II — "REAL FRONTIER HARDWARE" ($100-300K)
+# where you start running frontier open-weight models at full precision
+# with usable throughput.
+#   - 8x NVIDIA H100 80 GB ($120-150K) -> 640 GB HBM3. runs DeepSeek-
+#     V3/R1 at FP8 with full context, fine-tuning, batch-serves a team.
+#   - or 8x H200 141 GB ($200K+) -> 1.1 TB HBM3e. headroom for Llama 4
+#     Behemoth or future 1T+ models.
+#   - or 4x NVIDIA B200 192 GB (when supply normalizes) -> 768 GB
+#     HBM3e, lower power per FLOP.
+#   - or 8x AMD MI300X 192 GB ($150-250K) -> 1.5 TB HBM3. biggest
+#     memory pool in this tier; ROCm tooling is the catch.
+#   - 100-300+ tok/s on 405B/V3, 8k-32k context at full quality,
+#     fine-tuning on the table.
+#   - 10-15 kW. server room, real cooling, 240V industrial, ~$500-1000
+#     per month electricity alone.
+#   - STILL NOT Opus-equivalent on the hardest workflows, but it's the
+#     closest you can buy.
+#
+# TIER III — "GENUINE FRONTIER INFRASTRUCTURE" ($500K-3M+)
+#   - multiple DGX H100/H200 nodes, or NVIDIA GB200 NVL72 rack (~$3M
+#     for a full config), or B200/B300 clusters.
+#   - hyperscaler/lab infrastructure. can run models bigger than what's
+#     publicly released, fine-tune frontier-scale, serve hundreds of
+#     users.
+#   - at this scale YOU SHOULD NOT BE BUYING. rent equivalent capacity
+#     from CoreWeave / Lambda / Crusoe / a colo provider on demand —
+#     order of magnitude cheaper for hours-per-day usage and you don't
+#     deal with depreciation as H200 -> B200 -> Rubin keeps compressing.
+#
+# THE COST REALITY CHECK (sharper here than Sonnet)
+# Opus 4.7 via Anthropic API is roughly $15/MTok in, $75/MTok out.
+# heavy personal use ≈ $500-2000/month; team workloads $5-20K/month.
+#   - Tier I  ($15K)  breakeven ≈ 1-3 years vs heavy personal Opus
+#                     spend — BUT IT'S NOT RUNNING OPUS-CLASS quality,
+#                     so this isn't really a substitution.
+#   - Tier II ($150K) breakeven ≈ 1-2 years vs sustained team Opus
+#                     spend, ignoring electricity/colo/staff time.
+#                     interesting at small-org scale with privacy reqs.
+#   - Tier III ($1M+) only makes sense if you're a lab/startup doing
+#                     fine-tuning research, or serving 24/7 prod.
+# the case for local at Opus-tier is NARROWER than at lower tiers:
+# privacy, air-gapped requirements, hard data residency, very heavy
+# fine-tuning. for everything else, the API is so obviously the
+# rational choice that the hardware conversation is almost academic.
+#
+# THE PRAGMATIC ANSWER
+#   - DON'T try to match Opus-class locally as an individual. you
+#     can't, and the closest attempt (Tier I) doesn't actually
+#     substitute for the workflows you'd want Opus for.
+#   - real privacy-constrained team use case: plan for Tier II in
+#     12-18 months. hardware is depreciating fast (Blackwell B200
+#     deliveries in 2025 dropped used H100 prices ~30%; AMD MI325X /
+#     MI350 series in 2025-2026 keep compressing prices). waiting is
+#     correct unless you're paying $20K+/month on Opus API today.
+#   - WATCH-FOR SIGNAL: if Qwen 4, DeepSeek-V4, Llama 5, or some
+#     yet-unannounced open-weights release in 2026 genuinely matches
+#     Opus on agentic benchmarks, the Tier I/II conversation changes
+#     overnight. until then, Opus-class workloads -> Anthropic API
+#     is correct for ~99% of users.
+#
+# HONEST SUMMARY OF THE FULL LADDER
+#   Haiku-class    reachable for $3-10K (Tier 1-2 above)
+#   Sonnet-class   approachable for $10-50K with caveats (Tier A-B)
+#   Opus-class     NOT REACHABLE at home today at any consumer-feasible
+#                  budget. the hardware that gets close is also the
+#                  hardware you'd rent rather than own.
