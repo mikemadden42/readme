@@ -19,3 +19,49 @@ chmod 755 ./ollama-darwin
 
 # remove a model
 ./ollama-darwin rm llama3.1:8b
+
+
+# MODEL PICKS FOR AN 8 GB VRAM GPU (e.g. RTX 2000 Ada Laptop, RTX 3060
+# Mobile 6/8 GB, 3070/4060 Laptop, etc.)
+#
+# sweet spot: 7B-8B models at Q4_K_M / Q5_K_M quantization. weights take
+# 4-6 GB, leaving 2-3 GB for the KV cache (good for 4k-8k context).
+# anything 13B+ requires Q3 and starts feeling cramped; sub-4B models
+# run at higher quality (Q6/Q8) and feel snappy.
+#
+# expect ~30-50 tok/s on a 7B Q4 model on the RTX 2000 Ada (bandwidth
+# bound around 224 GB/s).
+
+# GENERAL CHAT / REASONING
+ollama run qwen2.5:7b              # ~4.7 GB, strong all-rounder, long context
+ollama run llama3.1:8b             # ~4.9 GB, solid tool-use, Meta workhorse
+ollama run deepseek-r1:7b          # ~4.7 GB, chain-of-thought reasoning (R1 distill)
+ollama run gemma2:9b               # ~5.4 GB, fits but tighter KV-cache budget
+ollama run phi3.5:3.8b             # ~2.2 GB, punches above its weight, very fast
+
+# CODE
+ollama run qwen2.5-coder:7b        # ~4.7 GB, the standout small-model code generator
+ollama run deepseek-coder-v2:16b   # MoE, ~9 GB — TIGHT, may swap to RAM; try if curious
+ollama run codellama:7b            # ~3.8 GB, older but stable
+
+# VISION / MULTIMODAL (image-in, text-out)
+ollama run llama3.2-vision:11b     # ~7.9 GB — fits, but no headroom for big context
+ollama run llava:7b                # ~4.7 GB, older but reliable
+ollama run minicpm-v:8b            # ~5.5 GB, strong OCR / document understanding
+
+# EMBEDDINGS (for RAG; tiny, run alongside a chat model)
+ollama pull nomic-embed-text       # ~270 MB, 768-dim, great default
+ollama pull bge-m3                 # ~1.2 GB, multilingual, 1024-dim
+ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
+
+# WHAT NOT TO TRY ON 8 GB
+#   Mistral Nemo 12B, Codestral 22B, Llama 3.x 70B, Qwen 2.5 32B+,
+#   DeepSeek-V3, Mixtral 8x7B — all need more VRAM or aggressive
+#   offload that destroys throughput.
+
+# TIPS
+#   ollama ps                          # see what's loaded + VRAM use
+#   ollama show qwen2.5-coder:7b       # see context window, quant, template
+#   OLLAMA_KEEP_ALIVE=24h ollama serve # keep model resident between requests
+#   OLLAMA_NUM_PARALLEL=1 ollama serve # one request at a time = bigger KV cache
+#   OLLAMA_FLASH_ATTENTION=1 ollama serve  # less KV memory on supported models
