@@ -1,43 +1,68 @@
 # anthropic claude models — current lineup
 #
-# the claude 4.x family. ids are what you pass to the api; claude code lets you
-# toggle with /model. see also: [[ai-integration-skill]] [[ai-eval-skill]]
-# [[claude-code]] [[ollama]]
+# anthropic's published model ordering, top-down:
+#   mythos -> fable -> opus -> sonnet -> haiku
+# ids are what you pass to the api; claude code lets you toggle with /model.
+# see also: [[ai-integration-skill]] [[ai-eval-skill]] [[claude-code]]
+# [[ollama]]
 
 
-# the three models
+# the lineup
 
-# - opus 4.7   — id: claude-opus-4-7
-#   hardest reasoning, deep code, agentic workflows, research-grade tasks.
-#   slowest and most expensive. use when capability matters more than throughput.
+# - mythos 5
+#   top of the lineup, above opus. capability tier reserved for the genuinely
+#   hardest tasks: deep agentic loops, research-grade reasoning, hardest
+#   coding.
+#   AVAILABILITY: suspended for all users as of 2026-06-12 per a US
+#   export-control directive; anthropic is working to restore access. check
+#   anthropic's status page before assuming availability.
+#
+# - fable 5    — id: claude-fable-5
+#   one tier above opus, distinct from the claude 4.x line.
+#   AVAILABILITY: same suspension as mythos 5 (2026-06-12).
+#
+# - opus 4.8   — id: claude-opus-4-8
+#   latest opus. hardest reasoning, deep code, agentic workflows,
+#   research-grade tasks among the always-available models. slowest and most
+#   expensive. use when capability matters more than throughput.
+#   opus 4.7 (claude-opus-4-7) and 4.6 (claude-opus-4-6) are still served —
+#   useful when you want a stable version pinned across a long-running
+#   workflow or eval suite.
 #
 # - sonnet 4.6 — id: claude-sonnet-4-6
-#   general coding, production workloads, balanced cost/quality. sweet spot for
-#   most jobs; only falls short of opus on the genuinely hard stuff.
+#   general coding, production workloads, balanced cost/quality. sweet spot
+#   for most jobs; only falls short of opus on the genuinely hard stuff.
 #
 # - haiku 4.5  — id: claude-haiku-4-5-20251001
-#   high-throughput classification, simple q&a, latency-sensitive ux. cheapest
-#   and fastest. not the right pick for multi-step reasoning or nuanced code.
+#   high-throughput classification, simple q&a, latency-sensitive ux.
+#   cheapest and fastest. not the right pick for multi-step reasoning or
+#   nuanced code.
 
 
 # how to choose
 
 # - default to sonnet 4.6 for application work — it's the price/performance
 #   baseline.
-# - reach for opus 4.7 when a task is genuinely hard: long-horizon agentic
-#   loops, gnarly debugging, design with real tradeoffs, or anything where a
-#   sonnet failure would cost more than the price delta.
+# - reach for opus 4.8 (or pin to 4.7) when a task is genuinely hard:
+#   long-horizon agentic loops, gnarly debugging, design with real tradeoffs,
+#   or anything where a sonnet failure would cost more than the price delta.
+# - reach for fable 5 / mythos 5 (when available) for the workloads opus
+#   can't quite carry.
 # - drop to haiku 4.5 when volume, latency, or unit economics dominate —
 #   routing, tagging, short-content summarization, in-the-loop ui assistance.
 
 
 # claude code specifics
 
-# - opus 4.7 supports fast mode (/fast) — same opus model, faster output, no
-#   downgrade to a smaller model. also available on opus 4.6.
+# - opus supports fast mode (/fast) — same opus model, faster output, no
+#   downgrade to a smaller model. available on opus 4.8 / 4.7 / 4.6.
 # - switch models with /model inside claude code.
 
 
-# knowledge cutoff
+# knowledge cutoffs
 
-# january 2026 for all three.
+# version-specific; check anthropic's docs for the authoritative number per
+# model. as a rough guide, recent claude 4.x releases have ~6-12 months
+# between training cutoff and release date — so opus 4.8 (released 2026)
+# cuts off around early-to-mid 2025, haiku 4.5 (released 2025-10) cuts off
+# earlier.
