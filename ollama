@@ -65,3 +65,163 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 #   OLLAMA_KEEP_ALIVE=24h ollama serve # keep model resident between requests
 #   OLLAMA_NUM_PARALLEL=1 ollama serve # one request at a time = bigger KV cache
 #   OLLAMA_FLASH_ATTENTION=1 ollama serve  # less KV memory on supported models
+
+
+# HOW THESE COMPARE TO ANTHROPIC'S FRONTIER MODELS (HAIKU, SONNET, OPUS)
+# ----------------------------------------------------------------------
+#
+# TL;DR: the gap is large, but the small models can substitute for
+# narrow, well-defined tasks if you set expectations right.
+#
+# the weight class reality: frontier models (Haiku 4.5, Sonnet 4.6,
+# Opus 4.7) are estimated at hundreds of billions of parameters and
+# trained on trillions of tokens. a 7-8B local is roughly 1-3% the
+# parameter count of frontier-class. even HAIKU 4.5 — Anthropic's
+# smallest current model — substantially outperforms any 7-8B local on
+# MMLU-Pro, GPQA, HumanEval, MATH, etc. Sonnet and Opus are another
+# tier above that.
+#
+# WHERE LOCAL 7-8B IS "GOOD ENOUGH" TO ACTUALLY USE
+#   - single-turn factual Q&A on common topics
+#   - bash / python / SQL one-liners and small functions
+#   - boilerplate (CRUD endpoints, config files, regex)
+#   - summarization of short documents
+#   - format conversion (JSON <-> YAML, markdown tables)
+#   - tab-completion-style code assist in an editor (human reviews each)
+#
+# WHERE THE GAP BITES YOU
+#   - multi-step reasoning that requires holding a plan together
+#   - reading a large codebase and proposing cross-file changes
+#   - tool use / agentic workflows — 7-8Bs are unreliable callers
+#   - long-context retrieval beyond ~16k tokens (recall degrades fast)
+#   - hard math / proofs / olympiad problems
+#   - subtle instruction following (negative constraints, output schemas)
+#   - refusal calibration and safety
+#
+# PER-MODEL TAKE
+#
+#   qwen2.5:7b
+#     analog:    a noticeably weaker Haiku for general chat
+#     pitch:     best general-purpose pick in the 7B class. strong
+#                reasoning-for-size, Apache 2.0, 32k-128k context (recall
+#                drops well before that). still well behind Haiku 4.5 on
+#                multi-step tasks.
+#
+#   llama3.1:8b
+#     analog:    similar tier to qwen2.5:7b, slightly weaker overall but
+#                better tool-use formatting
+#     pitch:     Meta's broad-coverage workhorse. native 128k context
+#                (recall shaky past ~16k). good for chat and function-
+#                calling experimentation. behind Qwen on math/code.
+#
+#   qwen2.5-coder:7b
+#     analog:    a weaker Haiku on code, a much weaker Sonnet
+#     pitch:     the standout small code model. on HumanEval-style
+#                problems it gets surprisingly close to frontier (mid-
+#                high 80s % vs ~95% for Sonnet 4.6). falls apart on
+#                multi-file edits, real-world refactors, ambiguous
+#                specs. genuinely useful as an in-editor completion
+#                engine.
+#
+#   codellama:7b
+#     analog:    a weaker Haiku from 2023
+#     pitch:     SUPERSEDED. released Aug 2023, weaker than every model
+#                above, no instruction-following advantage. keep only if
+#                you specifically need its `code-infill` mode. otherwise
+#                replace with qwen2.5-coder:7b.
+#
+# CONCRETE RULE OF THUMB
+#   - tasks where Sonnet/Opus would think 10+ seconds and write 200+
+#     lines: DON'T USE 7B LOCALS, they will get it wrong in subtle ways.
+#   - tasks where Haiku would respond in 2 seconds with a short snippet:
+#     7B LOCALS CAN OFTEN DO IT, with a higher error rate you'll need
+#     to catch.
+#   - privacy-sensitive workflows where you'd otherwise not be able to
+#     send the data: THE QUESTION CHANGES — a 70%-as-good local beats
+#     not using AI at all.
+#
+# the honest framing isn't "local vs frontier" — it's "local plus a
+# human reviewer vs frontier with less review". for code completion
+# in a tight feedback loop, a 7B model wins on latency and cost. for
+# complex reasoning where you'd trust the output, frontier wins
+# decisively.
+#
+# see also: [[anthropic-models]] for current Claude 4.x lineup and
+#           when to pick each.
+
+
+# WHAT SETUP IS REQUIRED FOR A LOCAL HAIKU-CLASS MODEL?
+# -----------------------------------------------------
+#
+# HONEST UPFRONT: no local model currently matches Haiku 4.5 capability-
+# for-capability. the closest open-weights contenders (Llama 3.3 70B,
+# Qwen 2.5 72B, DeepSeek-V3) approach Haiku on some tasks but lag on
+# others. "Haiku-class" is aspirational — and the hardware bill scales
+# accordingly.
+#
+# TIER 1 — "CLOSE, NOT EQUAL" (~$2-5K)
+# the cheapest path to running a 70B-class model.
+#   - 2x used RTX 3090 24 GB ($800-1000 each) -> 48 GB VRAM via model
+#     split. or 1x RTX 4090/5090 (24/32 GB) + 64 GB system RAM for
+#     overflow.
+#   - runs Llama 3.3 70B or Qwen 2.5 72B at Q4_K_M (~40 GB weights),
+#     ~10-20 tok/s.
+#   - hits maybe 60-80% of Haiku on general tasks; weaker on long-
+#     context, tool use, multi-step reasoning.
+#   - ~400-600 W under load, audible fans, real heat. needs a desktop
+#     case.
+#
+# TIER 2 — "COMFORTABLE 70B" (~$5-10K)
+# single big card, 70B at high quant with long context.
+#   - NVIDIA RTX 6000 Ada 48 GB (~$6800 new, $4-5K used), or A6000 48
+#     GB (used $3-4K).
+#   - or NVIDIA DGX Spark (formerly Project DIGITS, ~$3K, 128 GB unified
+#     memory, released 2025) — designed exactly for this; runs 70B
+#     comfortably, slower than a discrete GPU but much less hassle.
+#   - or Mac Studio M3 Max 96-128 GB ($4-6K) — slower but quiet, low-
+#     power, plug-and-play.
+#   - Llama 3.3 70B at Q6/Q8 with 32k+ context, ~20-30 tok/s on the
+#     6000 Ada.
+#   - 80-90% of Haiku on general tasks; still trails on tool use and
+#     complex agentic flows.
+#
+# TIER 3 — "ACTUALLY FRONTIER-ISH LOCALLY" (~$7-15K)
+# realistic path to running a true frontier-tier MoE model at home.
+#   - Mac Studio M3 Ultra 256-512 GB unified memory ($7-10K) — runs
+#     DeepSeek-V3 671B at Q4 (~350 GB on disk, ~370 GB resident) at
+#     5-15 tok/s. cheapest way to have a genuinely frontier-class model
+#     locally; slow but it's THERE.
+#   - alternative: 2x DGX Spark in cluster (~$6K, 256 GB combined) —
+#     same idea, all-NVIDIA stack.
+#   - first tier where you can credibly say "I'm running a Haiku-or-
+#     better model at home". caveat: prompt-processing speed on Apple
+#     Silicon is much slower than NVIDIA, so first-token latency feels
+#     sluggish on long inputs.
+#
+# TIER 4 — "DATACENTER AT HOME" ($30K+)
+#   - 4-8x H100 80 GB, or 2x AMD MI300X 192 GB, or a refurb DGX H100.
+#   - runs Llama 3.1 405B at high precision, DeepSeek-V3 at FP8,
+#     frontier-tier reasoning models at usable speed.
+#   - where you genuinely match frontier inference quality and speed.
+#   - power: 3-10 kW. you're paying for a dedicated 240V circuit.
+#
+# THE COST REALITY CHECK
+# Haiku 4.5 via Anthropic API runs roughly $1/MTok in, $5/MTok out.
+# heavy personal use ≈ ~$30-150/month. even Tier 1 hardware at $3K
+# takes 2-7 years to amortize against API spend, BEFORE electricity.
+# the case for local ISN'T COST — it's:
+#   1. privacy — code / docs / conversations never leave your network
+#   2. offline / air-gapped use (labs, secure envs, planes)
+#   3. no rate limits or content-policy refusals
+#   4. stable behavior — your model doesn't change underneath you
+#   5. fine-tuning — adapt the weights to your data
+# if none of those apply, the API is the rational choice and it isn't
+# close.
+#
+# THE PRAGMATIC STEP-UP FROM AN 8 GB LAPTOP
+# cheapest serious upgrade: a desktop with 1x RTX 5090 32 GB or a used
+# 3090 + 64 GB RAM for ~$2-3K. that puts you in Tier 1 and is the
+# highest jump-per-dollar you'll see. going to Tier 2/3 is a bigger
+# commitment of money and physical space, and the gains over Tier 1
+# are meaningful but not enormous unless you specifically need long
+# context or MoE-class reasoning.
