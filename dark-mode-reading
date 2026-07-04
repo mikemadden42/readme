@@ -1,0 +1,73 @@
+# dark mode is fine for UI; it's wrong for sustained reading — here's why
+
+
+# the evolutionary argument
+#
+# humans have read dark ink on light backgrounds for essentially all of recorded
+# history — paper, vellum, stone, clay. your visual system evolved and trained
+# on that contrast polarity. light-on-dark is a ~40-year-old artifact of early
+# CRT phosphor screens, not a natural reading state.
+
+
+# halation / blur
+#
+# white text on a dark background causes halation — bright edges bleed into the
+# surrounding dark field due to how photoreceptors respond to contrast polarity.
+# fine for glancing at a UI element; fatiguing for dense prose read over an hour.
+# dark text on light doesn't produce the same effect because the light background
+# scatters more uniformly.
+
+
+# why PDFs and ebooks feel wrong in dark mode
+#
+# those formats were designed with print in mind. the spatial relationships,
+# margins, line lengths, and contrast ratios all assume dark-on-light. inverting
+# them isn't dark mode — it's fighting the artifact's design intent. it genuinely
+# is wrong in a literal sense, not just a preference.
+
+
+# the nuance
+#
+# dark mode makes sense for glanceable UI: dashboards, terminals, code editors
+# late at night. for sustained reading — books, long docs, articles — light
+# background wins on reading-fatigue measures consistently.
+#
+# if pure white feels harsh (especially on an OLED or in a dim room), a slightly
+# warm or sepia tone is the right move, not inverting to dark.
+
+
+# the rule of thumb
+#
+# dark mode: code, terminals, UI you scan
+# light mode (or sepia): text you actually want to absorb
+
+
+# does this apply to long webpages and blogs?
+#
+# yes — same logic. the halation and contrast-polarity arguments apply equally
+# to a long blog post or documentation page as to a PDF. the wrinkle is you
+# can't always control it.
+#
+# pdfs and ebooks you set once. webpages are styled by whoever built them.
+# some sites force dark backgrounds with no override, or look broken when you
+# apply a browser-level "force light mode" flag, or use images designed for
+# dark that invert badly.
+
+
+# practical toolkit for web reading
+#
+# safari reader view  — strips the page to clean light-background prose, your
+#                       font, your size. best single move for long articles.
+# firefox reader view — same; lets you pick sepia / light / dark per-session.
+# browser force-light — works on most sites, occasionally breaks layouts.
+# macos light appearance — well-behaved sites follow the system setting
+#                          automatically; sets a sane default without per-site
+#                          work.
+
+
+# the practical split
+#
+# dark mode: OS shell, terminal, code editor
+# light / reader view: anything you're reading at length
+#
+# you don't have to pick one globally — let the use case drive it.

@@ -13,6 +13,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [zig-notes](zig-notes) — Zig's place in the C/Rust discussion, ergonomics wins
 - [go-notes](go-notes) — Go's place in the C/Rust/Zig discussion
 - [picking-a-language](picking-a-language) — use-case-driven language selection
+- [dark-mode-reading](dark-mode-reading) — why dark mode works for UI but fights you on sustained reading (PDFs, ebooks, prose)
 - [ai-eval-skill](ai-eval-skill) — evaluation as the highest-leverage AI skill
 - [ai-integration-skill](ai-integration-skill) — integrating AI into systems vs learning tools
 - [anthropic-models](anthropic-models) — current Claude 4.x lineup and when to pick each
