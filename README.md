@@ -14,6 +14,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [go-notes](go-notes) — Go's place in the C/Rust/Zig discussion
 - [picking-a-language](picking-a-language) — use-case-driven language selection
 - [dark-mode-reading](dark-mode-reading) — why dark mode works for UI but fights you on sustained reading (PDFs, ebooks, prose)
+- [monitor-resolution.md](monitor-resolution.md) — native 1080p vs. 4K with scaling: why 1:1 pixel mapping often wins
 - [ai-eval-skill](ai-eval-skill) — evaluation as the highest-leverage AI skill
 - [ai-integration-skill](ai-integration-skill) — integrating AI into systems vs learning tools
 - [anthropic-models](anthropic-models) — current Claude 4.x lineup and when to pick each
