@@ -78,6 +78,49 @@
 # TypeScript still dominates where iteration speed and npm ecosystem matter.
 
 
+# --- chinese players (emerging, moving fast) ---
+
+# Kimi Code (MoonshotAI)
+# - TypeScript, MIT license, open source
+# - runs on Kimi K3 (2.8T MoE, 1M context window)
+# - built-in coder / explore / plan subagents in isolated contexts
+# - MCP support; successor to kimi-cli
+# - https://github.com/MoonshotAI/kimi-code
+
+# Qwen Code (Alibaba / QwenLM)
+# - TypeScript (React/ink for terminal rendering), Apache 2.0
+# - model-agnostic: works with OpenAI, Anthropic, Gemini, or Qwen APIs
+# - 1,000 free requests/day; no token cap on free tier
+# - IDE plugins + Telegram / DingTalk / WeChat / Feishu bots
+# - https://github.com/QwenLM/qwen-code
+
+# ZCode / z.ai (Zhipu AI — GLM model family)
+# - GLM-4.6, 4.7, GLM-5 model family
+# - z.ai CLI: Node.js / npx, MCP-integrated, lightweight
+# - ZCode: full desktop agentic IDE built on GLM-5
+# - https://z.ai
+
+# DeepSeek
+# - open-source developer favorite among Chinese labs
+# - DeepSeek-Coder-V2: GPT-4 Turbo-level on code tasks, MIT license
+# - building their own Claude Code equivalent (watch this space)
+# - https://github.com/deepseek-ai
+
+# TRAE (ByteDance / Doubao / Seed models)
+# - launched Jan 2025; IDE-focused more than pure CLI
+# - Seed 2.1 claimed to match Claude Opus 4.7 on coding benchmarks
+# - https://trae.ai
+
+# Baidu Comate
+# - enterprise and IDE focused; tight Baidu Cloud integration
+# - less CLI-native, stronger on Chinese enterprise market
+# - https://comate.baidu.com
+
+# the pattern: Chinese labs are moving fast and mostly forking the
+# TypeScript CLI pattern (Claude Code / Gemini CLI). Qwen Code is the
+# most notable — genuinely model-agnostic, well-funded, generous free tier.
+
+
 # --- how they differ ---
 
 # full agentic (read / edit / run / multi-step):
