@@ -419,6 +419,40 @@
 # - chinese-hosted model APIs for sensitive work: hard no
 
 
+# --- local hardware — what models run well ---
+#
+# Dell Pro Max with GB10 (NVIDIA GB10 Grace Blackwell Superchip)
+# same silicon as the NVIDIA DGX Spark; $6,332 base.
+# key spec: 128GB unified LPDDR5X memory @ ~1TB/s shared CPU+GPU.
+# 20 ARM cores (10x Cortex-X925 + 10x Cortex-A725), 4TB NVMe SSD.
+# runs DGX OS 7.
+#
+# what 128GB unified memory unlocks:
+# most machines need Q4 quantization to fit a 70B model (sacrificing
+# quality). with 128GB you run Q8 or near-full precision — meaningfully
+# better output quality with no aggressive compression.
+#
+# model                  fit         notes
+# ─────────────────────── ─────────── ──────────────────────────────────
+# Llama 3.3 70B           ✅ easy     full precision fits; fast inference
+# Qwen2.5 72B             ✅ easy     strong general model
+# Qwen2.5-Coder 72B       ✅ easy     best local coding model at this size
+# DeepSeek R1 70B         ✅ easy     strong reasoning
+# Gemma 3 27B             ✅ fast     headroom to spare
+# Phi-4 14B               ✅ fast     punches above weight on coding
+# Llama 3.1 405B Q4       ❌ too big  ~200GB needed; Q2 (~100GB) may squeeze
+#
+# inference speed: ~20–40 tokens/sec on 70B @ Q4/Q8 (DGX Spark benchmarks)
+# fast enough for interactive use with an AI code CLI.
+#
+# best coding models to pull via ollama:
+#   ollama run qwen2.5-coder:72b   # best coding model that fits well
+#   ollama run deepseek-coder-v2   # strong alternative
+#   ollama run llama3.3:70b        # good general + coding
+#
+# https://www.dell.com/en-us/shop/desktop-computers/dell-pro-max-with-gb10/spd/dell-pro-max-fcm1253-micro/xcto_fcm1253_usx
+
+
 # --- references ---
 
 # surveys & comparisons
