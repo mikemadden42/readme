@@ -300,6 +300,39 @@
 # use AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN for K8s environments.
 
 
+# --- ollama (local model) support ---
+#
+# ollama exposes an OpenAI-compatible REST endpoint on localhost:11434,
+# so any tool that speaks the OpenAI API format can point at it and run
+# local models with no API costs, no rate limits, and zero data leaving
+# your machine.
+#
+# key unlock: Ollama 0.22.1 (Apr 2026) added native Anthropic API
+# compatibility — Claude Code can now talk directly to Ollama without
+# a proxy or translation layer.
+#
+# tool              ollama support   notes
+# ──────────────── ──────────────── ────────────────────────────────────
+# Claude Code       ✅ native        Ollama 0.22.1+ (Apr 2026); Anthropic
+#                                    API format, no proxy needed
+# Codex CLI         ✅ native        OSS mode + Ollama 0.24 (May 2026)
+# Aider             ✅ native        long-standing; aider --model ollama/<model>
+# OpenCode          ✅ native        full agentic workflows; 75+ providers
+# Goose             ✅ native        OpenAI-compatible endpoint support
+# Copilot CLI       ✅               added local model support Apr 7, 2026
+# Gemini CLI        ⚠️  via proxy    needs OpenAI-compatible proxy layer
+# Grok Build        ❌               subscription-gated; no local support
+# Amazon Q          ❌               AWS-hosted only
+#
+# best fully-local setups:
+#   Aider + Ollama      most mature, battle-tested
+#   OpenCode + Ollama   best TUI, broadest provider config
+#   Claude Code + Ollama  native Anthropic format since Apr 2026
+#
+# 200+ models available via Ollama including Qwen3, DeepSeek V3,
+# Llama, Gemma, Mistral, Kimi K2, GLM, and more.
+
+
 # --- safety & data sovereignty ---
 #
 # the core risk with chinese-hosted tools:
