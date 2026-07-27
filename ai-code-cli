@@ -481,6 +481,34 @@
 #
 #   if raw speed + frontier quality matter most: Haiku via API wins both.
 #   the GB10 wins on privacy, no rate limits, and zero per-token cost.
+#
+# inference runtimes — Ollama is not the best choice for GB10:
+#
+# runtime          tok/sec          notes
+# ──────────────── ──────────────── ──────────────────────────────────────
+# SGLang           beats vLLM 17–29% best raw throughput; wins when requests
+#                                   share context (agents, RAG, chat) —
+#                                   exactly the AI code CLI use case
+# vLLM             26→1,400+ (scales) Triton-compiled kernels; scales linearly
+#                                   with concurrency; easier setup than SGLang
+# TensorRT-LLM     high on H100/GB200 counterintuitively underperforms on GB10
+#                                   — tuned for datacenter Blackwell, not the
+#                                   consumer Grace Blackwell part
+# llama.cpp        slightly > Ollama  Ollama is a wrapper; adds ~3–4 tok/sec
+#                                   overhead
+# Ollama           ~484 tok/sec peak ~10× slower than dedicated servers;
+#                                   breaks under concurrent load
+#
+# recommendation for GB10:
+#   SGLang or vLLM — not Ollama. Ollama is fine for casual/personal use
+#   but leaves serious performance on a $6K machine. SGLang + vLLM get
+#   you materially closer to Haiku-class speed at 70B.
+#
+# sources:
+# https://medium.com/@michael.hannecke/the-race-car-in-the-parking-garage-which-inference-engine-wins-on-the-dgx-spark-a7e5fad7ce98
+# https://sparktastic.hashnode.dev/choosing-an-inference-engine-on-dgx-spark
+# https://joshua8.ai/llm-inference-benchmark/
+# https://leetllm.com/blog/llm-inference-engine-comparison-2026
 
 
 # --- references ---
