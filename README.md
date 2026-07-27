@@ -64,6 +64,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [kitty](kitty) — terminal
 - [zsh](zsh) — shell setup
 - [claude-code](claude-code) — ptyxis shift+enter workaround
+- [ai-code-cli](ai-code-cli) — AI code CLI assistants: Claude Code, Codex, Gemini CLI, Copilot CLI, Aider, Goose, Amazon Q
 - [screen](screen) — terminal multiplexer
 - [ollama](ollama) — local LLMs
 
