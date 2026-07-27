@@ -333,6 +333,54 @@
 # Llama, Gemma, Mistral, Kimi K2, GLM, and more.
 
 
+# --- us government access — the parallel with china ---
+#
+# the parallel is real. US companies can also be compelled to share
+# your data with the US government:
+#
+# CLOUD Act (2018)      US companies must provide stored data to law
+#                       enforcement / intelligence on a valid legal order,
+#                       even if data is stored overseas. no user notification
+#                       required.
+# FISA Section 702      warrantless collection of communications from
+#                       non-US persons on US-hosted infrastructure.
+#                       renewed through 2026.
+# NSLs                  FBI can compel disclosure with a gag order — the
+#                       company cannot tell you it happened.
+# EO 12333              broad signals intelligence collection authority
+#                       outside of FISA.
+#
+# Anthropic, OpenAI, Google, and xAI are all subject to the above.
+#
+# where the parallel holds:
+# - both can be legally compelled to hand over your data
+# - neither has to notify you when it happens
+# - both represent a nation-state with intelligence interests
+#
+# where the parallel breaks:
+# - transparency  — US companies publish transparency reports and can
+#                   challenge orders in court. Chinese companies have
+#                   no equivalent right to resist.
+# - rule of law   — US orders require judicial oversight (warrants,
+#                   court orders). China's intelligence law has no
+#                   independent judicial check.
+# - scope         — Chinese intelligence law applies to all Chinese
+#                   companies with no exceptions. US legal process is
+#                   theoretically targeted, not bulk.
+# - adversarial   — the US and China represent different threat models
+#                   for most users; who is interested in your code matters.
+#
+# the honest take:
+# no major cloud AI provider — US or Chinese — offers ironclad protection
+# from government access. meaningful differences are: (1) which government,
+# (2) what legal recourse exists, (3) whether the company can fight it.
+# US companies can challenge orders; Chinese companies legally cannot.
+#
+# if true data sovereignty matters: local models via Ollama are the only
+# real answer. data that never leaves your machine cannot be subpoenaed
+# from a third party.
+
+
 # --- safety & data sovereignty ---
 #
 # the core risk with chinese-hosted tools:
