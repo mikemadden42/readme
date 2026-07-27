@@ -451,6 +451,36 @@
 #   ollama run llama3.3:70b        # good general + coding
 #
 # https://www.dell.com/en-us/shop/desktop-computers/dell-pro-max-with-gb10/spd/dell-pro-max-fcm1253-micro/xcto_fcm1253_usx
+#
+# can I expect Haiku-level performance?
+#
+# depends on which dimension:
+#
+# speed — no, not at 70B:
+#   70B models on GB10:       ~20–40 tok/sec
+#   Claude Haiku 4.5 via API: ~100–200+ tok/sec
+#   memory bandwidth is the ceiling: 70B Q8 (~70GB) / 1TB/s ≈ 14–28 tok/sec
+#
+#   smaller models close the gap — but at a quality cost:
+#     14B Q8 (~14GB) → ~70 tok/sec
+#      7B Q8  (~7GB) → ~140 tok/sec
+#
+# quality — getting close, not there yet:
+#   Haiku 4.5 is a frontier model trained at massive scale; it punches
+#   above its size class. local 70B models (Qwen2.5-Coder 72B, Llama 3.3
+#   70B) are competitive with older Haiku versions on coding tasks. for
+#   simple/routine tasks the gap is small; for complex reasoning it's
+#   noticeable.
+#
+# the accurate framing:
+#   the GB10 gives you roughly Sonnet-class quality at zero ongoing API
+#   cost — not Haiku-class speed. it wins on:
+#     - air-gapped / data-sovereign workloads (no cloud API)
+#     - heavy sustained usage (no per-token cost after hardware)
+#     - large local model experimentation
+#
+#   if raw speed + frontier quality matter most: Haiku via API wins both.
+#   the GB10 wins on privacy, no rate limits, and zero per-token cost.
 
 
 # --- references ---
