@@ -44,38 +44,100 @@
 # - https://aws.amazon.com/q/developer/
 
 
+# --- xAI ---
+
+# Grok Build (xAI)
+# - launched May 2026; terminal-native, multi-agent
+# - up to 8 parallel subagents in isolated git worktrees
+# - requires SuperGrok / X Premium+ subscription
+# - TypeScript
+# - https://x.ai/news/grok-build-cli
+
+
 # --- open source / model-agnostic ---
 
+# OpenCode
+# - most-starred open-source coding agent (~180K GitHub stars, Jul 2026)
+# - written in Go — fast, single binary, no runtime dep
+# - MIT license; TUI-based with LSP integration for 20+ languages
+# - 75+ LLM providers from one config file; MCP support
+# - ships via npm, Homebrew, AUR, Nix
+# - note: Anthropic forced removal of Claude Pro/Max subscription login
+#   in Jan 2026; still works with a raw Claude API key
+# - https://github.com/sst/opencode
+
 # Aider
-# - most popular open-source CLI coding assistant
 # - model-agnostic: works with Claude, GPT-4, Gemini, local models (Ollama)
 # - git-native: commits as it edits, strong for multi-file changes
+# - 100+ model support; repo-map intelligence for large codebases
 # - good choice if you want model flexibility or self-hosting
 # - pip install aider-chat
 # - https://aider.chat
 
-# Goose (Block / Square)
-# - open-source agent CLI
-# - extensible via plugins / toolkits
+# Goose (Block / Square → Linux Foundation)
+# - open-source agent CLI, donated to Linux Foundation 2026
+# - primarily Rust + TypeScript; extensible via MCP / plugins
+# - 70+ MCP extensions, 15+ AI providers including Ollama
 # - https://github.com/block/goose
+
+# OpenHands (formerly OpenDevin)
+# - autonomous end-to-end: open issue → investigate → write fix → run tests → open PR
+# - more hands-off than most; suited to longer autonomous tasks
+# - https://github.com/All-Hands-AI/OpenHands
+
+# Plandex
+# - built for very large multi-step tasks (up to 2M token context)
+# - diff-review sandbox before applying changes
+# - MIT; ~15K stars
+# - ⚠️ effectively maintenance-mode since Oct 2025; Plandex Cloud winding down
+# - https://github.com/plandex-ai/plandex
+
+# Cline
+# - VS Code extension primarily, but has headless CLI / CI mode
+# - free, open source, supports any LLM API
+# - https://github.com/cline/cline
+
+# Pi (by Armin Ronacher + Mario Zechner)
+# - newer minimal framework; token-efficient design
+# - Armin Ronacher = Flask creator; respected provenance
+# - watch this space
 
 
 # --- implementation languages ---
 #
-# Claude Code (Anthropic)   TypeScript / Node.js
-# Codex CLI (OpenAI)        Rust  (rewrote from TypeScript; now ~96% Rust, codex-rs)
-# Gemini CLI (Google)       TypeScript / Node.js
-# GitHub Copilot CLI        Go  (part of the gh CLI ecosystem)
-# Amazon Q Developer CLI    Rust
-# Aider                     Python  (ML ecosystem is Python-native)
-# Goose (Block)             Rust + TypeScript  (primarily Rust; donated to Linux Foundation 2026)
+# Claude Code (Anthropic)     TypeScript / Node.js
+# Codex CLI (OpenAI)          Rust  (rewrote from TypeScript; now ~96% Rust, codex-rs)
+# Gemini CLI (Google)         TypeScript / Node.js
+# Grok Build (xAI)            TypeScript
+# GitHub Copilot CLI          Go  (part of the gh CLI ecosystem)
+# Amazon Q Developer CLI      Rust
+# Mistral Vibe CLI            unknown / Apache 2.0
+# OpenCode                    Go  (fast TUI, single binary)
+# Aider                       Python  (ML ecosystem is Python-native)
+# Goose (Block)               Rust + TypeScript
+# Plandex                     Go
+# Cline                       TypeScript  (VS Code extension)
+# Kimi Code (MoonshotAI)      TypeScript
+# Qwen Code (Alibaba)         TypeScript
+# ZCode / z.ai (Zhipu)        Node.js / TypeScript
 #
-# note: Google launched a separate closed-source Go-based Antigravity CLI in
-# Jun 2026; Gemini CLI remains open-source on GitHub under Apache 2.0.
+# note: Google launched a closed-source Go-based Antigravity CLI in Jun 2026;
+# Gemini CLI remains open-source on GitHub under Apache 2.0.
 #
-# Rust is winning for performance-focused rewrites (Codex) and new entrants
-# (Amazon Q, Goose) — single static binary, fast startup, no runtime dep.
-# TypeScript still dominates where iteration speed and npm ecosystem matter.
+# Rust: winning for perf-focused rewrites (Codex) and new entrants (Amazon Q,
+# Goose) — single static binary, fast startup, no runtime dep.
+# Go: strong for community open-source tools (OpenCode, Plandex, Copilot CLI).
+# TypeScript: dominates where iteration speed and npm ecosystem matter.
+# Python: Aider — natural fit for the ML/AI library ecosystem.
+
+
+# --- europe ---
+
+# Mistral Vibe CLI (Mistral AI, France)
+# - Apache 2.0, open source; pairs with Devstral 2 (their coding model)
+# - the EU-sovereignty play: only frontier-class coding CLI that keeps
+#   data inside EU infrastructure
+# - https://github.com/mistralai/mistral-vibe
 
 
 # --- chinese players (emerging, moving fast) ---
@@ -124,7 +186,8 @@
 # --- how they differ ---
 
 # full agentic (read / edit / run / multi-step):
-#   Claude Code, Codex CLI, Gemini CLI, Goose, Aider
+#   Claude Code, Codex CLI, Gemini CLI, Grok Build, OpenCode, Aider,
+#   Goose, OpenHands, Kimi Code, Qwen Code, ZCode, Mistral Vibe CLI
 
 # command explanation / suggestion (lighter weight, not agentic):
 #   GitHub Copilot CLI
@@ -132,5 +195,15 @@
 # aws-ecosystem specialist:
 #   Amazon Q Developer CLI
 
+# eu data sovereignty:
+#   Mistral Vibe CLI  (data stays in EU infrastructure)
+
 # model-flexible / self-hostable:
-#   Aider (pairs well with Ollama for local models)
+#   OpenCode (75+ providers), Aider (100+ models), Goose, Qwen Code
+#   — all pair well with Ollama for local models
+
+# most-starred open source (Jul 2026):
+#   OpenCode ~180K, Aider, Goose  (none vendor-owned)
+
+# maintenance-mode / watch-out:
+#   Plandex — no commits since Oct 2025, Cloud winding down
