@@ -271,6 +271,44 @@
 # best free tier      Qwen Code (1,000 req/day, no token cap)
 
 
+# --- safety & data sovereignty ---
+#
+# the core risk with chinese-hosted tools:
+# China's National Intelligence Law (2017) requires Chinese companies to
+# cooperate with state intelligence agencies on request, with no public
+# transparency requirement. code sent to a Chinese-hosted model API is
+# potentially accessible to the Chinese government. that's the legal
+# structure, not speculation.
+#
+# risk-ranked (chinese tools):
+#
+# TRAE (ByteDance)   highest  — ByteDance = TikTok parent; active US govt
+#                              scrutiny and ban attempts
+# Baidu Comate       high     — Baidu Cloud infrastructure; enterprise-targeted
+# Kimi Code          high     — MoonshotAI; model runs on Chinese servers
+# ZCode / z.ai       high     — Zhipu AI; GLM models on Chinese infrastructure
+# DeepSeek           high     — known data exposure incidents; Chinese infra
+# Qwen Code          lower*   — model-agnostic; point it at Anthropic/OpenAI
+#                              and your code goes to US servers, not Alibaba's
+#
+# * Qwen Code is the exception: it's open-source (Apache 2.0, auditable)
+#   and genuinely model-agnostic. configure it with a US-based API key and
+#   the Chinese-built tool never touches Chinese infrastructure.
+#
+# safest options by category:
+#
+# us-native:      Claude Code, Codex CLI, Gemini CLI, Grok Build, Amazon Q
+# eu-sovereign:   Mistral Vibe CLI — data stays in EU; GDPR-governed,
+#                 not subject to Chinese intelligence law
+# local / air-gap: Aider + Ollama, OpenCode + Ollama — code never leaves
+#                 your machine; zero data exposure risk
+#
+# general rule:
+# - personal / hobby code: Qwen Code pointed at a US API is reasonable
+# - sensitive / proprietary code: US or EU tools only
+# - chinese-hosted model APIs for sensitive work: hard no
+
+
 # --- references ---
 
 # surveys & comparisons
