@@ -209,6 +209,44 @@
 #   Plandex — no commits since Oct 2025, Cloud winding down
 
 
+# --- why TypeScript dominates this space ---
+#
+# 1. teams already knew it — Anthropic, OpenAI, and Google have large
+#    TypeScript/JS engineering orgs. ship in the language your team
+#    already writes at scale: faster iteration, more contributors, smaller
+#    context switch. you don't pick the *best* language; you pick the one
+#    your team will actually ship in.
+#
+# 2. ecosystem is enormous — npm has everything a coding agent needs:
+#    terminal UI (ink, blessed, chalk), HTTP clients, YAML/JSON parsing,
+#    file system ops, streaming, MCP integration. assemble, don't build.
+#
+# 3. streaming LLM output is natural — Node.js async/event-driven model
+#    is a genuinely good fit for streaming token-by-token LLM output.
+#    what's awkward in a synchronous language is idiomatic in Node.js.
+#
+# 4. cross-platform without effort — Node.js runs on macOS, Linux, and
+#    Windows with no platform-specific build toolchain. Rust/Go need a
+#    compiled binary per target; a TypeScript CLI ships via npm and works
+#    everywhere immediately.
+#
+# 5. prototyping speed — the space is moving fast; labs ship and rewrite
+#    every few months. TypeScript moves faster than Rust or C++. the cost
+#    (startup latency, runtime dep) is acceptable when iteration speed
+#    matters more than binary size.
+#
+# tradeoffs accepted:
+# - requires Node.js (not a single static binary)
+# - slower cold-start vs. Go / Rust
+# - higher memory footprint
+#
+# why Rust is gaining ground:
+# once a tool matures and the architecture stabilizes, performance
+# arguments start to matter. Codex's rewrite (TypeScript → Rust) is the
+# clearest example — TypeScript to get to market, Rust once the design
+# settled. expect others to follow the same arc.
+
+
 # --- maturity & adoption ---
 #
 # most mature:        Aider — longest track record (2023), battle-tested
