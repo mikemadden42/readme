@@ -209,6 +209,30 @@
 #   Plandex — no commits since Oct 2025, Cloud winding down
 
 
+# --- maturity & adoption ---
+#
+# most mature:        Aider — longest track record (2023), battle-tested
+#                     across 100+ models, git-native workflow, actively
+#                     maintained. the tool people reach for when they want
+#                     something that just works with any model.
+#
+# most widely used:   Claude Code — #1 on Terminal-Bench (Jul 2026);
+#                     model and agent co-developed by Anthropic. the de
+#                     facto standard every new entrant benchmarks against.
+#
+# most popular OSS:   OpenCode — ~180K GitHub stars, 7.5M+ monthly active
+#                     devs. Go binary, model-agnostic, MIT. the community's
+#                     answer to vendor lock-in.
+#
+# dimension           winner
+# ─────────────────── ────────────────────────────────────
+# longest track rec.  Aider
+# best benchmarks     Claude Code
+# largest OSS comm.   OpenCode
+# model flexibility   OpenCode / Aider (tied)
+# best free tier      Qwen Code (1,000 req/day, no token cap)
+
+
 # --- references ---
 
 # surveys & comparisons
