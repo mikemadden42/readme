@@ -271,6 +271,35 @@
 # best free tier      Qwen Code (1,000 req/day, no token cap)
 
 
+# --- aws bedrock integration ---
+#
+# bedrock lets you run models through AWS infrastructure — billing stays
+# in AWS, IAM controls access, no separate API keys to rotate. good fit
+# for teams already AWS-primary.
+#
+# tools with confirmed bedrock support:
+#
+# Claude Code      configure via ANTHROPIC_API_URL pointing to Bedrock endpoint
+# Codex CLI        OpenAI + Codex models available on Bedrock (Apr 2026)
+# Aider            aider --model bedrock/anthropic.claude-<model-id>
+#                  uses standard AWS credential chain
+# OpenCode         AWS provider built in; supports AWS_PROFILE,
+#                  AWS_ROLE_ARN, AWS_WEB_IDENTITY_TOKEN_FILE (K8s/OIDC)
+# Amazon Q         native — it is AWS
+#
+# auth patterns supported (OpenCode / Aider):
+#   AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY  (basic)
+#   AWS_PROFILE                                 (named profile)
+#   AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN  (K8s / OIDC — preferred)
+#   AWS_BEARER_TOKEN_BEDROCK                    (direct bearer token)
+#
+# AWS published a sample repo for OpenCode + Bedrock:
+# https://github.com/aws-samples/sample-opencode-with-bedrock
+#
+# the OIDC / no-long-lived-creds pattern works cleanly with OpenCode —
+# use AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN for K8s environments.
+
+
 # --- safety & data sovereignty ---
 #
 # the core risk with chinese-hosted tools:
