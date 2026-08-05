@@ -2,6 +2,7 @@
 
 ## General
 - [ ] Review all links for 404s or outdated content (many are from 2014-2016).
+- [ ] Add automated Markdown link and command validation so stale references and invalid examples are caught before commit.
 
 ## File Specific Updates
 
@@ -27,10 +28,18 @@
 
 ### `openssl`
 - [ ] Add `-pbkdf2` flag to `enc` commands to align with modern OpenSSL defaults and security standards (avoiding warnings).
+- [ ] Replace the invalid `openssl list-cipher-commands` invocation with `openssl list -cipher-commands`.
+
+### `disk-wipe`
+- [ ] Add prominent safeguards: verify the target, unmount it first, and warn that overwrite-based sanitization is unreliable for SSDs, NVMe devices, and copy-on-write filesystems.
 
 ### `docker`
 - [ ] (Done) Fix `--rm` syntax and add missing `sudo`.
 - [ ] Add `docker compose` commands (the newer plugin version, not `docker-compose`).
+- [ ] Change the single-image removal example from `docker rm` to `docker rmi`; review obsolete image tags and architectures.
+
+### `ai-code-cli`
+- [ ] Reconcile the GB10 throughput figures: label model, quantization, runtime, batch/concurrency, and whether each number is per-request latency or aggregate throughput.
 
 ### `zsh`
 - [ ] Update links to modern Zsh resources and plugin managers (e.g., Oh My Zsh, Antidote, or Zinit).
