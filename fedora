@@ -9107,6 +9107,45 @@ virsh snapshot-revert fedora-test pre-experiment
 virsh snapshot-delete fedora-test pre-experiment
 
 
+# DELETING VMs — WHY GNOME BOXES LEAVES DISK IMAGES BEHIND
+
+# gnome-boxes uses libvirt's user session (qemu:///session, NOT the
+# system-wide qemu:///system). its "delete" button removes the libvirt
+# domain but has a long-standing habit of orphaning the qcow2 in
+# ~/.local/share/gnome-boxes/images/ — you'll notice the directory
+# ballooning past what the UI claims exists.
+
+# the clean way is to undefine the VM AND its storage in one virsh call,
+# using the SAME session URI Boxes uses (--connect qemu:///session, or
+# equivalently the -c short form):
+
+virsh -c qemu:///session list --all
+virsh -c qemu:///session undefine <name> --remove-all-storage
+
+# --remove-all-storage deletes every disk volume attached to the domain,
+# not just the definition — that's the flag the GUI effectively forgets.
+# add --nvram if the VM used UEFI (removes the per-VM varstore too).
+
+# if the domain is ALREADY gone from `virsh list --all` (Boxes deleted
+# the definition but left the file), the qcow2 is just a stranded file
+# at that point — safe to rm:
+rm ~/.local/share/gnome-boxes/images/<name>
+
+# two other places to check for stragglers:
+
+# 1. the default storage pool — vol-delete removes the file and the
+#    pool's record of it in one shot:
+virsh -c qemu:///session vol-list --pool default
+virsh -c qemu:///session vol-delete --pool default <volname>
+
+# 2. leftover UEFI NVRAM (Boxes also leaks these):
+ls ~/.config/libvirt/qemu/nvram/
+
+# going forward, either verify with `virsh -c qemu:///session list --all`
+# after every GUI delete, or just skip the GUI's delete and use
+# `virsh undefine --remove-all-storage` directly.
+
+
 # WINDOWS GUESTS — virtio drivers
 
 # windows doesn't ship virtio drivers natively. install with the
