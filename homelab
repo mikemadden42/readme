@@ -198,6 +198,55 @@ sudo dpkg-reconfigure --priority=low unattended-upgrades
 # breaking your compose stack overnight.
 
 
+PHASE 3 — INSTALLING DOCKER & DOCKER COMPOSE
+--------------------------------------------
+
+# the engine that will run all your services. use the OFFICIAL
+# UPSTREAM docker engine — NOT debian's own `docker.io` package
+# (see phase 1's DOCKER note for the why).
+
+
+# 1. TWO INSTALL PATHS — both official, both from docker.
+#
+# PATH A — convenience script (fast):
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+# one shot. docker warns this "isn't recommended for production" —
+# for a KISS homelab it's fine, but it does mean running an
+# internet-sourced shell script sight-unseen.
+#
+# PATH B — manual apt-repo (transparent):
+# follow docs.docker.com/engine/install/debian — add docker's GPG
+# key, add the apt repo, then:
+sudo apt install docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin
+# more typing, but every step is visible and reviewable.
+#
+# either path leaves you with the same result: `docker` and
+# `docker compose` (note: `compose` is now a plugin subcommand —
+# NO hyphen. the standalone `docker-compose` script is deprecated).
+
+
+# 2. RUN DOCKER WITHOUT SUDO
+# by default every docker command needs sudo. add your user to the
+# `docker` group so it doesn't:
+sudo usermod -aG docker $USER
+# log out of ssh and back in for the group change to take effect.
+# verify:
+docker run --rm hello-world
+# should pull the image, print a hello message, and exit — all
+# without sudo.
+
+
+# SECURITY NOTE
+# `docker` group membership is ROOT-EQUIVALENT — a container
+# mounted with `-v /:/host` gets you root on the host. standard
+# tradeoff for single-user homelabs. if you'd rather not, run
+# ROOTLESS DOCKER (`dockerd-rootless-setuptool.sh install`) —
+# docker runs entirely under your uid, no privileged daemon, at
+# the cost of some networking / perf caveats.
+
+
 ITEMS TO REVISIT LATER
 ----------------------
 
