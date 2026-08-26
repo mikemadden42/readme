@@ -247,14 +247,87 @@ docker run --rm hello-world
 # the cost of some networking / perf caveats.
 
 
+PHASE 3.5 — HARDENING & CONVENTIONS
+-----------------------------------
+
+# quick set of things to nail down BEFORE running your first compose
+# stack. every one of these is a "wish i'd done this at the start"
+# item.
+
+
+# 1. DOCKER LOG ROTATION (biggest silent gotcha)
+# the default json-file log driver has NO rotation. one chatty
+# container fills your disk over months. set global defaults once
+# in /etc/docker/daemon.json:
+sudo tee /etc/docker/daemon.json >/dev/null <<'JSON'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+JSON
+sudo systemctl restart docker
+# per-container `logging:` blocks in compose still override these,
+# but the daemon default kicks in for anything you forget to set.
+
+
+# 2. TIME SYNC + TIMEZONE
+# critical for TLS cert validation, cron jobs, and correlating logs
+# across services. debian 13 ships systemd-timesyncd enabled by
+# default — verify:
+timedatectl status
+# should show `System clock synchronized: yes` and
+# `NTP service: active`.
+#
+# if the installer left you on UTC and you want local time in logs:
+sudo timedatectl set-timezone Region/City
+# (`timedatectl list-timezones` shows the full list.)
+
+
+# 3. FIREWALL (ufw)
+# lock the box down to just ssh before you start publishing docker
+# ports:
+sudo apt install ufw
+sudo ufw allow OpenSSH
+sudo ufw enable
+sudo ufw status
+#
+# GOTCHA: docker's iptables rules bypass ufw by design. every port
+# you publish with `ports:` in a compose file is exposed regardless
+# of ufw's rules. this is intentional (docker "just works" for the
+# user) but it means ufw only really protects services that AREN'T
+# containerized. mitigations:
+#   - bind published ports to loopback in compose
+#     (`127.0.0.1:8080:80`) so only a reverse proxy sees them
+#   - or use the `ufw-docker` community tool that patches ufw to
+#     actually see docker traffic
+# for a LAN-only homelab where you trust everything on your subnet,
+# the default is fine — just know the constraint.
+
+
+# 4. FILESYSTEM CONVENTION FOR COMPOSE FILES + DATA
+# pick this once. every service you add uses the same layout, and
+# backup planning gets trivial. common pattern:
+#
+#   /opt/stacks/<service>/docker-compose.yml
+#   /opt/stacks/<service>/data/         # bind mounts live here
+#   /opt/stacks/<service>/.env          # secrets, gitignored
+#
+# variant: ~/stacks/<service>/ under your home dir if you don't
+# want root-owned service files. picks a fight with the `docker`
+# group's root-equivalence in a different way, but works.
+#
+# whatever you pick, be consistent — future-you doing a backup or
+# a migration will thank present-you.
+
+
 ITEMS TO REVISIT LATER
 ----------------------
 
-# - firewall: ufw is the debian/ubuntu default; nftables directly is
-#   an option if you want to skip the wrapper
 # - remote access: tailscale vs wireguard vs "ssh over LAN only"
-# - storage: single disk vs mdadm/zfs/btrfs; where compose bind-mounts
-#   live
+# - underlying storage layout: single disk vs mdadm/zfs/btrfs
 # - backup strategy for the compose configs + persistent volumes
 # - reverse proxy: caddy vs traefik vs nginx-proxy-manager
 # - dashboard / observability: homer/homepage/dozzle/glances/etc.
