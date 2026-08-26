@@ -1,0 +1,115 @@
+# homelab — initial planning notes
+#
+# captured 2026-08-25. discussion about picking a base OS for a
+# KISS docker-based homelab on x86_64 desktop hardware. see also
+# [[fedora]], [[docker]].
+
+
+GOAL
+----
+
+# stated intent: a "just works" homelab running standard docker /
+# docker-compose. no kubernetes, no orchestration layer, no distro
+# gymnastics. one machine, ssh in, write docker-compose.yml files,
+# stand up services like jellyfin / nextcloud / pi-hole / etc.
+#
+# hardware: an x86_64 desktop. arm64 machines on the same LAN are
+# out of scope for this OS choice.
+
+
+CANDIDATES CONSIDERED
+---------------------
+
+# the "just works" bracket for docker hosts basically comes down to
+# three practical picks:
+#
+#   - Debian (stable)
+#   - Ubuntu Server LTS
+#   - (Fedora Server wasn't in the KISS shortlist for this exercise
+#     — the debian-family options were the focus)
+
+
+DEBIAN vs UBUNTU LTS — THE TRADEOFF
+-----------------------------------
+
+# both share the ".deb + apt + docker's official repo" workflow, so
+# the differences are all about defaults, packaging quirks, and how
+# much the OS editorializes.
+
+# DEBIAN (stable):
+#   + quiet defaults — no MOTD ads, no telemetry package, no snap
+#   + /etc/network/interfaces is boring and predictable
+#   + no cloud-init on the netinst path
+#   + kernel + userland are fine once you're on the current stable
+#   - historically the "stale packages" complaint applied; less true
+#     on the newest release
+#   - a shade less documentation coverage than ubuntu for homelab
+#     tutorials, though for anything containerized it doesn't matter
+
+# UBUNTU SERVER LTS (24.04):
+#   + 5 years of security updates (10 with free-for-personal-use
+#     Ubuntu Pro, capped at 5 machines)
+#   + slightly newer packages than debian at release
+#   + the deepest homelab tutorial pool of any distro — most guides
+#     assume it
+#   + HWE (hardware enablement) kernel available for newer silicon
+#   - MOTD ads / "news" banners at login
+#   - ubuntu-advantage-tools phones home by default
+#   - netplan for networking (fine, just different)
+#   - snap in the base install (doesn't affect docker itself since
+#     you'd use docker's apt repo, but adds surface area)
+#   - cloud-init can surprise you on server installs
+
+# neither is "wrong". rough rule:
+#   - prioritize documentation coverage → Ubuntu LTS
+#   - prioritize a quiet, opinion-free base → Debian
+
+
+DECISION
+--------
+
+# Debian 13 (trixie) on x86_64.
+#
+# trixie has been stable since August 2025, so as of 2026 it's
+# firmly the current stable release (debian 12 / bookworm is now
+# oldstable). trixie ships ~kernel 6.12 LTS + a newer everything,
+# which closes most of the historical "debian is stale" gap.
+#
+# fits the KISS lean, doesn't editorialize, and the docker
+# workflow is identical to what ubuntu would give (both go through
+# docker's official apt repo either way).
+
+
+INSTALL RECIPE — HIGH LEVEL
+---------------------------
+
+# 1. grab the netinst ISO for debian 13 (small download, pulls the
+#    rest from mirrors at install time)
+# 2. during tasksel, deselect everything EXCEPT:
+#      - SSH server
+#      - standard system utilities
+#    this yields a ~1 GB system with no desktop, no cups, no
+#    printer daemon eating RAM
+# 3. add your ssh key, log in from a real machine, run everything
+#    else over ssh
+# 4. install docker from docker's OFFICIAL apt repo
+#    (docs.docker.com/engine/install/debian) — NOT the distro's
+#    docker.io package, which lags upstream and has a fiddlier
+#    compose-plugin story
+# 5. add your user to the docker group (or set up rootless docker
+#    if you want the extra isolation — docker group is standard KISS)
+# 6. start writing docker-compose.yml files
+
+
+ITEMS TO REVISIT LATER
+----------------------
+
+# - firewall: ufw is the debian/ubuntu default; nftables directly is
+#   an option if you want to skip the wrapper
+# - remote access: tailscale vs wireguard vs "ssh over LAN only"
+# - storage: single disk vs mdadm/zfs/btrfs; where compose bind-mounts
+#   live
+# - backup strategy for the compose configs + persistent volumes
+# - reverse proxy: caddy vs traefik vs nginx-proxy-manager
+# - dashboard / observability: homer/homepage/dozzle/glances/etc.
+# - which VLAN / subnet the box lives on, if applicable
