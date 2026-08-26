@@ -13,8 +13,7 @@ GOAL
 # gymnastics. one machine, ssh in, write docker-compose.yml files,
 # stand up services like jellyfin / nextcloud / pi-hole / etc.
 #
-# hardware: an x86_64 desktop. arm64 machines on the same LAN are
-# out of scope for this OS choice.
+# hardware: an x86_64 desktop.
 
 
 CANDIDATES CONSIDERED
@@ -80,25 +79,71 @@ DECISION
 # docker's official apt repo either way).
 
 
-INSTALL RECIPE — HIGH LEVEL
----------------------------
+PHASE 1 — BARE-METAL INSTALL
+----------------------------
 
-# 1. grab the netinst ISO for debian 13 (small download, pulls the
-#    rest from mirrors at install time)
-# 2. during tasksel, deselect everything EXCEPT:
-#      - SSH server
-#      - standard system utilities
-#    this yields a ~1 GB system with no desktop, no cups, no
-#    printer daemon eating RAM
-# 3. add your ssh key, log in from a real machine, run everything
-#    else over ssh
-# 4. install docker from docker's OFFICIAL apt repo
-#    (docs.docker.com/engine/install/debian) — NOT the distro's
-#    docker.io package, which lags upstream and has a fiddlier
-#    compose-plugin story
-# 5. add your user to the docker group (or set up rootless docker
-#    if you want the extra isolation — docker group is standard KISS)
-# 6. start writing docker-compose.yml files
+# grab the DEBIAN 13 (trixie) NETINST ISO. flash to a USB stick with
+# BalenaEtcher, Rufus, or `dd` — small download, installer pulls the
+# rest from mirrors at install time. boot from USB, step through the
+# classic Debian Installer (ncurses; less glossy than ubuntu's
+# subiquity, faster and less opinionated).
+
+
+# FIRMWARE
+# since debian 12, the netinst ISO bundles non-free firmware by
+# default. most wi-fi / gpu / nic firmware works out of the box — no
+# separate "unofficial firmware" ISO needed like in the pre-2023 days.
+
+
+# NETWORKING
+# the installer defaults to DHCP. pick "Configure network manually"
+# and set a STATIC IP on your LAN's subnet — keeps the server's
+# address stable across router reboots.
+# alternate path: leave it on DHCP through install and lock the
+# address down post-boot via /etc/network/interfaces. either works.
+
+
+# ROOT PASSWORD (debian-specific gotcha)
+# - if you SET a root password: root works normally, your regular
+#   user has no sudo
+# - if you LEAVE the root password BLANK: the installer disables
+#   direct root login and adds your user to `sudo` automatically —
+#   the ubuntu-style model
+# for a KISS homelab where you'll sudo from your user account:
+# LEAVE ROOT PASSWORD BLANK.
+
+
+# PROFILE SETUP
+# create your primary user: full name → short username → password
+# (in that order in the installer flow).
+
+
+# STORAGE
+# "guided – use entire disk" is fine for a single-drive setup.
+# debian does NOT offer ZFS-root in the installer; if you want
+# ZFS / mdadm / LVM tricks, do them post-install or use manual
+# partitioning.
+
+
+# SOFTWARE SELECTION (tasksel)
+# this is where the KISS win happens. deselect EVERYTHING except:
+#   - SSH server
+#   - standard system utilities
+# no desktop, no print server (cups), no web server. yields a ~1 GB
+# system with only the bits you need to be a docker host.
+
+
+# DOCKER (post-first-boot)
+# debian doesn't have snaps, so there's no snap prompt to skip. the
+# equivalent trap is debian's own `docker.io` package — DON'T
+# install it. it lags upstream by a couple of years and the
+# compose-plugin story is fiddlier.
+# after first boot, follow docs.docker.com/engine/install/debian to
+# add docker's official apt repo and install `docker-ce` +
+# `docker-compose-plugin` from there.
+# then: add your user to the `docker` group (or set up rootless
+# docker if you want extra isolation — the `docker` group is
+# standard KISS) and start writing docker-compose.yml files.
 
 
 ITEMS TO REVISIT LATER
@@ -112,4 +157,3 @@ ITEMS TO REVISIT LATER
 # - backup strategy for the compose configs + persistent volumes
 # - reverse proxy: caddy vs traefik vs nginx-proxy-manager
 # - dashboard / observability: homer/homepage/dozzle/glances/etc.
-# - which VLAN / subnet the box lives on, if applicable
