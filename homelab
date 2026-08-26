@@ -309,18 +309,132 @@ sudo ufw status
 
 # 4. FILESYSTEM CONVENTION FOR COMPOSE FILES + DATA
 # pick this once. every service you add uses the same layout, and
-# backup planning gets trivial. common pattern:
+# backup planning gets trivial. we standardize on:
 #
-#   /opt/stacks/<service>/docker-compose.yml
-#   /opt/stacks/<service>/data/         # bind mounts live here
-#   /opt/stacks/<service>/.env          # secrets, gitignored
+#   ~/stacks/<service>/compose.yaml   # the compose file
+#   ~/stacks/<service>/data/          # bind mounts live here
+#   ~/stacks/<service>/.env           # secrets, gitignored
 #
-# variant: ~/stacks/<service>/ under your home dir if you don't
-# want root-owned service files. picks a fight with the `docker`
-# group's root-equivalence in a different way, but works.
+# `compose.yaml` (not `docker-compose.yml`) is the modern
+# compose-spec filename — matches what dockge writes automatically
+# and is what docker compose looks for first.
+# phase 4 sets up the directories; phase 4's security note covers
+# the ~/ vs /opt/ tradeoff.
+
+
+PHASE 4 — DIRECTORY STRUCTURE
+-----------------------------
+
+# before spinning containers up, create the two directories the
+# rest of the doc assumes exist. get this right and your entire
+# homelab backs up in seconds.
+
+
+# TWO DIRECTORIES
+#   ~/dockge/    the management tool itself (bootstrap compose file
+#                + dockge's own sqlite auth db)
+#   ~/stacks/    every service you deploy through dockge lives here
+#                as a sub-folder, one per stack
 #
-# whatever you pick, be consistent — future-you doing a backup or
-# a migration will thank present-you.
+# create both:
+mkdir -p ~/dockge ~/stacks
+
+# what the tree looks like after you've deployed a couple of stacks:
+#
+#   ~/dockge/
+#     ├── compose.yaml       runs dockge itself
+#     └── data/              dockge's login + settings db
+#
+#   ~/stacks/
+#     ├── jellyfin/          created by dockge when you add a stack
+#     │   └── compose.yaml
+#     └── pihole/
+#         └── compose.yaml
+#
+# backup is now trivial: tar / rsync / borg / restic your home
+# directory (or just ~/dockge + ~/stacks) and you've captured the
+# DNA of every service.
+
+
+# SECURITY TRADEOFF (home dir vs /opt/)
+# using ~/ for compose configs means the files are owned by your
+# regular user. the KISS win: no sudo to edit compose files,
+# backups are just a home-dir copy, and dockge (running under your
+# uid via the docker group) can write to them.
+# the tradeoff: anything running as your user has direct write
+# access to those files and any secrets in .env. a compromised
+# shell session, or a `curl | sh` from a bad tutorial, hits them
+# without needing sudo escalation. on /opt/ those writes would
+# require an explicit privilege bump.
+# for a single-user home LAN this is an acceptable tradeoff; on a
+# multi-user or internet-exposed host, /opt/stacks + /opt/dockge
+# is safer.
+
+
+PHASE 5 — DOCKGE (WEB UI FOR COMPOSE STACKS)
+--------------------------------------------
+
+# dockge is a KISS web UI for managing docker-compose files. same
+# author as uptime kuma (louis lam). two properties make it worth
+# using:
+#
+# 1. FILES-FIRST. dockge writes real compose.yaml files to
+#    ~/stacks/<name>/. if you uninstall dockge tomorrow, every
+#    stack keeps running and you can `cd ~/stacks/foo && docker
+#    compose up -d` from the cli. contrast portainer, which stores
+#    stack state in its own db and effectively locks you in.
+#
+# 2. IT MANAGES ITSELF (once bootstrapped). you hand-write ONE
+#    compose file to start dockge, then dockge manages every
+#    subsequent stack including itself.
+#
+# alternatives worth naming: portainer (more powerful, db-locked),
+# komodo (newer, batteries-included, heavier), lazydocker (TUI for
+# terminal-only workflows).
+
+
+# BOOTSTRAP
+# write the dockge compose file — this is the ONLY compose file
+# you'll ever write by hand:
+cd ~/dockge
+cat > compose.yaml <<'YAML'
+services:
+  dockge:
+    image: louislam/dockge:1
+    restart: unless-stopped
+    ports:
+      - 5001:5001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      - ${HOME}/stacks:${HOME}/stacks
+    environment:
+      - DOCKGE_STACKS_DIR=${HOME}/stacks
+YAML
+
+# ${HOME} expands at compose-parse time to your user's home dir.
+# the SAME absolute path is used both inside and outside the
+# container — dockge's docs require they match so the ui shows
+# correct file paths.
+#
+# start dockge:
+docker compose up -d
+
+# check it's running:
+docker compose ps
+docker compose logs -f    # ctrl-c to detach; container keeps running
+
+
+# FIRST LOG-IN
+# from your daily-driver, browse to:
+#     http://<server-ip>:5001
+# dockge prompts you to create an admin account on first hit — set
+# a real password, this is your gate to every service you host.
+#
+# after that, adding a service is: click "+ compose", paste (or
+# write) a compose.yaml, click deploy. dockge creates the folder
+# under ~/stacks/, writes the file, and runs `docker compose up
+# -d` for you. live logs stream in the ui.
 
 
 ITEMS TO REVISIT LATER
