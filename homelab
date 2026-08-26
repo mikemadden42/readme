@@ -146,6 +146,58 @@ PHASE 1 — BARE-METAL INSTALL
 # standard KISS) and start writing docker-compose.yml files.
 
 
+PHASE 2 — FIRST ACCESS & FOUNDATION
+-----------------------------------
+
+# once the install finishes, reboot, unplug the monitor + keyboard,
+# and walk away from the box. everything from here happens over ssh
+# from the terminal (Command Prompt / PowerShell / Terminal) on
+# your daily-driver computer.
+
+
+# 1. SSH IN
+# use the static IP you set in phase 1 (or, if you skipped that,
+# `ip a` on the server console or the router's lease list will tell
+# you what it grabbed):
+ssh yourusername@<server-ip>
+
+# first connection asks you to accept the host-key fingerprint —
+# say yes. then, from your daily-driver, drop your public key onto
+# the server so future logins skip the password prompt:
+ssh-copy-id yourusername@<server-ip>
+
+# once key auth works, harden /etc/ssh/sshd_config on the server:
+#   PasswordAuthentication no
+#   PermitRootLogin no
+# then reload:
+sudo systemctl reload ssh
+# password brute-force attempts stop mattering.
+
+
+# 2. UPDATE THE SYSTEM
+# pull all the latest security patches:
+sudo apt update && sudo apt full-upgrade -y
+
+# debian-specific: use `apt full-upgrade`, NOT `apt upgrade`.
+# full-upgrade will remove obsolete packages when needed to satisfy
+# dependencies — matches what unattended-upgrades does under the
+# hood. on a fresh netinst the two produce identical results, but
+# the habit is worth building.
+# if a new kernel came down, reboot:
+sudo reboot
+
+
+# 3. AUTO SECURITY UPDATES
+# for a set-and-forget homelab, let debian apply security patches
+# on its own:
+sudo apt install unattended-upgrades
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+
+# answer "yes" to enable. default config only pulls from the
+# `security` archive — no risk of a random package-version bump
+# breaking your compose stack overnight.
+
+
 ITEMS TO REVISIT LATER
 ----------------------
 
