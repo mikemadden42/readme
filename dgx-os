@@ -1,0 +1,76 @@
+# DGX OS — history
+
+## Origin (2016)
+
+DGX OS shipped with the first DGX-1 (P100 Pascal, 8x GPU, NVLink 1.0).
+Ubuntu Server LTS underneath, with an NVIDIA overlay: preinstalled CUDA,
+cuDNN, NCCL, GPU driver, Docker + `nvidia-docker` runtime, and a
+curated set of deep-learning framework containers pulled from what
+became NGC (NVIDIA GPU Cloud). The pitch was "unbox, plug in,
+`docker run` a TensorFlow container." At the time, getting a matched
+driver + CUDA + framework stack working on bare metal was a multi-day
+chore; DGX OS existed so buyers of a $129K box didn't have to do it.
+
+## DGX OS 3.x (2017-ish)
+
+Ubuntu 16.04 base. Tracked DGX-1 and then DGX Station (Volta,
+water-cooled desk-side box). Introduced `nvidia-docker2` support.
+NVIDIA started publishing a proper release-notes cadence.
+
+## DGX OS 4.x (2018–2019)
+
+Still 16.04 base, extended for DGX-2 (16x V100 with NVSwitch). Container
+runtime moved to the CLI-less `nvidia-container-toolkit` model that
+upstream Docker eventually adopted. Firmware / BMC update tooling
+matured — DGX OS started shipping vendor firmware bundles you'd
+`apt install`.
+
+## DGX OS 5.x (2020–2022)
+
+Rebased on Ubuntu 18.04, then 20.04. Coincided with DGX A100 (Ampere,
+MIG — multi-instance GPU). Added MIG partitioning tooling, GPUDirect
+Storage bits, and the `nvidia-fabricmanager` service required for
+NVSwitch systems. Around this era NVIDIA also started shipping a
+separate flavor called **DGX Base OS** — a slimmer image intended for
+customers who wanted to run Kubernetes / Slurm / their own orchestrator
+on top instead of the batteries-included DGX OS.
+
+## DGX OS 6.x (2022–2024)
+
+Ubuntu 22.04 LTS base. Tracks DGX H100 (Hopper) and the DGX SuperPOD
+reference architecture. Ships confidential-compute / TEE support for
+Hopper, deeper BlueField DPU integration, and the current-gen
+`nvidia-container-toolkit`. This is the version most on-prem DGX
+customers are running today.
+
+## DGX OS 7.x (2024–2025)
+
+Ubuntu 24.04 LTS base. Tracks DGX H200 and DGX B200 (Blackwell). Adds
+Blackwell driver branch, updated fabricmanager for the new NVLink
+switch topology, and integrations with NVIDIA Mission Control / Base
+Command for cluster management.
+
+## Parallel product lines worth knowing
+
+- **DGX Cloud (2023+).** Not the same product — hosted DGX instances
+  on OCI/Azure/GCP/AWS. Different image, managed by NVIDIA.
+- **DGX Spark / DGX Station (GB10, 2025).** The desktop-class
+  Grace-Blackwell boxes (arm64, unified memory). These ship
+  **DGX OS for DGX Spark**, which is a distinct arm64 build — same
+  DGX-OS-branded stack, but a separate release track from the x86
+  datacenter DGX OS.
+- **NVIDIA AI Enterprise.** Separate SKU: the same container + driver
+  stack, but supported on generic servers running RHEL / Ubuntu /
+  vSphere. DGX OS is essentially the "we control the whole box"
+  cousin.
+
+## Themes across the arc
+
+- Always Ubuntu Server LTS underneath. Never a fork — NVIDIA's overlay
+  is drivers, firmware tooling, container runtime, fabricmanager, and
+  a curated apt repo, all installable on top.
+- The container-first workflow has been the identity of DGX OS since
+  day one — the OS's job is to get you from bare metal to
+  `docker run nvcr.io/...` with no yak-shaving.
+- Release cadence tracks the hardware, not Ubuntu. A new GPU
+  generation ⇒ new major DGX OS.
