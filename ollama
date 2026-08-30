@@ -310,6 +310,52 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 # others. "Haiku-class" is aspirational — and the hardware bill scales
 # accordingly.
 #
+# QUALIFIER (checked Aug 2026): the "HONEST UPFRONT" line above was
+# written about 70B DENSE models and is now TOO PESSIMISTIC ON CODE.
+# large open-weights MoE coders changed the picture:
+#
+#   Claude Haiku 4.5            73.3%  SWE-bench Verified (Anthropic's
+#                                      own number: avg of 50 trials, no
+#                                      test-time compute, 128K thinking
+#                                      budget, full 500-problem set)
+#   Qwen3-Coder-480B-A35B       66.5%  Pass@1 (Qwen's own reporting,
+#                                      Jul 2025). ~7 points back — a
+#                                      real gap, but a NARROW one, not
+#                                      the chasm the 7-8B framing above
+#                                      describes
+#
+# and the gap kept closing through 2026. by Aug 2026 aggregators put
+# several open-weights coders (DeepSeek V4 Pro, Kimi K3, MiniMax V4)
+# at or near the proprietary frontier on SWE-bench Verified. treat the
+# exact standings as volatile — they move monthly.
+#
+# READ BENCHMARK NUMBERS WITH CARE. HARNESS VARIANCE SWAMPS MODEL
+# DIFFERENCES: vals.ai runs a minimal bash-tool-only agent and reports
+# Claude Opus 5 at 97% / DeepSeek V4 Pro at 96.4%, while vendor-reported
+# numbers for the same benchmark sit 20+ points lower. NEVER compare a
+# score from one source against a score from another — only compare
+# within a single harness. the two numbers in the table above are each
+# vendor self-reported, so even THAT pairing is indicative, not rigorous.
+#
+# WHAT THE BENCHMARK STILL DOESN'T CAPTURE — and why "Haiku-class on
+# SWE-bench" is not "Haiku-class in practice":
+#   - tool-calling reliability across a long agent loop (Haiku holds a
+#     50-turn session without malformed calls; open coders drift)
+#   - instruction adherence on negative constraints + output schemas
+#   - effective long-context recall, which degrades more gracefully on
+#     the frontier models than the stated windows suggest
+#   - calibration — knowing when to stop vs. confidently emitting
+#     plausible-wrong code
+#   - BREADTH: Qwen3-Coder is a CODE SPECIALIST. Haiku 4.5 is a general
+#     model that codes well. outside code, they aren't comparable
+#
+# SO: for single-shot / few-shot code generation with a human reviewing
+# output, large open-weights coders are genuinely Haiku-class as of
+# 2026. for autonomous agentic coding — the workload that would justify
+# the hardware — they remain behind. the hardware tiers below are
+# unchanged; what changed is that Tier 3 now buys real code capability
+# rather than an approximation. see [[ai-code-cli]].
+#
 # TIER 1 — "CLOSE, NOT EQUAL" (~$2-5K)
 # the cheapest path to running a 70B-class model.
 #   - 2x used RTX 3090 24 GB ($800-1000 each) -> 48 GB VRAM via model
