@@ -247,6 +247,42 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   hard when unplugged, and a sustained 8 GB model will drain a 14"
 #   battery in about 90 minutes.
 #
+# IF YOU UPGRADE — M4 Pro 48 GB DELTA (checked Aug 2026)
+#   BANDWIDTH IS THE BIGGER HALF OF THIS, NOT THE RAM. base M3 ~100
+#   GB/s -> M4 Pro 273 GB/s = 2.7x. every model already on this list
+#   gets 2.7x faster on the same weights — gemma4:12b goes ~10 -> ~27
+#   tok/s. that alone is the difference between "watchable" and
+#   "usable", before a single new model enters the picture.
+#
+#   CAPACITY CROSSES A macOS THRESHOLD. above 36 GB the GPU gets ~75%
+#   of RAM instead of ~2/3, so 48 GB yields ~36 GB addressable — you
+#   gain MORE than the 2x RAM suggests. that opens the entire 32B band
+#   that is closed on 24 GB:
+#     qwen3-coder:30b    18.6 GB  MoE, ~3B active -> 60-80 tok/s. THE
+#                                 BEST LOCAL CODING SETUP short of a
+#                                 Mac Studio. runs FASTER on M4 Pro
+#                                 than qwen2.5-coder:14b does on the
+#                                 M3 while being 2x the size — MoE
+#                                 decouples speed from total size
+#     qwen2.5-coder:32b  19.9 GB  flagship of that family, ~12 tok/s
+#     qwen3:32b          20.2 GB  general chat / reasoning
+#     qwq:32b            19.9 GB  reasoning specialist
+#     gemma3:27b         17.4 GB  \ best US-domestic picks in the band
+#     gemma4:26b         18.6 GB  /
+#     granite4:small-h   19.5 GB  IBM, Apache 2.0
+#     gpt-oss:20b        13.8 GB  was the ceiling on 24 GB; trivial here
+#
+#   STILL OUT OF REACH: llama3.3:70b (42.5 GB) exceeds the ~36 GB
+#   ceiling — Q3 squeezes to ~34 GB but that's the quality cliff.
+#   qwen3-coder-next (51.7 GB) stays out. 48 GB does NOT reach the 70B
+#   tier; that remains Mac Studio territory — see the ladder below.
+#
+#   BUYING NOTE: 48 GB is the config that opens the 32B band; 36 GB
+#   does not, and it also sits on the wrong side of the macOS 75%
+#   threshold. M4 Max (410-546 GB/s) is faster still, but 100 -> 273
+#   GB/s is where the QUALITATIVE change happens — 273 -> 410 is
+#   incremental. SPEND ON THE MEMORY TIER BEFORE THE CHIP TIER.
+#
 # see also: [[ai-code-cli]] for the GB10 / DGX-class comparison, and the
 #           tier ladder below for what it takes to go past this.
 
