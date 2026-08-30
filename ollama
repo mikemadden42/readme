@@ -145,6 +145,39 @@ ollama run llava:7b                # 4.7 GB, older but reliable
 ollama run codegemma:7b            # 5.0 GB, Google. the best US-domestic pick
                                    #   in the tier, still behind qwen2.5-coder
 
+# BEST CODING MODEL THAT ACTUALLY FITS — FILTER OFF (checked Aug 2026)
+#   SHORT ANSWER: qwen2.5-coder:14b, 9.0 GB. dense 14B, fits with room
+#   left for context and other apps, no sysctl fiddling. this is the
+#   BIGGEST CAPABILITY JUMP AVAILABLE ON THIS MACHINE and it costs a
+#   9 GB download, not a $7-8K Mac Studio. vs codegemma:7b it holds
+#   multi-file context and follows refactor instructions — the
+#   difference between local coding being useful and being a demo.
+#
+#   the whole field that fits 24 GB:
+#     qwen3-coder:30b       18.6 GB  Alibaba, 30B-A3B MoE (~3B active).
+#                                    BETTER MODEL, MARGINAL FIT — below
+#     devstral:24b          14.3 GB  Mistral, agentic / tool-use focus
+#     codestral:22b         12.6 GB  Mistral, older generation
+#  >> qwen2.5-coder:14b      9.0 GB  THE PICK
+#     starcoder2:15b         9.1 GB  BigCode, strong fill-in-the-middle,
+#                                    weak instruction following
+#     deepseek-coder-v2:16b  8.9 GB  MoE, 2024-era
+#     qwen2.5-coder:7b       4.7 GB  fall back only if you need headroom
+#     codegemma:7b           5.0 GB  best US-domestic, a real step down
+#
+#   WHY NOT THE 30B, which IS the better model: macOS caps GPU-
+#   addressable memory near 2/3 of RAM on a 24 GB machine (~16 GB), and
+#   18.6 GB blows past it. needs sudo sysctl iogpu.wired_limit_mb=20480,
+#   which leaves ~4 GB for all of macOS and resets on reboot. worth
+#   trying ONCE to see the MoE speed (3B active -> 30-40 tok/s if it
+#   stays resident); not worth building a daily workflow on. revisit if
+#   you ever move to a machine with more headroom.
+#
+#   qwen3-coder-next (80B total / 3B active, matches models 10-20x its
+#   active size) would be the IDEAL fit architecturally — but ollama
+#   ships only a 51.7 GB quant and no smaller tag, so it's out. worth
+#   re-checking; a Q3 tag would change the answer on this machine.
+
 # EMBEDDINGS (tiny; run alongside a chat model)
 ollama pull nomic-embed-text       # 0.3 GB, Nomic AI, 768-dim, great default
 ollama pull embeddinggemma:300m    # 0.6 GB, Google
