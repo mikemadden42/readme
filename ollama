@@ -150,12 +150,55 @@ ollama pull nomic-embed-text       # 0.3 GB, Nomic AI, 768-dim, great default
 ollama pull embeddinggemma:300m    # 0.6 GB, Google
 ollama pull granite-embedding:278m # 0.6 GB, IBM
 
+# OUTSIDE THE US-DOMESTIC FILTER — WHAT IT COSTS (reference only)
+#   the filter above is the default, not a law. recording the tradeoff
+#   here so it doesn't get re-litigated every time. all of these fit on
+#   24 GB and all run FULLY OFFLINE — weights are open, ollama pulls a
+#   GGUF and nothing phones home. so if the concern is DATA EGRESS,
+#   local inference already answers it and origin is irrelevant. if the
+#   concern is PROVENANCE — procurement rules, model-origin attestation,
+#   government work (see [[ai-code-cli]]) — then origin is the whole
+#   point and the filter holds. know which one you're applying.
+#
+#   qwen2.5-coder:14b   9.0 GB, Alibaba. THE BIGGEST SINGLE LOSS to the
+#                       filter. strongest code model that fits on this
+#                       machine, not close. holds multi-file context and
+#                       follows refactor instructions far better than
+#                       codegemma:7b, and enough better than its own 7b
+#                       to justify the extra 4 GB. ~8-9 tok/s. this is
+#                       the model that makes local coding feel worth
+#                       doing rather than a novelty
+#   qwen2.5:14b         9.0 GB, Alibaba. general chat counterpart
+#   qwen3:14b           9.3 GB, Alibaba. newer, hybrid thinking mode
+#   deepseek-r1:14b     9.0 GB, DeepSeek. reasoning distill
+#   mistral-nemo:12b    7.1 GB, Mistral (France). strong multilingual
+#   mistral-small:24b  14.3 GB, Mistral. ceiling-tier, close apps first
+#   devstral:24b       14.3 GB, Mistral. agentic/tool-use coding
+#   bge-m3             1.2 GB, BAAI. multilingual embeddings, 1024-dim
+#   mxbai-embed-large  0.7 GB, Mixedbread (Germany). high MTEB scores
+#   minicpm-v:8b       5.5 GB, OpenBMB. strong OCR / document vision
+#
+#   US-DOMESTIC SUBSTITUTES, ranked honestly:
+#     code       -> codegemma:7b is the pick and it IS a real step down.
+#                   phi4:14b at the same 9.0 GB as qwen2.5-coder:14b is
+#                   the better substitute — a good general model that
+#                   codes adequately, not a coding specialist
+#     chat       -> gemma4:12b / phi4:14b are genuinely competitive here.
+#                   this is where the filter costs you almost nothing
+#     reasoning  -> phi4-reasoning:14b holds up against deepseek-r1:14b
+#     embeddings -> nomic-embed-text and embeddinggemma are fine; the
+#                   gap only shows up on multilingual corpora
+#     vision     -> gemma4:12b covers it; minicpm-v wins on dense OCR
+
 # WHAT NOT TO TRY ON 24 GB UNIFIED
 #   gemma4:26b (18.6 GB), granite4:small-h (19.5 GB), gemma3:27b (17.4
 #   GB) — these technically approach the wired limit but leave nothing
 #   for KV cache or the OS; you'll swap and crawl.
 #   llama3.3:70b (42.5 GB), nemotron (42.5 GB), llama4:scout (67.4 GB),
 #   gpt-oss:120b (65.4 GB) — won't load at all.
+#   outside-the-filter equivalents in the same bucket: qwen2.5-coder:32b
+#   (19.9 GB), qwen3-coder:30b (18.6 GB) — too big regardless of origin,
+#   so the filter costs you nothing here.
 
 # MAC-SPECIFIC TIPS
 #   OLLAMA_FLASH_ATTENTION=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=24h \
