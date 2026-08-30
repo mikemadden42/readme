@@ -67,6 +67,114 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 #   OLLAMA_FLASH_ATTENTION=1 ollama serve  # less KV memory on supported models
 
 
+# MODEL PICKS FOR A MacBook Pro M3 24 GB (base M3, 10-core GPU)
+# -------------------------------------------------------------
+#
+# hardware: Apple M3 (4P+4E), 10-core GPU, 24 GB unified memory, ~100
+# GB/s memory bandwidth. NOTE: BASE M3 — not Pro (150 GB/s) or Max
+# (300-400 GB/s). bandwidth is the binding constraint on tok/s here,
+# not GPU cores and not capacity.
+#
+# MEMORY BUDGET: macOS reserves roughly a quarter of unified memory for
+# the system, so ollama can address ~18 GB (sysctl iogpu.wired_limit_mb,
+# 0 = default). but normal desktop use already sits at 12-14 GB, so the
+# COMFORTABLE budget is weights <= ~9 GB. ~13 GB is the "quit the
+# browser first" ceiling. unified memory means no PCIe transfer — but
+# also no separate pool, so the model competes with everything else.
+#
+# SPEED RULE OF THUMB: tok/s ~= 100 / model-size-in-GB, minus ~20%
+# overhead. an 8 GB model gives ~10 tok/s, a 5 GB model ~15 tok/s, a
+# 2 GB model ~40 tok/s. prompt processing on Apple Silicon is far
+# slower than NVIDIA — first token on a long prompt feels sluggish even
+# when generation speed is fine.
+#
+# US-DOMESTIC FILTER: picks below are limited to models from US orgs
+# (Google, Meta, Microsoft, OpenAI, IBM, NVIDIA, AI2, Nomic). that rules
+# out Qwen / DeepSeek (China), Mistral / Devstral (France), and
+# mxbai-embed (Germany). the honest cost is CODE — qwen2.5-coder:7b is
+# meaningfully better than anything US-domestic in the 7B class. general
+# chat and reasoning stay competitive; code takes a real hit.
+#
+# sizes below are ollama download sizes at the default quant, read from
+# the registry manifest rather than guessed:
+#   curl -s https://registry.ollama.ai/v2/library/gemma4/manifests/12b \
+#     | python3 -c "import json,sys;print(sum(l['size'] for l in json.load(sys.stdin)['layers'])/1e9)"
+
+# SWEET SPOT — DAILY DRIVERS (5-9 GB, ~8-15 tok/s)
+ollama run gemma4:12b              # 7.6 GB, Google. best default. manifest
+                                   #   carries a vision projector — multimodal
+                                   #   with no separate VLM needed
+ollama run gemma3:12b              # 8.1 GB, the proven predecessor
+ollama run phi4:14b                # 9.1 GB, Microsoft. best reasoning-per-GB
+                                   #   in this range, ~8 tok/s
+ollama run llama3.1:8b             # 4.9 GB, Meta. best tool-use formatting
+ollama run granite3.3:8b           # 4.9 GB, IBM. Apache 2.0, good at
+                                   #   structured output / RAG
+ollama run olmo2:13b               # 8.4 GB, AI2. fully open training data
+
+# SNAPPY — INSTANT RESPONSE, CAN STAY RESIDENT (<3.5 GB, 30-45 tok/s)
+ollama run gemma3:4b               # 3.3 GB, best quality in the tier
+ollama run nemotron-mini:4b        # 2.7 GB, NVIDIA
+ollama run phi4-mini:3.8b          # 2.5 GB, Microsoft
+ollama run granite4:micro          # 2.1 GB, IBM
+ollama run llama3.2:3b             # 2.0 GB, Meta
+ollama run llama3.2:1b             # 1.3 GB, autocomplete-tier
+
+# CEILING — FITS, BUT CLOSE OTHER APPS FIRST
+ollama run gpt-oss:20b             # 13.8 GB, OpenAI. MoE, ~3.6B active params,
+                                   #   so it GENERATES FASTER THAN ITS SIZE
+                                   #   suggests (~15-20 tok/s) while still
+                                   #   needing all 13.8 GB resident. the most
+                                   #   capable thing that fits — and the most
+                                   #   interesting to try. will not coexist
+                                   #   with a loaded browser
+ollama run phi4-reasoning:14b      # 11.1 GB, extended thinking. slow first
+                                   #   token on M3; the reasoning trace costs
+                                   #   real wall-clock time here
+# ollama run gemma4:e4b            # 9.6 GB — this is what gemma4:latest points
+#                                  #   to. MatFormer-style; BIGGER ON DISK than
+#                                  #   gemma4:12b for less effective capability.
+#                                  #   skip it, pull the 12b explicitly
+
+# VISION / MULTIMODAL
+#   gemma4:12b already does images — check the others only if it disappoints
+ollama run llama3.2-vision:11b     # 7.8 GB, Meta
+ollama run llava:7b                # 4.7 GB, older but reliable
+
+# CODE
+ollama run codegemma:7b            # 5.0 GB, Google. the best US-domestic pick
+                                   #   in the tier, still behind qwen2.5-coder
+
+# EMBEDDINGS (tiny; run alongside a chat model)
+ollama pull nomic-embed-text       # 0.3 GB, Nomic AI, 768-dim, great default
+ollama pull embeddinggemma:300m    # 0.6 GB, Google
+ollama pull granite-embedding:278m # 0.6 GB, IBM
+
+# WHAT NOT TO TRY ON 24 GB UNIFIED
+#   gemma4:26b (18.6 GB), granite4:small-h (19.5 GB), gemma3:27b (17.4
+#   GB) — these technically approach the wired limit but leave nothing
+#   for KV cache or the OS; you'll swap and crawl.
+#   llama3.3:70b (42.5 GB), nemotron (42.5 GB), llama4:scout (67.4 GB),
+#   gpt-oss:120b (65.4 GB) — won't load at all.
+
+# MAC-SPECIFIC TIPS
+#   OLLAMA_FLASH_ATTENTION=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=24h \
+#     ollama serve                     # the setup worth making permanent
+#   sudo sysctl iogpu.wired_limit_mb=20480  # raise the GPU ceiling to 20 GB.
+#                                      #   resets on reboot; starves the OS if
+#                                      #   you overdo it. last resort only
+#   ollama ps                          # what's loaded + how much memory
+#   sudo powermetrics --samplers gpu_power -i 1000   # confirm GPU is busy
+#   there is no GPU/CPU split to tune — unified memory means the whole
+#   model is "on the GPU" the moment it loads, or it doesn't fit.
+#   ON BATTERY: expect roughly half the tok/s. macOS clocks the GPU down
+#   hard when unplugged, and a sustained 8 GB model will drain a 14"
+#   battery in about 90 minutes.
+#
+# see also: [[ai-code-cli]] for the GB10 / DGX-class comparison, and the
+#           tier ladder below for what it takes to go past this.
+
+
 # HOW THESE COMPARE TO ANTHROPIC'S FRONTIER MODELS (HAIKU, SONNET, OPUS)
 # ----------------------------------------------------------------------
 #
