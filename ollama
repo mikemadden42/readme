@@ -103,7 +103,12 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 # SWEET SPOT — DAILY DRIVERS (5-9 GB, ~8-15 tok/s)
 ollama run gemma4:12b              # 7.6 GB, Google. best default. manifest
                                    #   carries a vision projector — multimodal
-                                   #   with no separate VLM needed
+                                   #   with no separate VLM needed. DENSE
+                                   #   (unlike gemma4:26b which is MoE+MTP);
+                                   #   MEASURED 11 tok/s on base M3 24 GB
+                                   #   across long generations, consistent
+                                   #   with 6.86 GB weights at ~75% of the
+                                   #   100 GB/s bandwidth ceiling
 ollama run gemma3:12b              # 8.1 GB, the proven predecessor
 ollama run phi4:14b                # 9.1 GB, Microsoft. best reasoning-per-GB
                                    #   in this range, ~8 tok/s
@@ -260,7 +265,11 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   `--spec-type` in the ollama runtime log to confirm. draft acceptance
 #   rate appears in llama.cpp verbose output as "draft acceptance = X".
 #   Models that ship an MTP head today: gemma4:26b (the standout), and
-#   a growing list of 2026 releases. worth checking `ollama show` for
+#   a growing list of 2026 releases. NOT a family feature — worth
+#   checking per model. gemma4:26b has an MTP head; gemma4:12b, despite
+#   the shared architecture name, is plain dense (verified from the
+#   llama-server invocation: no --spec-type flag, plain 11 tok/s on M3
+#   with no draft acceptance to speak of). check `ollama show` for
 #   `draft_num_predict` — if it's set, an MTP head is bundled and active.
 #   Models WITHOUT an MTP head still hit the bandwidth ceiling — no
 #   ollama-level flag turns speculative decoding on retroactively; the
