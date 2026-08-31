@@ -338,6 +338,97 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #           tier ladder below for what it takes to go past this.
 
 
+# WHAT ARE MoE AND MTP? — THE ACRONYMS BEHIND THE SPEEDUPS
+# --------------------------------------------------------
+# both MoE and MTP are architectural tricks that DECOUPLE "how big is
+# the model?" from "how fast does it generate?". they solve different
+# problems and can be combined (gemma4:26b uses both). understanding
+# the difference matters when shopping for a model — a 30B dense and a
+# 30B MoE take the same disk footprint but generate at very different
+# speeds.
+#
+# MoE — MIXTURE OF EXPERTS
+#   The problem it solves: a dense model reads every parameter for
+#   every token. a 26B dense model reads 26B params per token — that's
+#   why speed scales with model size.
+#
+#   The trick: replace the feed-forward layer (the fattest part of a
+#   transformer block) with N parallel "expert" feed-forwards + a small
+#   "router" that picks which K of them to fire for each token.
+#
+#   Concretely for gemma4:26b: 128 experts, router picks 8 per token.
+#   all 128 must live in memory (any token might need any expert), but
+#   only 8 actually do work per token. RESULT: 26B total parameters,
+#   but only ~4B are ACTIVE per token. model is 26B on disk, generates
+#   at ~4B-model speeds.
+#
+#   Analogy: a hospital with 128 specialists on staff. for each patient
+#   (token) the triage desk (router) picks the 8 most relevant. you
+#   still need all 128 employed and in the building — but only 8 do
+#   work on each patient.
+#
+#   TRADEOFFS:
+#     + much faster than a dense model of the same total size
+#     + higher quality than a dense model of the same active size —
+#       the extra capacity helps
+#     - RAM budget is set by TOTAL size, not active size (all experts
+#       have to fit in memory)
+#     - routing can be uneven; some experts get more training signal
+#       than others
+#
+# MTP — MULTI-TOKEN PREDICTION
+#   The problem it solves: even with MoE, you're doing one forward pass
+#   per token. generation is fundamentally sequential — token N has to
+#   finish before token N+1 can start.
+#
+#   The trick: train a small "draft head" (a few extra layers, ~400M
+#   params for gemma4:26b) whose job is to predict the NEXT FEW TOKENS
+#   in parallel. at inference:
+#     1. draft head proposes N tokens in one fast pass
+#     2. main model verifies all N in ONE forward pass ("would I have
+#        produced these?")
+#     3. accepted tokens are kept, rejected ones trigger a fallback
+#
+#   Concretely for gemma4:26b: n_max=3, so draft head predicts 3 tokens
+#   ahead. main model agrees with all 3 about 65% of the time; when it
+#   does, you got 3 tokens for the cost of 2 forward passes instead of
+#   3. partial matches still save something.
+#
+#   Analogy: you're dictating a letter. your assistant finishes your
+#   sentences before you do. you proofread — if they nailed it, time
+#   saved; if wrong, you correct and move on. same output either way.
+#
+#   KEY PROPERTY: output is EXACTLY IDENTICAL to non-MTP inference.
+#   it's provably lossless — verified tokens are exactly what the main
+#   model would have produced on its own. this is NOT a quality
+#   tradeoff, only a speed one.
+#
+#   TRADEOFFS:
+#     + 1.5-3x throughput at zero quality cost
+#     + especially valuable on Apple Silicon where generation is
+#       bandwidth-bound
+#     - requires a trained draft head; you can't retrofit MTP onto a
+#       model that wasn't trained with one
+#     - draft acceptance drops on unusual text (creative writing,
+#       unfamiliar code) — less speedup where the draft is less
+#       predictive
+#
+# COMBINING THEM (gemma4:26b, MEASURED)
+#   MoE knocks per-token bandwidth cost down ~85% (4B active instead
+#   of 26B). MTP multiplies throughput ~2x (draft acceptance 60-78%).
+#   Net on M4 Pro: ~55 tok/s at 26B quality. a pure dense 26B on the
+#   same hardware would give ~11 tok/s. that's the 5x speedup.
+#
+# WHEN SHOPPING FOR A MODEL, ASK TWO QUESTIONS
+#   1. Is it MoE? — tells you the memory-vs-speed picture. a 30B MoE
+#      fits the same slot as a 30B dense but runs much faster
+#   2. Does it ship an MTP head? — a bonus 2x on top. only available
+#      if the manifest includes draft weights
+#   both together are how modern local models are breaking the "big
+#   means slow" tax that dominated the first generation of open-
+#   weights LLMs.
+
+
 # MoE MODELS ON OLLAMA — LANDSCAPE (checked Aug 2026)
 # ---------------------------------------------------
 # MoE trades TOTAL parameters for smaller ACTIVE-set-per-token: only a
