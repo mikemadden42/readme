@@ -274,6 +274,10 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   Models WITHOUT an MTP head still hit the bandwidth ceiling — no
 #   ollama-level flag turns speculative decoding on retroactively; the
 #   draft model has to exist in the manifest.
+#   Fastest way to see whether a model is MoE / MTP-enabled BEFORE
+#   downloading it: read the model card at ollama.com/library/<name>.
+#   the description usually flags "Mixture of Experts" up front; `ollama
+#   show` at the CLI hides that same information.
 #
 # IF YOU UPGRADE — M4 Pro 48 GB DELTA (checked Aug 2026)
 #   BANDWIDTH IS THE BIGGER HALF OF THIS, NOT THE RAM. base M3 ~100
@@ -311,7 +315,8 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #                                 CURRENT PICK for US-domestic in this
 #                                 band — 4B active + MTP gives 26B-
 #                                 quality output at close to 4B-model
-#                                 speeds
+#                                 speeds.
+#                                 https://ollama.com/library/gemma4
 #     gemma3:27b         17.4 GB  Google, dense predecessor. ~10 tok/s
 #                                 — kept for reference; superseded by
 #                                 gemma4:26b on this hardware
@@ -331,6 +336,61 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #
 # see also: [[ai-code-cli]] for the GB10 / DGX-class comparison, and the
 #           tier ladder below for what it takes to go past this.
+
+
+# MoE MODELS ON OLLAMA — LANDSCAPE (checked Aug 2026)
+# ---------------------------------------------------
+# MoE trades TOTAL parameters for smaller ACTIVE-set-per-token: only a
+# subset of expert FFNs fires per token, so throughput scales with the
+# active count, not the total. this is why a 26B MoE with 4B active
+# runs at close to 4B-model speeds. rule of thumb on Apple Silicon:
+# tok/s ≈ bandwidth / (active_params × BPW / 8) × ~0.7-0.8 efficiency.
+#
+# the download size below is the total DISK footprint — it determines
+# whether weights FIT, not how fast they RUN. active-param count is
+# what sets throughput. cross-cutting reference; per-hardware picks are
+# in the sections above.
+#
+# FITS ON 24 GB UNIFIED (weights <= ~14 GB comfortable)
+#   gpt-oss:20b            13.8 GB   OpenAI. 20B / ~3.6B active. no MTP.
+#                                    ceiling model on 24 GB, trivial on 48
+#   qwen3:30b-a3b          18.6 GB   Alibaba. 30B / 3B active. tight fit
+#                                    on 24 GB (sysctl required); no MTP
+#   qwen3-coder:30b        18.6 GB   coding variant, same MoE shape.
+#                                    best local coding on 48 GB
+#   deepseek-coder-v2:16b   8.9 GB   16B / 2.4B active, 2024 vintage but
+#                                    still relevant as a small coder
+#
+# FITS ON 48 GB (weights <= ~34 GB with headroom)
+#   gemma4:26b             18.6 GB   Google. 26B / 4B active + MTP head.
+#                                    the standout on this hardware; runs
+#                                    at 50-63 tok/s with speculative
+#                                    decoding. https://ollama.com/library/gemma4
+#   granite4:small-h       19.5 GB   IBM Granite 4 hybrid MoE, Apache 2.0
+#   mixtral:8x7b             26 GB   Mistral, 47B / 12.9B active. the
+#                                    original open MoE benchmark; per-
+#                                    token slower than newer small-active
+#                                    MoEs because active count is bigger
+#
+# MAC STUDIO / SERVER TERRITORY (weights >= 48 GB)
+#   gpt-oss:120b           65.4 GB   OpenAI. 120B / ~5B active — fast
+#                                    per-token despite total size
+#   mixtral:8x22b           ~80 GB   Mistral. 141B / 39B active
+#   llama4:scout            ~65 GB   Meta. 109B / 17B active
+#   qwen3:235b-a22b        ~140 GB   Alibaba. 235B / 22B active
+#   llama4:maverick        ~245 GB   Meta. 400B / 17B active
+#   deepseek-v3            ~350 GB   671B / 37B active. current Sonnet-
+#                                    class open-weights target — see the
+#                                    Sonnet tier discussion below
+#
+# HOW TO SPOT NEW ONES: ollama.com/library sorted by size doesn't filter
+# for MoE, but the model description on each page usually flags "Mixture
+# of Experts" up front, often with the active-parameter count. the CLI
+# `ollama show` does NOT surface expert_count / expert_used_count — so
+# the web page is more reliable than the CLI for shopping. this list is
+# frozen at Aug 2026; the DeepSeek / Kimi / MiniMax / Qwen release
+# cadence means it goes stale fast. re-check the library before you
+# invest in a new pick.
 
 
 # HOW THESE COMPARE TO ANTHROPIC'S FRONTIER MODELS (HAIKU, SONNET, OPUS)
