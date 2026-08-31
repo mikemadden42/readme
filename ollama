@@ -427,6 +427,32 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   both together are how modern local models are breaking the "big
 #   means slow" tax that dominated the first generation of open-
 #   weights LLMs.
+#
+# MoE + MTP CROSS-REFERENCE (checked Aug 2026)
+#
+#   MODEL                        MoE  MTP  NOTE
+#   gemma4:26b                    Y    Y   the only both-and on ollama
+#   gpt-oss:20b                   Y    N
+#   gpt-oss:120b                  Y    N
+#   qwen3:30b-a3b                 Y    N
+#   qwen3-coder:30b               Y    N
+#   qwen3:235b-a22b               Y    N
+#   mixtral:8x7b / :8x22b         Y    N
+#   deepseek-coder-v2:16b         Y    N
+#   granite4:small-h              Y    N
+#   llama4:scout / :maverick      Y    N
+#   deepseek-v3                   Y    ?   MTP is architectural in
+#                                          DeepSeek V3 upward, but
+#                                          ollama quants don't always
+#                                          bundle the draft head
+#
+#   gemma4:26b's MTP + 4B-active MoE is where the 55 tok/s on M4 Pro
+#   comes from — a pure dense 26B on the same hardware would give ~11
+#   tok/s. no other current ollama model stacks both.
+#
+#   TO CHECK MTP ON ANY MODEL: `ollama show <model>` — if you see
+#   `draft_num_predict` in the Parameters block, an MTP head is bundled
+#   and active. absent = no MTP.
 
 
 # MoE MODELS ON OLLAMA — LANDSCAPE (checked Aug 2026)
