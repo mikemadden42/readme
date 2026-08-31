@@ -247,6 +247,25 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   hard when unplugged, and a sustained 8 GB model will drain a 14"
 #   battery in about 90 minutes.
 #
+# MTP (multi-token prediction) — WHY IT MATTERS ON APPLE SILICON
+#   generation on M-series is bandwidth-bound, not compute-bound. every
+#   token forces reading the full active-weight set from unified memory,
+#   so tok/s is capped by GB/s ÷ GB-per-forward-pass. MTP breaks that
+#   ceiling: a tiny draft head (~400 MB) proposes the next N tokens in
+#   a single forward pass, the main model verifies them in ONE more
+#   forward pass, and accepted tokens are effectively free. at 70%
+#   acceptance with n_max=3, you get ~2x the naive tok/s — which on M4
+#   Pro is the difference between "watchable" and "usable".
+#   Detection: `ollama ps` won't show it directly, but you can grep for
+#   `--spec-type` in the ollama runtime log to confirm. draft acceptance
+#   rate appears in llama.cpp verbose output as "draft acceptance = X".
+#   Models that ship an MTP head today: gemma4:26b (the standout), and
+#   a growing list of 2026 releases. worth checking `ollama show` for
+#   `draft_num_predict` — if it's set, an MTP head is bundled and active.
+#   Models WITHOUT an MTP head still hit the bandwidth ceiling — no
+#   ollama-level flag turns speculative decoding on retroactively; the
+#   draft model has to exist in the manifest.
+#
 # IF YOU UPGRADE — M4 Pro 48 GB DELTA (checked Aug 2026)
 #   BANDWIDTH IS THE BIGGER HALF OF THIS, NOT THE RAM. base M3 ~100
 #   GB/s -> M4 Pro 273 GB/s = 2.7x. every model already on this list
@@ -267,8 +286,26 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #     qwen2.5-coder:32b  19.9 GB  flagship of that family, ~12 tok/s
 #     qwen3:32b          20.2 GB  general chat / reasoning
 #     qwq:32b            19.9 GB  reasoning specialist
-#     gemma3:27b         17.4 GB  \ best US-domestic picks in the band
-#     gemma4:26b         18.6 GB  /
+#     gemma4:26b         18.6 GB  Google Gemma-4-26B-A4B-It. MoE, 26B
+#                                 TOTAL / 4B ACTIVE (128 experts, 8 used
+#                                 per token), 256K trained context,
+#                                 Apache 2.0. package = 15.8 GB Q4_K_M
+#                                 weights + 1.2 GB vision projector +
+#                                 420M MTP draft head. ollama runs it
+#                                 with speculative decoding by default
+#                                 (draft-mtp, n_max=3), no extra config
+#                                 needed — draft acceptance runs 60-78%.
+#                                 MEASURED on M4 Pro 48 GB: 50-63 tok/s
+#                                 eval (55 typical), drops to ~44 tok/s
+#                                 at 7-8K prompt tokens as acceptance
+#                                 falls; prompt processing ~600 tok/s.
+#                                 CURRENT PICK for US-domestic in this
+#                                 band — 4B active + MTP gives 26B-
+#                                 quality output at close to 4B-model
+#                                 speeds
+#     gemma3:27b         17.4 GB  Google, dense predecessor. ~10 tok/s
+#                                 — kept for reference; superseded by
+#                                 gemma4:26b on this hardware
 #     granite4:small-h   19.5 GB  IBM, Apache 2.0
 #     gpt-oss:20b        13.8 GB  was the ceiling on 24 GB; trivial here
 #
