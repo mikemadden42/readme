@@ -351,8 +351,12 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 # what sets throughput. cross-cutting reference; per-hardware picks are
 # in the sections above.
 #
+# tables use [US] to mark US-domestic origins (see also the US-domestic
+# filter discussion above, and the subset callout at the end of this
+# section).
+#
 # FITS ON 24 GB UNIFIED (weights <= ~14 GB comfortable)
-#   gpt-oss:20b            13.8 GB   OpenAI. 20B / ~3.6B active. no MTP.
+#   gpt-oss:20b       [US] 13.8 GB   OpenAI. 20B / ~3.6B active. no MTP.
 #                                    ceiling model on 24 GB, trivial on 48
 #   qwen3:30b-a3b          18.6 GB   Alibaba. 30B / 3B active. tight fit
 #                                    on 24 GB (sysctl required); no MTP
@@ -362,26 +366,48 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #                                    still relevant as a small coder
 #
 # FITS ON 48 GB (weights <= ~34 GB with headroom)
-#   gemma4:26b             18.6 GB   Google. 26B / 4B active + MTP head.
+#   gemma4:26b        [US] 18.6 GB   Google. 26B / 4B active + MTP head.
 #                                    the standout on this hardware; runs
 #                                    at 50-63 tok/s with speculative
 #                                    decoding. https://ollama.com/library/gemma4
-#   granite4:small-h       19.5 GB   IBM Granite 4 hybrid MoE, Apache 2.0
+#   granite4:small-h  [US] 19.5 GB   IBM Granite 4 hybrid MoE, Apache 2.0
 #   mixtral:8x7b             26 GB   Mistral, 47B / 12.9B active. the
 #                                    original open MoE benchmark; per-
 #                                    token slower than newer small-active
 #                                    MoEs because active count is bigger
 #
 # MAC STUDIO / SERVER TERRITORY (weights >= 48 GB)
-#   gpt-oss:120b           65.4 GB   OpenAI. 120B / ~5B active — fast
+#   gpt-oss:120b      [US] 65.4 GB   OpenAI. 120B / ~5B active — fast
 #                                    per-token despite total size
 #   mixtral:8x22b           ~80 GB   Mistral. 141B / 39B active
-#   llama4:scout            ~65 GB   Meta. 109B / 17B active
+#   llama4:scout      [US]  ~65 GB   Meta. 109B / 17B active
 #   qwen3:235b-a22b        ~140 GB   Alibaba. 235B / 22B active
-#   llama4:maverick        ~245 GB   Meta. 400B / 17B active
+#   llama4:maverick   [US] ~245 GB   Meta. 400B / 17B active
 #   deepseek-v3            ~350 GB   671B / 37B active. current Sonnet-
 #                                    class open-weights target — see the
 #                                    Sonnet tier discussion below
+#
+# US-DOMESTIC SUBSET — WHAT THE FILTER LEAVES YOU WITH
+#   6 models total across all tiers: gpt-oss (20b, 120b) from OpenAI,
+#   gemma4:26b from Google, granite4:small-h from IBM, llama4 (scout,
+#   maverick) from Meta. gemma4:26b is the only one with an MTP head.
+#
+#   THE HONEST GAP: there is no US-domestic MoE code specialist.
+#   qwen3-coder:30b is the killer local coding setup on 48 GB and it
+#   is Alibaba — same conclusion the dense US-DOMESTIC FILTER section
+#   reaches, MoE has not fixed it. US-domestic substitutes for coding:
+#     small:  granite4 or gemma4:12b (dense), a real step down
+#     medium: gemma4:26b — general model that codes adequately, not a
+#             coding specialist. best available under the filter
+#     large:  llama4:scout / :maverick, still weaker on code than
+#             qwen3-coder or deepseek-coder at similar tiers
+#
+#   BIG-RIG TIER: llama4:maverick (400B / 17B active) is the US-
+#   domestic answer to deepseek-v3 (671B / 37B active). Maverick is
+#   smaller and faster per token because the active count is smaller;
+#   DeepSeek still wins on benchmarks. if you are spending Mac Studio
+#   Ultra money for Sonnet-class capability, this is where the filter
+#   costs the most.
 #
 # HOW TO SPOT NEW ONES: ollama.com/library sorted by size doesn't filter
 # for MoE, but the model description on each page usually flags "Mixture
