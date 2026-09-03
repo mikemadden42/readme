@@ -77,16 +77,51 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 #
 # MEMORY BUDGET: macOS reserves roughly a quarter of unified memory for
 # the system, so ollama can address ~18 GB (sysctl iogpu.wired_limit_mb,
-# 0 = default). but normal desktop use already sits at 12-14 GB, so the
-# COMFORTABLE budget is weights <= ~9 GB. ~13 GB is the "quit the
-# browser first" ceiling. unified memory means no PCIe transfer — but
-# also no separate pool, so the model competes with everything else.
+# 0 = default). CONFIRMED FROM THE SERVER LOG on this machine: Metal
+# reports total_vram="17.8 GiB", ollama schedules against
+# available="17.3 GiB", and llama.cpp sees 18185 MiB free. so ~18 GB is
+# the real number — NOT the "~2/3 of RAM" figure repeated in a lot of
+# Apple Silicon writeups. that difference decides whether an 18.6 GB
+# model fits, so it matters.
 #
-# SPEED RULE OF THUMB: tok/s ~= 100 / model-size-in-GB, minus ~20%
-# overhead. an 8 GB model gives ~10 tok/s, a 5 GB model ~15 tok/s, a
-# 2 GB model ~40 tok/s. prompt processing on Apple Silicon is far
-# slower than NVIDIA — first token on a long prompt feels sluggish even
-# when generation speed is fine.
+# AND WEIGHTS DON'T ALL LAND ON THE GPU: every load in the log splits
+# the model, with 5-10% staying host-resident (qwen2.5-coder:14b 417 of
+# 8565 MiB = 4.9%, gemma4:12b 787 of 7811 = 10.1%, gpt-oss:20b 1104 of
+# 13140 = 8.4%). so the GPU only has to hold ~90-95% of the DOWNLOAD
+# size. unified memory means it's the same DRAM either way — but it
+# does mean the fit check is more forgiving than the download size
+# suggests.
+#
+# the COMFORTABLE budget is weights <= ~9 GB. the old note here called
+# ~13 GB a "quit the browser first" ceiling — the log does not support
+# that either: gpt-oss:20b at 13.8 GB used 12234 of 18185 MiB and left
+# 5951 MiB free. call ~14 GB the practical ceiling and ~17 GB the real
+# one. unified memory means no PCIe transfer — but also no separate
+# pool, so the model competes with everything else.
+#
+# SPEED RULE OF THUMB — DENSE MODELS ONLY: tok/s ~= 100 / model-size-
+# in-GB, minus ~10%. an 8 GB model gives ~11 tok/s, a 5 GB model ~18
+# tok/s, a 2 GB model ~45 tok/s. CALIBRATED, not guessed: gemma4:12b
+# measured 11.0 tok/s and qwen2.5-coder:14b 9.8 tok/s on this machine,
+# both landing at 88-90 GB/s of the ~100 GB/s nominal ceiling (~89%
+# efficiency). the older "minus ~20%" here was too pessimistic.
+#
+# THIS RULE IS WRONG FOR MoE — off by 4x on gpt-oss:20b, which the rule
+# puts at ~6 tok/s and which actually measures 22.2. MoE reads only the
+# routed experts per token, so use:
+#   effective_GB ~= total_GB x (active_params / total_params) x 1.7-2.2
+#   tok/s        ~= 89 / effective_GB
+# the 1.7-2.2 corrects for the parts that are DENSE and get read every
+# token anyway — attention, embeddings, router, shared expert. IT IS A
+# RANGE, NOT A CONSTANT: fitting it to the only two measurements
+# available gives x1.69 (gpt-oss:20b) and x2.17 (gemma4:26b). so treat
+# MoE predictions as +/-25%, and prefer the high end for models with a
+# shared always-on expert. see the MoE section below.
+#
+# prompt processing on Apple Silicon is far slower than NVIDIA — first
+# token on a long prompt feels sluggish even when generation speed is
+# fine. MoE helps here too: measured prefill is ~300 tok/s on
+# gpt-oss:20b vs ~98 on gemma4:12b and ~70 on qwen2.5-coder:14b.
 #
 # US-DOMESTIC FILTER: picks below are limited to models from US orgs
 # (Google, Meta, Microsoft, OpenAI, IBM, NVIDIA, AI2, Nomic). that rules
@@ -100,18 +135,23 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 #   curl -s https://registry.ollama.ai/v2/library/gemma4/manifests/12b \
 #     | python3 -c "import json,sys;print(sum(l['size'] for l in json.load(sys.stdin)['layers'])/1e9)"
 
-# SWEET SPOT — DAILY DRIVERS (5-9 GB, ~8-15 tok/s)
+# SWEET SPOT — DAILY DRIVERS (5-9 GB, ~10-18 tok/s)
 ollama run gemma4:12b              # 7.6 GB, Google. best default. manifest
                                    #   carries a vision projector — multimodal
                                    #   with no separate VLM needed. DENSE
                                    #   (unlike gemma4:26b which is MoE+MTP);
-                                   #   MEASURED 11 tok/s on base M3 24 GB
-                                   #   across long generations, consistent
-                                   #   with 6.86 GB weights at ~75% of the
-                                   #   100 GB/s bandwidth ceiling
+                                   #   MEASURED 11.0 tok/s on base M3 24 GB
+                                   #   (10.8-11.2 over n=4 long runs).
+                                   #   8.19 GB of weights x 11.0 = ~90 GB/s
+                                   #   achieved, ~89% of the 100 GB/s
+                                   #   ceiling. (an earlier note here said
+                                   #   "6.86 GB at ~75%" — that mixed GiB
+                                   #   into a GB/s figure; 6.86 GiB is the
+                                   #   GPU-side slice, not the whole model)
 ollama run gemma3:12b              # 8.1 GB, the proven predecessor
 ollama run phi4:14b                # 9.1 GB, Microsoft. best reasoning-per-GB
-                                   #   in this range, ~8 tok/s
+                                   #   in this range, ~10 tok/s (estimate,
+                                   #   corrected dense rule)
 ollama run llama3.1:8b             # 4.9 GB, Meta. best tool-use formatting
 ollama run granite3.3:8b           # 4.9 GB, IBM. Apache 2.0, good at
                                    #   structured output / RAG
@@ -126,13 +166,24 @@ ollama run llama3.2:3b             # 2.0 GB, Meta
 ollama run llama3.2:1b             # 1.3 GB, autocomplete-tier
 
 # CEILING — FITS, BUT CLOSE OTHER APPS FIRST
-ollama run gpt-oss:20b             # 13.8 GB, OpenAI. MoE, ~3.6B active params,
-                                   #   so it GENERATES FASTER THAN ITS SIZE
-                                   #   suggests (~15-20 tok/s) while still
-                                   #   needing all 13.8 GB resident. the most
-                                   #   capable thing that fits — and the most
-                                   #   interesting to try. will not coexist
-                                   #   with a loaded browser
+ollama run gpt-oss:20b             # 13.8 GB, OpenAI. MoE, 32 experts / 4 used
+                                   #   per token (~3.6B active), so it
+                                   #   GENERATES FASTER THAN ITS SIZE
+                                   #   suggests while still needing all
+                                   #   13.8 GB resident.
+                                   #   MEASURED 22.2 tok/s (22.1-22.3, n=2)
+                                   #   — TWICE gemma4:12b — with prefill at
+                                   #   ~300 tok/s, THREE TIMES gemma4:12b.
+                                   #   the earlier "~15-20 tok/s" estimate
+                                   #   here was low.
+                                   #   IT ALSO ISN'T TIGHT: the log shows it
+                                   #   using 12234 of 18185 MiB and leaving
+                                   #   5951 MiB free, so the old "will not
+                                   #   coexist with a loaded browser" line
+                                   #   was wrong and has been dropped.
+                                   #   on the measured numbers this is the
+                                   #   DAILY DRIVER, not the ceiling — the
+                                   #   tier heading above is now a misnomer
 ollama run phi4-reasoning:14b      # 11.1 GB, extended thinking. slow first
                                    #   token on M3; the reasoning trace costs
                                    #   real wall-clock time here
@@ -150,9 +201,11 @@ ollama run llava:7b                # 4.7 GB, older but reliable
 ollama run codegemma:7b            # 5.0 GB, Google. the best US-domestic pick
                                    #   in the tier, still behind qwen2.5-coder
 
-# BEST CODING MODEL THAT ACTUALLY FITS — FILTER OFF (checked Aug 2026)
+# BEST CODING MODEL THAT ACTUALLY FITS — FILTER OFF (rev. Sep 2026)
 #   SHORT ANSWER: qwen2.5-coder:14b, 9.0 GB. dense 14B, fits with room
-#   left for context and other apps, no sysctl fiddling. this is the
+#   left for context and other apps, no sysctl fiddling. MEASURED 9.8
+#   tok/s (9.3-10.5, n=15 — the best-sampled model in the log), prefill
+#   ~70 tok/s. this is the
 #   BIGGEST CAPABILITY JUMP AVAILABLE ON THIS MACHINE and it costs a
 #   9 GB download, not a $7-8K Mac Studio. vs codegemma:7b it holds
 #   multi-file context and follows refactor instructions — the
@@ -170,13 +223,26 @@ ollama run codegemma:7b            # 5.0 GB, Google. the best US-domestic pick
 #     qwen2.5-coder:7b       4.7 GB  fall back only if you need headroom
 #     codegemma:7b           5.0 GB  best US-domestic, a real step down
 #
-#   WHY NOT THE 30B, which IS the better model: macOS caps GPU-
-#   addressable memory near 2/3 of RAM on a 24 GB machine (~16 GB), and
-#   18.6 GB blows past it. needs sudo sysctl iogpu.wired_limit_mb=20480,
-#   which leaves ~4 GB for all of macOS and resets on reboot. worth
-#   trying ONCE to see the MoE speed (3B active -> 30-40 tok/s if it
-#   stays resident); not worth building a daily workflow on. revisit if
-#   you ever move to a machine with more headroom.
+#   THE 30B: PREVIOUSLY RULED OUT ON A WRONG PREMISE. this used to say
+#   macOS caps GPU-addressable memory near 2/3 of RAM (~16 GB) so 18.6
+#   GB blows past it and needs sysctl. THE ~16 GB FIGURE WAS WRONG —
+#   the server log shows 18185 MiB (17.75 GiB) actually free. redo the
+#   arithmetic with the host-split observed above:
+#     18.6 GB download, ~90% GPU-resident  -> ~16.3 GiB on the GPU
+#     + context and compute buffers at 4k  -> ~+0.5 GiB
+#     = ~16.8 GiB needed vs 17.75 GiB free -> FITS, ~1 GiB spare
+#   so it should load with NO sysctl change at all.
+#
+#   UNTESTED — this is arithmetic from the log, not a measurement. the
+#   thing to actually do:
+#     ollama pull qwen3-coder:30b && ollama run qwen3-coder:30b
+#     grep -E "common_memory_breakdown|projected to use" <serve log>
+#     grep "eval time" <serve log>          # real tok/s
+#   predicted ~20-26 tok/s by the corrected MoE formula: 3.3B active
+#   of 30.5B -> 18.6 x 0.108 x 1.7-2.2 = 3.4-4.4 GB effective ->
+#   89 / that. if it loads, it beats qwen2.5-coder:14b (9.8 tok/s
+#   MEASURED) on both quality AND speed by a wide margin, and this
+#   whole section needs rewriting.
 #
 #   qwen3-coder-next (80B total / 3B active, matches models 10-20x its
 #   active size) would be the IDEAL fit architecturally — but ollama
@@ -203,7 +269,8 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #                       machine, not close. holds multi-file context and
 #                       follows refactor instructions far better than
 #                       codegemma:7b, and enough better than its own 7b
-#                       to justify the extra 4 GB. ~8-9 tok/s. this is
+#                       to justify the extra 4 GB. MEASURED 9.8 tok/s
+#                       (n=15), not the ~8-9 estimated here before. this is
 #                       the model that makes local coding feel worth
 #                       doing rather than a novelty
 #   qwen2.5:14b         9.0 GB, Alibaba. general chat counterpart
@@ -229,14 +296,45 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #     vision     -> gemma4:12b covers it; minicpm-v wins on dense OCR
 
 # WHAT NOT TO TRY ON 24 GB UNIFIED
-#   gemma4:26b (18.6 GB), granite4:small-h (19.5 GB), gemma3:27b (17.4
-#   GB) — these technically approach the wired limit but leave nothing
-#   for KV cache or the OS; you'll swap and crawl.
+#   this list used to lump everything 17 GB+ together as "approaches the
+#   wired limit, leaves nothing for KV cache". the server log shows the
+#   limit is ~18 GB, not ~16, so the 18.6 GB band has to be split out
+#   and the reasons stated per model rather than in bulk.
+#
+#   gemma4:26b (18.6 GB) — MOVED OUT. see the untested-prediction note
+#   below; it should actually fit, and it is MoE + MTP, so it may be
+#   the best model available on this machine.
+#   gemma3:27b (17.4 GB) — fits, but it is DENSE, so ~5 tok/s by the
+#   dense rule. excluded on SPEED, not capacity. gemma4:26b is the same
+#   footprint and 4x faster.
+#   granite4:small-h (19.5 GB) — still excluded on CAPACITY: ~17.1 GiB
+#   GPU-side plus buffers overruns the 17.75 GiB free.
+#   qwen2.5-coder:32b (19.9 GB) — same, and dense on top of it.
 #   llama3.3:70b (42.5 GB), nemotron (42.5 GB), llama4:scout (67.4 GB),
 #   gpt-oss:120b (65.4 GB) — won't load at all.
-#   outside-the-filter equivalents in the same bucket: qwen2.5-coder:32b
-#   (19.9 GB), qwen3-coder:30b (18.6 GB) — too big regardless of origin,
-#   so the filter costs you nothing here.
+#   qwen3-coder:30b (18.6 GB) — also moved out; see the coding section
+#   above. same arithmetic as gemma4:26b.
+#
+# gemma4:26b ON 24 GB — SHOULD FIT, UNTESTED (from the Sep 2026 log)
+#   18.6 GB download, ~90% GPU-resident   -> ~16.3 GiB on the GPU
+#   + context and compute buffers at 4k   -> ~+0.5 GiB
+#   = ~16.8 GiB needed vs 17.75 GiB free  -> FITS, ~1 GiB spare
+#   no sysctl change needed. the ~16 GB cap it was originally excluded
+#   on does not exist on this machine.
+#
+#   PREDICTED ~20-26 tok/s: 4B active of 25.2B -> 5.0-6.5 GB effective
+#   by the corrected MoE formula -> 14-18 tok/s, x ~1.45 for the MTP
+#   draft head. that is gpt-oss:20b speed or better, at 26B quality,
+#   with vision. the formula is FITTED to this model's measured 55
+#   tok/s on M4 Pro, so the M3 number is an extrapolation down a
+#   bandwidth ratio — the weakest kind of estimate here. +/-25%.
+#
+#   VERIFY IT — do not take the above on faith:
+#     ollama pull gemma4:26b && ollama run gemma4:26b
+#     grep -E "projected to use|common_memory_breakdown" <serve log>
+#     grep "eval time" <serve log>       # real tok/s
+#     grep "common_specu" <serve log>    # did MTP actually engage?
+#   if it loads, it displaces gemma4:12b as the default here.
 
 # MAC-SPECIFIC TIPS
 #   OLLAMA_FLASH_ATTENTION=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=24h \
@@ -261,15 +359,24 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   forward pass, and accepted tokens are effectively free. at 70%
 #   acceptance with n_max=3, you get ~2x the naive tok/s — which on M4
 #   Pro is the difference between "watchable" and "usable".
-#   Detection: `ollama ps` won't show it directly, but you can grep for
-#   `--spec-type` in the ollama runtime log to confirm. draft acceptance
-#   rate appears in llama.cpp verbose output as "draft acceptance = X".
+#   Detection: `ollama ps` won't show it directly. grep the ollama serve
+#   log for `common_specu` — this build prints, at every model load,
+#     spec common_specu: no implementations specified for speculative decoding
+#   when no draft head is present. `prompt_save` lines carry a matching
+#   `(draft: 0.000 MiB)`. (an earlier note here said to grep for
+#   `--spec-type`; that flag does not appear in this build's log.)
+#   draft acceptance rate appears in llama.cpp verbose output as
+#   "draft acceptance = X".
 #   Models that ship an MTP head today: gemma4:26b (the standout), and
 #   a growing list of 2026 releases. NOT a family feature — worth
 #   checking per model. gemma4:26b has an MTP head; gemma4:12b, despite
-#   the shared architecture name, is plain dense (verified from the
-#   llama-server invocation: no --spec-type flag, plain 11 tok/s on M3
-#   with no draft acceptance to speak of). check `ollama show` for
+#   the shared architecture name, is plain dense — CONFIRMED in the
+#   Sep 2026 log, which prints "common_specu: no implementations
+#   specified for speculative decoding" on the gemma4:12b load and
+#   measures a flat 11.0 tok/s with no draft acceptance. (the
+#   conclusion was right; the "no --spec-type flag" evidence cited
+#   here originally was not what the log actually shows.) check
+#   `ollama show` for
 #   `draft_num_predict` — if it's set, an MTP head is bundled and active.
 #   Models WITHOUT an MTP head still hit the bandwidth ceiling — no
 #   ollama-level flag turns speculative decoding on retroactively; the
@@ -279,18 +386,25 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   the description usually flags "Mixture of Experts" up front; `ollama
 #   show` at the CLI hides that same information.
 #
-# IF YOU UPGRADE — M4 Pro 48 GB DELTA (checked Aug 2026)
+# IF YOU UPGRADE — M4 Pro 48 GB DELTA (rev. Sep 2026)
 #   BANDWIDTH IS THE BIGGER HALF OF THIS, NOT THE RAM. base M3 ~100
 #   GB/s -> M4 Pro 273 GB/s = 2.7x. every model already on this list
-#   gets 2.7x faster on the same weights — gemma4:12b goes ~10 -> ~27
-#   tok/s. that alone is the difference between "watchable" and
+#   gets 2.7x faster on the same weights — gemma4:12b goes from its
+#   MEASURED 11.0 tok/s here to ~30 tok/s there. that alone is the difference between "watchable" and
 #   "usable", before a single new model enters the picture.
 #
-#   CAPACITY CROSSES A macOS THRESHOLD. above 36 GB the GPU gets ~75%
-#   of RAM instead of ~2/3, so 48 GB yields ~36 GB addressable — you
-#   gain MORE than the 2x RAM suggests. that opens the entire 32B band
+#   CAPACITY ROUGHLY DOUBLES. macOS hands the GPU ~75% of unified
+#   memory, so 48 GB yields ~36 GB addressable against the ~18 GB this
+#   machine actually gets (measured, see MEMORY BUDGET above). NOTE: an
+#   earlier version of this note claimed the split jumps from ~2/3 to
+#   ~75% at a 36 GB threshold, and that 48 GB therefore gains MORE than
+#   2x. THAT WAS WRONG — the 24 GB machine already gets ~74%. the gain
+#   is a clean 2x, which is still enough to open the entire 32B band
 #   that is closed on 24 GB:
-#     qwen3-coder:30b    18.6 GB  MoE, ~3B active -> 60-80 tok/s. THE
+#     qwen3-coder:30b    18.6 GB  MoE, 3.3B active -> ~55-70 tok/s by
+#                                 the corrected formula (3.4-4.4 GB
+#                                 effective). the old 60-80 here was
+#                                 only optimistic at the very top. THE
 #                                 BEST LOCAL CODING SETUP short of a
 #                                 Mac Studio. runs FASTER on M4 Pro
 #                                 than qwen2.5-coder:14b does on the
@@ -328,9 +442,12 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   qwen3-coder-next (51.7 GB) stays out. 48 GB does NOT reach the 70B
 #   tier; that remains Mac Studio territory — see the ladder below.
 #
-#   BUYING NOTE: 48 GB is the config that opens the 32B band; 36 GB
-#   does not, and it also sits on the wrong side of the macOS 75%
-#   threshold. M4 Max (410-546 GB/s) is faster still, but 100 -> 273
+#   BUYING NOTE: 48 GB is the config that opens the 32B band — 36 GB
+#   yields only ~27 GB addressable, which is tight for a 20 GB model
+#   plus context. (this used to add that 36 GB "sits on the wrong side
+#   of the macOS 75% threshold"; there is no such threshold, so the
+#   argument now rests on capacity alone.) M4 Max (410-546 GB/s) is
+#   faster still, but 100 -> 273
 #   GB/s is where the QUALITATIVE change happens — 273 -> 410 is
 #   incremental. SPEND ON THE MEMORY TIER BEFORE THE CHIP TIER.
 #
@@ -455,13 +572,39 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   and active. absent = no MTP.
 
 
-# MoE MODELS ON OLLAMA — LANDSCAPE (checked Aug 2026)
+# MoE MODELS ON OLLAMA — LANDSCAPE (rev. Sep 2026)
 # ---------------------------------------------------
 # MoE trades TOTAL parameters for smaller ACTIVE-set-per-token: only a
 # subset of expert FFNs fires per token, so throughput scales with the
 # active count, not the total. this is why a 26B MoE with 4B active
-# runs at close to 4B-model speeds. rule of thumb on Apple Silicon:
-# tok/s ≈ bandwidth / (active_params × BPW / 8) × ~0.7-0.8 efficiency.
+# runs at close to 4B-model speeds.
+#
+# RULE OF THUMB ON APPLE SILICON — CORRECTED Sep 2026:
+#   effective_GB ≈ total_GB × (active_params / total_params) × 1.7-2.2
+#   tok/s        ≈ (bandwidth × 0.89) / effective_GB
+#
+# the correction factor is the important part and it was MISSING here
+# before. the old form — bandwidth / (active_params × BPW / 8) ×
+# 0.7-0.8 — treats the routed experts as the only thing read per token.
+# they aren't: attention, embeddings, the router and any shared expert
+# are DENSE and get read on every single token.
+#
+# THE TWO MEASUREMENTS IT IS FITTED TO:
+#   gpt-oss:20b on M3 (13.8 GB, 3.6B active of 20.9B)
+#     old formula: 3.6B × 4 bits / 8 = 1.8 GB    → ~42-50 tok/s
+#     MEASURED                                     22.2 tok/s
+#     implied bytes/token 89 ÷ 22.2 = 4.01 GB, vs a naive
+#     13.8 × (3.6/20.9) = 2.38 GB  →  ×1.69
+#   gemma4:26b on M4 Pro (18.6 GB, 4B active of 25.2B)
+#     MEASURED 55 tok/s typical; back out its ~1.45× MTP head → 37.9
+#     implied 243 ÷ 37.9 = 6.41 GB, vs a naive 2.95 GB  →  ×2.17
+#
+# SO IT IS A RANGE, NOT A CONSTANT — two points, spanning 1.69 to 2.17,
+# and no reason to think either endpoint is universal. gemma4:26b sits
+# high plausibly because it carries a shared always-on expert and a
+# vision projector on top of the routed experts. use ×2.2 for a
+# conservative estimate, ×1.7 for an optimistic one, and treat any MoE
+# prediction here as +/-25% until it has actually been run.
 #
 # the download size below is the total DISK footprint — it determines
 # whether weights FIT, not how fast they RUN. active-param count is
