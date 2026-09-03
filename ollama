@@ -114,7 +114,7 @@ ollama pull mxbai-embed-large      # ~670 MB, 1024-dim, high MTEB scores
 # the 1.7-2.2 corrects for the parts that are DENSE and get read every
 # token anyway — attention, embeddings, router, shared expert. IT IS A
 # RANGE, NOT A CONSTANT: fitting it to the only two measurements
-# available gives x1.69 (gpt-oss:20b) and x2.17 (gemma4:26b). so treat
+# available gives x1.69 (gpt-oss:20b) and x2.20 (gemma4:26b). so treat
 # MoE predictions as +/-25%, and prefer the high end for models with a
 # shared always-on expert. see the MoE section below.
 #
@@ -322,10 +322,10 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   no sysctl change needed. the ~16 GB cap it was originally excluded
 #   on does not exist on this machine.
 #
-#   PREDICTED ~20-26 tok/s: 4B active of 25.2B -> 5.0-6.5 GB effective
-#   by the corrected MoE formula -> 14-18 tok/s, x ~1.45 for the MTP
+#   PREDICTED ~22-28 tok/s: 4B active of 25.2B -> 5.0-6.5 GB effective
+#   by the corrected MoE formula -> 14-18 tok/s, x ~1.6 for the MTP
 #   draft head. that is gpt-oss:20b speed or better, at 26B quality,
-#   with vision. the formula is FITTED to this model's measured 55
+#   with vision. the formula is FITTED to this model's measured ~60
 #   tok/s on M4 Pro, so the M3 number is an extrapolation down a
 #   bandwidth ratio — the weakest kind of estimate here. +/-25%.
 #
@@ -357,8 +357,10 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #   ceiling: a tiny draft head (~400 MB) proposes the next N tokens in
 #   a single forward pass, the main model verifies them in ONE more
 #   forward pass, and accepted tokens are effectively free. at 70%
-#   acceptance with n_max=3, you get ~2x the naive tok/s — which on M4
-#   Pro is the difference between "watchable" and "usable".
+#   acceptance with n_max=3 the THEORETICAL ceiling is ~2x the naive
+#   tok/s; MEASURED on gemma4:26b it comes out closer to ~1.6x once
+#   draft-pass and rejection overhead are paid. still the difference
+#   between "watchable" and "usable" on M4 Pro.
 #   Detection: `ollama ps` won't show it directly. grep the ollama serve
 #   log for `common_specu` — this build prints, at every model load,
 #     spec common_specu: no implementations specified for speculative decoding
@@ -423,7 +425,8 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #                                 (draft-mtp, n_max=3), no extra config
 #                                 needed — draft acceptance runs 60-78%.
 #                                 MEASURED on M4 Pro 48 GB: 50-63 tok/s
-#                                 eval (55 typical), drops to ~44 tok/s
+#                                 eval, ~60 typical on later runs
+#                                 (an earlier note said 55), drops to ~44 tok/s
 #                                 at 7-8K prompt tokens as acceptance
 #                                 falls; prompt processing ~600 tok/s.
 #                                 CURRENT PICK for US-domestic in this
@@ -435,7 +438,15 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #                                 — kept for reference; superseded by
 #                                 gemma4:26b on this hardware
 #     granite4:small-h   19.5 GB  IBM, Apache 2.0
-#     gpt-oss:20b        13.8 GB  was the ceiling on 24 GB; trivial here
+#     gpt-oss:20b        13.8 GB  was the ceiling on 24 GB; trivial here.
+#                                 MoE-only, no MTP — and it still TIES
+#                                 gemma4:26b at ~60 tok/s, because it
+#                                 reads 4.01 GB/token against 6.48.
+#                                 pick gemma4:26b for capability (26B,
+#                                 multimodal), not for speed. gpt-oss
+#                                 should also hold its rate better at
+#                                 long context, having no draft
+#                                 acceptance to lose
 #
 #   STILL OUT OF REACH: llama3.3:70b (42.5 GB) exceeds the ~36 GB
 #   ceiling — Q3 squeezes to ~34 GB but that's the quality cliff.
@@ -530,22 +541,65 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #       unfamiliar code) — less speedup where the draft is less
 #       predictive
 #
-# COMBINING THEM (gemma4:26b, MEASURED)
-#   MoE knocks per-token bandwidth cost down ~85% (4B active instead
-#   of 26B). MTP multiplies throughput ~2x (draft acceptance 60-78%).
-#   Net on M4 Pro: ~55 tok/s at 26B quality. a pure dense 26B on the
-#   same hardware would give ~11 tok/s. that's the 5x speedup.
+# COMBINING THEM (gemma4:26b, MEASURED ~60 tok/s on M4 Pro)
+#   a pure dense 26B on the same hardware would give ~13 tok/s, so the
+#   two mechanisms together are worth ~4.6x. the split between them is
+#   NOT cleanly separable from one end-to-end number, but roughly:
+#     dense 26B baseline            ~13 tok/s
+#     + MoE (4B active of 25.2B)    ~38 tok/s    x2.9
+#     + MTP (60-78% acceptance)     ~60 tok/s    x1.6
+#   MoE IS THE BIGGER HALF. CAVEAT: the MoE correction factor used
+#   here was itself fitted to this model's measurement, so using it to
+#   explain that same measurement is partly circular. the honest way
+#   to split them is to disable speculative decoding and re-measure —
+#   the difference IS the MTP contribution, exactly.
 #
-# WHEN SHOPPING FOR A MODEL, ASK TWO QUESTIONS
-#   1. Is it MoE? — tells you the memory-vs-speed picture. a 30B MoE
-#      fits the same slot as a 30B dense but runs much faster
-#   2. Does it ship an MTP head? — a bonus 2x on top. only available
-#      if the manifest includes draft weights
-#   both together are how modern local models are breaking the "big
-#   means slow" tax that dominated the first generation of open-
-#   weights LLMs.
+# WHEN SHOPPING FOR A MODEL: MECHANISM COUNT IS THE WRONG SCREEN
+#   the intuitive rule — "prefer models with BOTH MoE and MTP" — is
+#   wrong, and this section used to imply it. two reasons.
 #
-# MoE + MTP CROSS-REFERENCE (checked Aug 2026)
+#   FIRST, IT SCREENS DOWN TO ONE MODEL. gemma4:26b is the only
+#   both-and on ollama (table below). a filter returning a single
+#   candidate isn't a filter.
+#
+#   SECOND, AND WORSE, IT PICKS THE WRONG MODELS. what sets generation
+#   speed is BYTES READ PER TOKEN, full stop. MoE and MTP are two ways
+#   to lower that number, not goals in themselves:
+#     effective_GB ≈ total_GB × (active/total) × 1.7-2.2
+#     tok/s        ≈ (bandwidth × 0.89) / effective_GB, ÷ MTP factor
+#
+#   THE COUNTEREXAMPLE, both ends measured:
+#     gpt-oss:20b   MoE only, NO MTP.  reads 4.01 GB/token
+#     gemma4:26b    MoE + MTP.         reads 6.48 GB/token
+#   gpt-oss starts 1.6x ahead on bytes moved; gemma4:26b's MTP gives
+#   back ~1.6x. THEY CANCEL — both land at ~60 tok/s on M4 Pro. the
+#   model with ONE mechanism ties the model with TWO.
+#
+#   SO ASK, IN THIS ORDER:
+#     1. total size — does it FIT? nothing else matters if it doesn't
+#     2. active/total — this sets speed. a smaller, sparser model
+#        beats a bigger, denser one even when the bigger one has more
+#        tricks
+#     3. does it ship an MTP head? — a real bonus, and PROVABLY
+#        LOSSLESS (output is identical to non-MTP inference), so take
+#        it when it's there. but it is a TIEBREAKER, NOT A GATE
+#
+#   ONE ASYMMETRY WORTH KNOWING: MTP is the part that DECAYS. draft
+#   acceptance falls on unfamiliar text and long context — gemma4:26b
+#   drops from ~60 to ~44 tok/s by 7-8K prompt tokens. a MoE-only
+#   model has nothing to lose and holds its rate flat. FOR LONG
+#   SESSIONS THE NO-MTP MODEL CAN END UP FASTER IN PRACTICE.
+#
+#   PRACTICAL UPSHOT ON THIS HARDWARE:
+#     M3 24 GB -> gpt-oss:20b. MEASURED 22.2 tok/s and it definitely
+#                 fits; gemma4:26b is still an untested prediction here
+#     M4 Pro   -> gemma4:26b. same ~60 tok/s as gpt-oss:20b but a more
+#                 capable model (26B vs 20B) and multimodal. the case
+#                 is CAPABILITY AT SPEED PARITY, not mechanism count
+#   both are US-domestic (Google, OpenAI), so the filter doesn't
+#   separate them.
+#
+# MoE + MTP CROSS-REFERENCE (rev. Sep 2026)
 #
 #   MODEL                        MoE  MTP  NOTE
 #   gemma4:26b                    Y    Y   the only both-and on ollama
@@ -563,9 +617,19 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #                                          ollama quants don't always
 #                                          bundle the draft head
 #
-#   gemma4:26b's MTP + 4B-active MoE is where the 55 tok/s on M4 Pro
-#   comes from — a pure dense 26B on the same hardware would give ~11
-#   tok/s. no other current ollama model stacks both.
+#   gemma4:26b's MTP + 4B-active MoE is where the ~60 tok/s on M4 Pro
+#   comes from — a pure dense 26B would give ~13. no other current
+#   ollama model stacks both. DO NOT TURN THAT INTO A SCREENING RULE:
+#   gpt-oss:20b is MoE-only and TIES IT at ~60 on the same hardware.
+#   see the shopping section above.
+#
+#   gpt-oss:20b IS THE MORE USEFUL CALIBRATION POINT of the two,
+#   precisely BECAUSE it has no MTP: its measured 22.2 tok/s on M3
+#   pins the MoE correction at x1.69 with nothing to disentangle. the
+#   x2.20 derived from gemma4:26b inherits whatever error is in the
+#   assumed MTP factor, so trust it less. if you ever run gemma4:26b
+#   with speculative decoding disabled, that single number would fix
+#   both constants for good.
 #
 #   TO CHECK MTP ON ANY MODEL: `ollama show <model>` — if you see
 #   `draft_num_predict` in the Parameters block, an MTP head is bundled
@@ -596,10 +660,14 @@ ollama pull granite-embedding:278m # 0.6 GB, IBM
 #     implied bytes/token 89 ÷ 22.2 = 4.01 GB, vs a naive
 #     13.8 × (3.6/20.9) = 2.38 GB  →  ×1.69
 #   gemma4:26b on M4 Pro (18.6 GB, 4B active of 25.2B)
-#     MEASURED 55 tok/s typical; back out its ~1.45× MTP head → 37.9
-#     implied 243 ÷ 37.9 = 6.41 GB, vs a naive 2.95 GB  →  ×2.17
+#     MEASURED ~60 tok/s typical; back out its ~1.6× MTP head → 37.5
+#     implied 243 ÷ 37.5 = 6.48 GB, vs a naive 2.95 GB  →  ×2.20
+#   NOTE THE ASYMMETRY IN HOW MUCH TO TRUST THESE. the gpt-oss point is
+#   CLEAN — no MTP, so nothing to disentangle. the gemma4 point is
+#   derived, because the ~1.6× MTP factor is itself inferred from the
+#   same measurement. prefer ×1.69 when you have to pick one.
 #
-# SO IT IS A RANGE, NOT A CONSTANT — two points, spanning 1.69 to 2.17,
+# SO IT IS A RANGE, NOT A CONSTANT — two points, spanning 1.69 to 2.20,
 # and no reason to think either endpoint is universal. gemma4:26b sits
 # high plausibly because it carries a shared always-on expert and a
 # vision projector on top of the routed experts. use ×2.2 for a
