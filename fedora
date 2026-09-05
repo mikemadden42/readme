@@ -121,7 +121,9 @@ curl -sI https://download1.rpmfusion.org/free/fedora/releases/45/Everything/x86_
 dnf --releasever=45 list akmod-nvidia 2>/dev/null
 
 # d) your critical COPRs have published for fedora N. check each at
-#    copr.fedoraproject.org/coprs/
+#    copr.fedoraproject.org/coprs/ — `dnf copr list` enumerates what you
+#    actually have enabled; see the COPR — AUDITING WHAT YOU'VE ENABLED
+#    section for the full audit (including what's installed FROM them)
 
 # e) your current install is healthy:
 sudo dnf upgrade --refresh
@@ -2613,11 +2615,104 @@ flatpak remote-modify --enable flathub
 #    binaries built on koji infrastructure):
 sudo dnf copr enable user/project
 sudo dnf install <pkg>
+#    auditing/removing these later: COPR — AUDITING WHAT YOU'VE ENABLED, below
 
 # multimedia codecs — the one-time setup most people want post-install:
 sudo dnf swap ffmpeg-free ffmpeg --allowerasing
 sudo dnf install gstreamer1-plugins-{bad-\*,good-\*,base} gstreamer1-plugin-openh264 \
     gstreamer1-plugins-bad-free-extras lame\* --exclude=gstreamer1-plugins-bad-free-devel
+
+
+COPR — AUDITING WHAT YOU'VE ENABLED
+-----------------------------------
+
+# COPR repos accumulate silently. each `dnf copr enable` drops a file in
+# /etc/yum.repos.d/ and it stays there forever — through upgrades, long
+# after you've forgotten why you added it. an unmaintained COPR that stops
+# publishing for the current fedora is exactly the thing that breaks a
+# `system-upgrade` (see RELEASE / UPGRADE above), so knowing what you have
+# is upgrade hygiene, not trivia.
+
+# the direct answer — copr repos only, in the owner/project form you'd
+# hand back to `dnf copr disable|remove`:
+dnf copr list
+#   copr.fedorainfracloud.org/phracek/PyCharm
+#   copr.fedorainfracloud.org/scottames/ghostty
+
+# the broader answer — every repo, with copr ones carrying the `copr:` id
+# prefix. `--all` is the important flag: it shows DISABLED copr repos too,
+# which `dnf copr list` won't surface for you:
+dnf repolist --enabled | grep -i copr
+dnf repolist --all     | grep -i copr        # adds enabled/disabled column
+
+# the on-disk truth. the filename is the repo id with the colons kept,
+# so it's ugly to type but it's what any automation should key on:
+ls /etc/yum.repos.d/_copr:*
+#   _copr:copr.fedorainfracloud.org:scottames:ghostty.repo
+
+# NOTE a dnf4 → dnf5 gap here: dnf5's `copr list` takes NO options at all
+# (`dnf copr list --help` shows an empty option set). dnf4-era tutorials
+# show filter flags like --enabled / --disabled / --available-by-user —
+# those are gone. `dnf repolist --all` is the replacement for the
+# enabled/disabled filtering.
+
+# useful sanity check on the copr hub / release / arch dnf will actually
+# resolve against — worth running when an `enable` picks a surprising
+# fedora version:
+dnf copr debug
+
+
+# WHICH INSTALLED PACKAGES CAME FROM A COPR
+
+# the question that actually matters before an upgrade: not "what repos
+# do I have" but "what am I depending on from them". rpm records the
+# originating repo per package:
+dnf repoquery --installed --qf '%{name} %{from_repo}\n' | grep copr
+#   ghostty copr:copr.fedorainfracloud.org:scottames:ghostty
+
+# same idea straight from the rpm db, which also gives you the vendor
+# string COPR stamps into every package it builds:
+rpm -q --qf '%{NAME} %{VENDOR}\n' ghostty
+#   ghostty Fedora Copr - user scottames
+
+# a package with `Fedora Copr - user <name>` as its vendor did NOT come
+# from fedora proper — no fedora QA, no security response, no guarantee
+# it rebuilds for the next release.
+
+
+# DISABLE vs REMOVE — THEY ARE DIFFERENT
+
+sudo dnf copr disable user/project   # keeps the .repo file, sets enabled=0
+sudo dnf copr remove  user/project   # deletes the .repo file entirely
+
+# disable is the one you want before a `system-upgrade` — it parks the
+# repo without losing the config, so you can flip it back on once the
+# COPR publishes for the new release. remove is for repos you're done
+# with for good.
+#
+# NEITHER uninstalls the packages you already got from the repo. those
+# stay installed and simply stop receiving updates — silently. to find
+# packages orphaned this way, use the repoquery above and look for a
+# from_repo pointing at a repo that no longer exists.
+
+
+# ENABLING A COPR FROM AUTOMATION (ANSIBLE)
+
+# `dnf copr enable` is not idempotent on its own and there's no copr
+# module in stock ansible (community.general.copr exists but needs the
+# collection installed). guard the shell-out on the .repo file it
+# creates and the task becomes a no-op on re-runs:
+#
+#   - name: Enable ghostty copr repo
+#     command: dnf -y copr enable scottames/ghostty
+#     args:
+#       creates: /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:scottames:ghostty.repo
+#   - name: Install packages
+#     yum:
+#       name: ghostty
+#
+# the -y matters: `copr enable` prompts to confirm the third-party repo
+# and will hang a playbook without it.
 
 
 SELINUX — KEEP IT ENFORCING
@@ -7590,8 +7685,11 @@ gsettings set org.gnome.desktop.default-applications.terminal exec gnome-termina
 
 # 1. COPR (most common Fedora path — the closest analog to AUR or
 #    ubuntu's snap for ghostty). updates flow via `dnf upgrade`:
-sudo dnf copr enable pgdev/ghostty
+sudo dnf copr enable scottames/ghostty      # the one in use here
 sudo dnf install ghostty
+#    (pgdev/ghostty is the other commonly-cited one; both exist, pick one
+#    — don't enable both or you'll get arbitrary upgrade ping-pong between
+#    two independently-built packages)
 
 # 2. flatpak from flathub. sandboxed; expect the usual flatpak caveats
 #    (home-dir access via Flatseal, slightly slower first launch, some
