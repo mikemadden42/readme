@@ -51,20 +51,65 @@ ionice -c3 nice -n19 du -xh -d1 / | sort -rh | head -20
 ## 3. Use a faster tool
 
 ```
-gdu -x /                # parallel, interactive — fastest of the three
+dua i -x /              # interactive, parallel — the one to reach for
+gdu -x /                # parallel, interactive
 dust -x -d2 /           # one-shot tree output, nothing interactive
 ncdu -x /               # interactive, most widely available
 ```
 
-`gdu` parallelises the walk and is typically several times quicker than `du` on
+All four beat `du` by parallelising the walk; `dua` and `gdu` are the quickest on
 high-latency storage. `dust` is best when you want output you can paste somewhere.
+`ncdu` is the one most likely to already be installed on a server you don't control.
 See [dust](dust), [ncdu](ncdu).
 
-Scan once, browse repeatedly — useful on a slow box where you don't want to rescan:
+### dua
+
+`dua i` (short for `dua interactive`) is the nicest of these to actually drive, and it
+does several things the others don't.
 
 ```
-ncdu -x -o /tmp/scan.json /
-ncdu -f /tmp/scan.json
+dua i -x /              # interactive TUI
+dua a -x /var           # aggregate: one-shot totals, no TUI
+```
+
+- Parallel by default — `-t 0` means "all logical processors". `-t 1` forces single
+  threaded if you need to be gentle on a busy box.
+- Reports **disk usage** by default, matching `du`. `-A` switches to apparent size,
+  which is the one that makes sparse files and compressed filesystems look wrong.
+- `-x` stays on one filesystem, same as everywhere else in this note.
+- `-i DIR` ignores a directory outright — handy for skipping a known-huge mount you
+  don't care about.
+
+In the TUI: mark entries for deletion and it will remove them for you, so you can go
+from "what is eating the disk" to "it's gone" without leaving the tool.
+
+**Snapshots** — scan once, browse repeatedly, and keep the result:
+
+```
+dua i -x --export /tmp/scan.dua /
+dua i --import /tmp/scan.dua
+```
+
+Equivalent to `ncdu -o` / `ncdu -f`, but compressed by default.
+
+**Diffing two snapshots is the feature nothing else here has.** Take one now, one after
+the disk fills, and see exactly what grew:
+
+```
+dua i -x --export /tmp/before.dua /
+# ... time passes, disk fills ...
+dua i -x --export /tmp/after.dua /
+dua diff /tmp/before.dua /tmp/after.dua
+```
+
+That turns "something is filling the disk overnight" from a guessing game into a
+direct answer. Worth exporting a baseline snapshot on any box you expect trouble from,
+*before* you need it.
+
+**Flame graph**, when a tree view isn't showing you the shape of the problem:
+
+```
+dua flamegraph -x / > /tmp/disk.svg
 ```
 
 ## 4. Looking for one big file, not a big tree
@@ -151,7 +196,8 @@ podman system df && podman system reset
 df -h                                # which filesystem
 df -i                                # inode exhaustion
 du -xh -d1 / | sort -rh | head       # portable, no extra tools
-gdu -x /                             # fastest interactive
+dua i -x /                           # best interactive
+dua diff before.dua after.dua        # what grew between two scans
 sudo lsof +L1                        # deleted-but-open (df/du disagree)
 find / -xdev -type f -size +1G       # one huge file
 journalctl --vacuum-size=200M        # systemd journal
