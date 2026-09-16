@@ -59,8 +59,43 @@ ncdu -x /               # interactive, most widely available
 
 All four beat `du` by parallelising the walk; `dua` and `gdu` are the quickest on
 high-latency storage. `dust` is best when you want output you can paste somewhere.
-`ncdu` is the one most likely to already be installed on a server you don't control.
-See [dust](dust), [ncdu](ncdu).
+See [dust](dust), [ncdu](ncdu), and the availability table below before you rely on any
+of them on a box you don't control.
+
+### What's actually available on a stock server
+
+**None of these ship preinstalled.** Verified against the distro archives, 2026-09:
+
+| Tool | Ubuntu 22.04 | Ubuntu 24.04 | Ubuntu 26.04 | RHEL 9 | RHEL 10 |
+|---|---|---|---|---|---|
+| `ncdu` | ✅ 1.15 | ✅ 1.19 | ✅ 1.22 | ✅ EPEL 1.22 | ✅ EPEL 1.22 |
+| `gdu` | ✅ 5.13 | ✅ 5.25 | ✅ 5.25 | ✅ EPEL 5.32 | ✅ EPEL 5.32 |
+| `duf` | ✅ 0.6 | ✅ 0.8 | ✅ 0.9 | ✅ EPEL 0.9 | ✅ EPEL 0.9 |
+| `dust` | ❌ | ❌ | ✅ 1.2.4 | ❌ | ❌ |
+| `dua` | ❌ | ❌ | ❌ | ✅ EPEL 2.38 | ❌ |
+
+Ubuntu packages are in **universe**, which is enabled by default — `apt install ncdu`
+just works. On RHEL none of them are in BaseOS or AppStream; you need EPEL first, and
+**EPEL is not enabled by default**:
+
+```
+sudo dnf install -y epel-release
+sudo dnf install -y ncdu gdu
+```
+
+Takeaways:
+
+- **`ncdu`, `gdu` and `duf` are the portable three** — every release above, both distro
+  families. If you only memorise one, `gdu` gets you parallel speed everywhere
+  `ncdu` runs.
+- **`dua` is the least portable of the set**, which is unfortunate given it's the nicest
+  to use. It is on *no* Ubuntu LTS (Debian only picked it up after 26.04) and on RHEL 9
+  but not RHEL 10. Treat it as a workstation tool you install deliberately.
+- **`dust` is effectively Ubuntu 26.04+ only** — no EPEL build at all.
+
+For `dua` and `dust` where unpackaged, a static binary from the project's GitHub
+releases drops into `~/.local/bin` without root, which is usually the fastest route on a
+box you're only visiting. `cargo install dua-cli du-dust` works if Rust is already there.
 
 ### dua
 
@@ -139,6 +174,14 @@ sudo lsof +L1
 Look for link count 0. Restart the holding process to reclaim. Classic after rotating a
 log an application still has open.
 
+`lsof` is in **main** on Ubuntu and **BaseOS** on RHEL, but is *not* part of a RHEL
+minimal install — `dnf install lsof` first. No EPEL needed. If you can't install
+anything, the same information is in procfs:
+
+```
+sudo ls -l /proc/*/fd 2>/dev/null | grep '(deleted)'
+```
+
 ### Files hidden underneath a mountpoint
 
 Data written to a directory *before* something was mounted over it. Still on disk,
@@ -152,7 +195,10 @@ sudo umount /mnt/root
 
 ### Filesystem-level space
 
-On btrfs/ZFS, snapshots hold space that no visible file accounts for — see [btrfs](btrfs):
+On btrfs/ZFS, snapshots hold space that no visible file accounts for — see [btrfs](btrfs).
+**Ubuntu only:** Red Hat removed btrfs entirely in RHEL 8 (kernel module and
+`btrfs-progs` both), so it is unavailable on RHEL 9 and 10, and OpenZFS on RHEL is
+third-party. On RHEL the equivalent question is almost always LVM instead.
 
 ```
 sudo btrfs filesystem usage /
@@ -169,11 +215,27 @@ sudo lvs -o +lv_when_full,data_percent,snap_percent
 ## 6. Usual suspects — check these before any full scan
 
 ```
-journalctl --disk-usage                    # then: journalctl --vacuum-size=200M
-du -sh /var/cache/apt/archives             # then: apt clean
-du -sh /var/lib/snapd/snaps                # old snap revisions, Ubuntu
+journalctl --disk-usage                    # both distros
 du -sh /var/log
 du -sh ~/.cache
+```
+
+Then whichever applies:
+
+```
+# Ubuntu
+du -sh /var/cache/apt/archives             # then: apt clean
+du -sh /var/lib/snapd/snaps                # old snap revisions
+
+# RHEL
+du -sh /var/cache/dnf                      # then: dnf clean all
+coredumpctl list                           # /var/lib/systemd/coredump can hold a lot
+```
+
+Trim the journal on either:
+
+```
+sudo journalctl --vacuum-size=200M
 ```
 
 Snap keeps old revisions by default and grows quietly on desktop installs. To trim:
