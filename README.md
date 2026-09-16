@@ -94,6 +94,7 @@ See [TODO.md](TODO.md) for known stale content.
 - [ufw](ufw) — firewall
 - [luks](luks) — disk encryption
 - [disk-speed](disk-speed), [disk-wipe](disk-wipe), [dd](dd) — disk operations
+- [disk-space-troubleshooting](disk-space-troubleshooting) — diagnosing a full disk when `du -ks *` is too slow
 - [sar](sar), [htop](htop) — monitoring
 
 ## macOS
