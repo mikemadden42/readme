@@ -1,4 +1,7 @@
 # where zig fits in the c & rust discussion
+# facts & versions checked Oct 2026 against zig 0.17.0 (released 2026-10-02).
+# this file previously carried no date stamp and had drifted three releases;
+# stamp any future edits so that stays visible.
 
 
 # the one-line positioning
@@ -7,18 +10,24 @@
 # - rust: never trust the programmer; the compiler proves memory safety; rich
 #         type system.
 # - zig:  trust the programmer, but give them better tools; no hidden control
-#         flow, no hidden allocations, explicit everything.
+#         flow, no hidden allocations, no hidden i/o — explicit everything.
 #
-# zig is essentially "c done right in 2025" — not "rust done lighter." that's
+# zig is essentially "c done right in 2026" — not "rust done lighter." that's
 # the key distinction.
 
 
 # what zig actually does differently
 
 # 1. no hidden control flow. no operator overloading, no exceptions, no
-#    destructors, no implicit conversions. if a function call is on the page,
-#    that's the only thing happening. (rust has Drop, Deref, panics — zig has
-#    none.)
+#    destructors, no unwinding. if a function call is on the page, that's the
+#    only thing happening. (rust has Drop and Deref; zig has neither.)
+#    TWO OVERCLAIMS TO AVOID — this file made both:
+#    - zig DOES have panics. @panic is a builtin and every runtime safety
+#      check panics (see point 5). the defensible claim is "no EXCEPTIONS",
+#      not "no panics".
+#    - zig DOES have implicit coercions: integer widening, *[N]T -> []T,
+#      T -> ?T, T -> !T, comptime_int resolution. what it lacks is implicit
+#      NARROWING / lossy conversion.
 # 2. allocators are explicit. every function that allocates takes an allocator
 #    as a parameter. there's no global malloc you accidentally call. you can
 #    swap in a test allocator that detects leaks, an arena allocator for
@@ -33,6 +42,18 @@
 # 5. no memory safety guarantees at compile time. zig has runtime safety checks
 #    in debug builds (bounds, overflow, ub) but no borrow checker.
 #    use-after-free is still possible.
+# 6. i/o is a parameter too, as of 0.16 (Apr 2026). std.Io is passed in
+#    exactly the way an allocator is, so blocking vs async vs io_uring is a
+#    value you choose at the call site rather than a property baked into the
+#    function. THE REAL PRINCIPLE BEHIND POINTS 2 AND 6 IS THE SAME:
+#    ambient capabilities become explicit parameters.
+#    THIS IS CONTESTED, and on exactly the ground point 1 claims as zig's
+#    win. critics argue an Io parameter IS function coloring by another
+#    name — a function taking Io can't be called from one that doesn't have
+#    an Io to hand, which is viral through a different mechanism. defenders
+#    counter that Io is a concrete runtime value you can store in app state
+#    and swap, unlike an `async` keyword. worth knowing the argument exists
+#    before repeating "no hidden control flow" as settled.
 
 
 # where zig is winning
@@ -42,7 +63,10 @@
 # - ghostty (mitchell hashimoto's terminal emulator) — zig.
 # - tigerbeetle (financial database) — zig, leaning on explicit-allocator for
 #   predictable performance.
-# - river, uxn, lots of game-dev and embedded experiments.
+# - river (wayland compositor), lots of game-dev and embedded experiments.
+# - NOT uxn — this list used to claim it. the reference implementation is
+#   ~150 lines of ANSI C, deliberately, so it runs on a GBA or a Pico. zig
+#   ports exist; the project is not zig.
 # - as a c/c++ cross-compiler — `zig cc` is used by projects that aren't
 #   otherwise written in zig at all (e.g. uber's go cross-compilation).
 
@@ -52,10 +76,14 @@
 # - memory safety. rust gives a compile-time proof; zig gives better tooling
 #   and discipline. for security-critical code (kernels, browsers, parsers
 #   handling untrusted input), rust is the safer pick.
-# - ecosystem. rust has crates.io with ~150k libraries; zig has a few hundred.
-#   the package manager arrived in 2024 and is still maturing.
-# - stability. zig is pre-1.0 (0.14 as of late 2025). the language still
-#   changes between releases. rust has been stable since 2015.
+# - ecosystem. rust has crates.io with ~345k crates (not the ~150k this file
+#   used to say); zig has no central registry, so there is no comparable
+#   number to quote. the ratio is the point. zig's package manager arrived in
+#   0.11 (2023) and is STILL moving — see the package manager section below.
+# - stability. zig is pre-1.0 — 0.17.0, released 2026-10-02. the language
+#   still changes between releases and 0.16 -> 0.17 broke real code (array
+#   `**` multiplication, `void{}`, errdefer capture, @bitCast semantics on
+#   extern structs). rust has been stable since 2015.
 # - hiring. "rust developer" is a job title; "zig developer" is a hobby
 #   project.
 
@@ -64,8 +92,9 @@
 
 # - simplicity. you can learn zig in a weekend. rust takes months to be
 #   comfortable with.
-# - compile times. significantly faster, especially with the new self-hosted
-#   compiler.
+# - compile times. significantly faster. as of 0.17 most x86_64-linux
+#   projects can use real incremental compilation:
+#     zig build -fincremental --watch
 # - iterating on existing c code. @cImport a c header, write new code in zig,
 #   link them together. no rewrite required.
 # - cross-compilation. zig's killer feature. `zig build -Dtarget=...` just
@@ -130,11 +159,17 @@
 #   code is just normal zig code the compiler runs at build time. no #define,
 #   no token pasting, no preprocessor.
 
-# package manager
-# - arrived in 0.11 (2023), matured through 0.14. build.zig.zon is the manifest
-#   (think Cargo.toml), dependencies fetched by url + hash, no central registry
-#   yet (deliberate — they want it to mature first). fine — not as polished as
-#   cargo, but worlds better than "vendor a tarball into third_party/".
+# package manager (as of 0.17, Oct 2026)
+# - arrived in 0.11 (2023) and has NOT settled since. build.zig.zon is the
+#   manifest (think Cargo.toml), dependencies fetched by url + hash, still no
+#   central registry (deliberate — they want it to mature first).
+# - 0.16 moved dependencies into a local zig-pkg/ directory, added a global
+#   compressed cache, and added --fork for debugging a dependency in place.
+# - 0.17 moved package management OUT OF THE COMPILER entirely and into the
+#   build system — http, tls, git and compression now live there, built in
+#   -Osafe rather than -Ofast.
+# - still not as polished as cargo, but worlds better than "vendor a tarball
+#   into third_party/". budget for it changing again before 1.0.
 
 
 # bonus ergonomic wins
@@ -151,16 +186,33 @@
 
 # honest tradeoffs
 
-# 1. pre-1.0. 0.14 as of late 2025. language still changes between releases —
-#    usually small, occasionally annoying. 1.0 targeted but not dated.
+# 1. pre-1.0. 0.17.0 as of Oct 2026. language still changes between releases —
+#    usually small, occasionally not (see the 0.17 breaking list above).
+#    1.0 still undated, but the 0.17 notes give a real accounting: roughly 25
+#    language proposals accepted, 125 rejected, 23 undecided. the stated
+#    pre-1.0 work is finishing the self-hosted backends, dropping the LLD
+#    dependency, and auditing the standard library.
 # 2. small ecosystem. need a json library? stdlib has one. need a postgres
 #    driver? maybe. be ready to bind to c libraries (easy via @cImport, but
 #    still work).
 # 3. no memory safety guarantees. can still leak, use-after-free, double-free.
-#    zig gives better tools (GeneralPurposeAllocator catches leaks/uaf in debug
-#    builds, runtime bounds-checking, defined integer overflow) but no
-#    compile-time proof.
-# 4. standard library is in flux. good but still being shaped. things move.
+#    zig gives better tools — a debug allocator that catches leaks and uaf,
+#    runtime bounds-checking, defined integer overflow — but no compile-time
+#    proof.
+#    MIND THE ALLOCATOR RENAMES, this file was two behind:
+#      GeneralPurposeAllocator -> DebugAllocator      (0.14, old name kept
+#                                                      as a deprecated alias)
+#      DebugAllocator          -> SafeAllocator       (0.17, adds thread-safe
+#                                                      leak + corruption
+#                                                      checking)
+#    and 0.14 added SmpAllocator, a ~200-line singleton for ReleaseFast with
+#    threads, competitive with glibc. pick by purpose: SafeAllocator to catch
+#    bugs, SmpAllocator to go fast, ArenaAllocator for short-lived work,
+#    FixedBufferAllocator for no heap at all.
+# 4. standard library is in flux. good but still being shaped. things move,
+#    and 0.17 is a fair sample: std.fmt.allocPrint(arena, ...) became
+#    arena.print(...), ArrayList.getLast() became last().?, and
+#    StackFallbackAllocator stopped being generic over its buffer size.
 
 
 # getting started
