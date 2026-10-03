@@ -80,18 +80,45 @@
 
 # where zig is winning
 
+# APPLICATIONS
 # - NOT bun. it was the flagship zig application through 1.3.x and shipped
 #   as rust in 1.4 (Aug 2026) — see the case study below, it is the most
 #   informative data point here.
 # - ghostty (mitchell hashimoto's terminal emulator) — zig.
-# - tigerbeetle (financial database) — zig, leaning on explicit-allocator for
-#   predictable performance.
+# - tigerbeetle (financial database) — zig, leaning on explicit-allocator
+#   for predictable performance. STILL ZIG as of 2026. don't be fooled by
+#   the `tigerbeetle-rust` repo: tb_client is zig exposing a C ABI, and the
+#   python / java / go / node / .net / rust "clients" are BINDINGS to it,
+#   not rewrites. easy to misread as a second defection.
+# - ncdu 2 (disk usage TUI) — zig. see the churn note under the case study;
+#   links are in [[zig]].
 # - river (wayland compositor), lots of game-dev and embedded experiments.
 # - NOT uxn. the reference implementation is ~150 lines of ANSI C,
 #   deliberately, so it runs on a GBA or a Pico. zig ports exist; the
 #   project is not zig.
-# - as a c/c++ cross-compiler — `zig cc` is used by projects that aren't
-#   otherwise written in zig at all (e.g. uber's go cross-compilation).
+
+# TOOLING — the slot the forecast above predicts zig takes, so worth
+# listing separately rather than asserting it
+# - the zig compiler itself. self-hosted; arguably the largest zig program
+#   that exists.
+# - zls — the language server. what makes zig usable day to day.
+# - aro — a C compiler written in zig. NOT a novelty: 0.16 began using it
+#   as a library for translate-c, and it is how the libclang dependency
+#   goes away, which is prerequisite to dropping LLVM. ties directly to the
+#   1.0 roadmap in tradeoff 1.
+# - zine — static site generator, by loris cro of the core team (whose blog
+#   is in "getting started" below).
+# - mach — game engine + graphics toolkit. the "game engines" half of the
+#   forecast, evidenced.
+# - library tier, for completeness: libxev (event loop, hashimoto),
+#   libvaxis (TUI), zig-gamedev, zap, jetzig, capy, pixi.
+
+# AS A TOOLCHAIN, by projects that write no zig at all
+# - uber — go cross-compilation via `zig cc`.
+# - cargo-zigbuild — rust projects using `zig cc` as their linker. it even
+#   takes a minimum glibc as a target suffix:
+#     cargo zigbuild --target aarch64-unknown-linux-gnu.2.17
+#   which is the trick that makes it worth the detour.
 
 
 # CASE STUDY — BUN LEFT ZIG FOR RUST (Aug 2026)
@@ -131,6 +158,24 @@
 #    ghostty and river don't have it, and none of them have moved.
 # https://bun.com/blog/bun-v1.4
 # https://bun.com/blog/bun-in-rust
+#
+# THE OTHER DATA POINT — NCDU 2, AND A DIFFERENT COST
+# yorhel prototyped ncdu 2 in zig after fighting c, and "it ended up being
+# more than just a prototype". but his complaint is NOT bun's:
+#   "it's not even close to stable. there's no stable version of the
+#    language, the standard library nor of the compiler... each new release
+#    comes with major breakage left and right."
+# and he HEDGED — he still maintains the c version: "i will continue to
+# maintain the c version of ncdu for as long as there are people who use
+# it."
+#
+# SO THE TWO PRE-1.0 COSTS ARE DISTINCT, and worth keeping straight:
+#   bun    left over MEMORY SAFETY — the language's design, working as
+#          intended, was wrong for their gc-plus-manual-memory problem
+#   ncdu   hedged over CHURN — the language is fine, the instability is
+#          the tax. tradeoff 1 is about this one
+# a project can be fine on one and sunk by the other.
+# https://dev.yorhel.nl/doc/ncdu2
 
 
 # zig vs rust — the verdicts
@@ -157,7 +202,7 @@
 # - iterating on existing c code. @cImport the header, write zig alongside,
 #   link them. no rewrite. -> "bonus ergonomic wins"
 # - cross-compilation. the killer feature. rust users even borrow `zig cc`
-#   as their linker. -> "cross-compilation"
+#   as their linker, via cargo-zigbuild. -> "cross-compilation"
 # - embedded. smaller binaries than rust, no runtime, no allocator unless
 #   you ask for one.
 
@@ -222,7 +267,12 @@
 #    1.0 still undated, but the 0.17 notes give a real accounting: roughly 25
 #    language proposals accepted, 125 rejected, 23 undecided. the stated
 #    pre-1.0 work is finishing the self-hosted backends, dropping the LLD
-#    dependency, and auditing the standard library.
+#    dependency, and auditing the standard library. the libclang half of
+#    that is aro — see "where zig is winning".
+#    THIS TRADEOFF HAS A LIVED EXAMPLE: ncdu 2 shipped on zig and still
+#    maintains a parallel c version because of release churn. see the note
+#    under the case study. it is the cost most likely to bite you, and it
+#    is a different cost from the one that drove bun out.
 # 2. small ecosystem. need a json library? stdlib has one. need a postgres
 #    driver? maybe. be ready to bind to c libraries (easy via @cImport, but
 #    still work).
@@ -297,3 +347,9 @@
 # - seven topics stated 2-6x each (`zig cc` in six places), copies starting
 #   to disagree; and the same summary made four times over. each topic now
 #   has one canonical home; summaries collapsed into "the shape of it".
+# - the forecast claimed zig takes "tooling" and "game engines" while the
+#   winning list demonstrated NEITHER — no zls, aro, zine, mach or even the
+#   self-hosted compiler. asserted, not evidenced. the list is now split
+#   applications / tooling / toolchain so the gap is visible if it reopens.
+# - ncdu 2 was missing from the winning list even though both its links
+#   were already sitting in [[zig]].
