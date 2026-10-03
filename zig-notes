@@ -2,6 +2,8 @@
 # facts & versions checked Oct 2026 against zig 0.17.0 (released 2026-10-02).
 # this file previously carried no date stamp and had drifted three releases;
 # stamp any future edits so that stays visible.
+# Oct 2026: bun left zig for rust — see the case study, it changes the
+# conclusions here more than any version bump did.
 
 
 # the one-line positioning
@@ -28,6 +30,9 @@
 #    - zig DOES have implicit coercions: integer widening, *[N]T -> []T,
 #      T -> ?T, T -> !T, comptime_int resolution. what it lacks is implicit
 #      NARROWING / lossy conversion.
+#    THE "NO DESTRUCTORS" PART IS A REAL TRADEOFF, NOT A FREE WIN. `defer`
+#    puts the burden at every call site; rust's Drop is automatic. that is
+#    precisely the cost bun cited when it left zig — see the case study.
 # 2. allocators are explicit. every function that allocates takes an allocator
 #    as a parameter. there's no global malloc you accidentally call. you can
 #    swap in a test allocator that detects leaks, an arena allocator for
@@ -38,7 +43,8 @@
 # 4. first-class c interop. @cImport literally parses c headers and gives you
 #    the types directly — no ffi declarations, no bindgen step. zig can compile
 #    c and c++ files; `zig cc` is a drop-in cross-compiler that many projects
-#    (including bun) use as their c toolchain.
+#    use as their c toolchain (uber's go builds, for one — bun used to be the
+#    headline example here, see the case study).
 # 5. no memory safety guarantees at compile time. zig has runtime safety checks
 #    in debug builds (bounds, overflow, ub) but no borrow checker.
 #    use-after-free is still possible.
@@ -58,8 +64,9 @@
 
 # where zig is winning
 
-# - bun (js runtime competing with node) — written in zig, partly because
-#   `zig cc` made cross-compilation trivial.
+# - NOT bun ANY MORE. it was the flagship zig application through 1.3.x and
+#   shipped as rust in 1.4 (Aug 2026). this file used to lead with it. see
+#   the case study below — it is the most informative data point here.
 # - ghostty (mitchell hashimoto's terminal emulator) — zig.
 # - tigerbeetle (financial database) — zig, leaning on explicit-allocator for
 #   predictable performance.
@@ -71,11 +78,52 @@
 #   otherwise written in zig at all (e.g. uber's go cross-compilation).
 
 
+# CASE STUDY — BUN LEFT ZIG FOR RUST (Aug 2026)
+# ---------------------------------------------
+# bun was THE flagship zig application and is no longer written in zig. this
+# is worth more than any benchmark in this file, so: the details.
+#
+#   bun 1.3.14    last zig release
+#   bun 1.4.0     released 2026-08-20, written in rust
+#   scope         535,496 lines of zig across 1,448 files
+#   the port      11 days of machine time (May 3-14 2026), ~4 months end to
+#                 end against a 1-year hand estimate. AI-assisted: ~50
+#                 dynamic workflows, 6,502 commits. NO ZIG REMAINS in prod
+#   announced     2026-07-08, shipped stable 2026-08-20
+#
+# WHY, in jarred sumner's own framing: "a large percentage of bugs from that
+# list are use-after-free, double-free, and 'forgot to free' in an error
+# path. in safe rust, these are compiler errors."
+#
+# the specific pain was MIXING A GC WITH MANUAL MEMORY — javascript values
+# owned by a garbage collector interacting with hand-managed zig
+# allocations. he calls that a rare case "no language really designs for".
+#
+# NOTE WHAT HE DID NOT SAY. this was not "zig is bad":
+#   "zig made bun possible... i would never have been able to build this
+#    much in 1 year if it wasn't for zig."
+# read it as: ZIG WON THE PROTOTYPING PHASE DECISIVELY AND LOST THE
+# HARDENING PHASE. that is a sharper claim than anything else in this file
+# and it fits the "realistic outcome" prediction below rather than refuting
+# it.
+#
+# TWO CONFOUNDERS, before reading too much into it:
+# 1. the rewrite was only economically possible BECAUSE of AI-assisted
+#    porting. nobody hand-rewrites 535k lines. so this is partly a story
+#    about porting becoming cheap, not purely about zig losing.
+# 2. bun's gc-plus-manual-memory problem is genuinely unusual. tigerbeetle,
+#    ghostty and river don't have it, and none of them have moved.
+# https://bun.com/blog/bun-v1.4
+# https://bun.com/blog/bun-in-rust
+
+
 # where zig loses to rust
 
 # - memory safety. rust gives a compile-time proof; zig gives better tooling
 #   and discipline. for security-critical code (kernels, browsers, parsers
-#   handling untrusted input), rust is the safer pick.
+#   handling untrusted input), rust is the safer pick. BUN IS NOW THE
+#   STRONGEST EVIDENCE FOR THIS BULLET — a team that picked zig on purpose,
+#   shipped on it for years, and left over exactly this. see above.
 # - ecosystem. rust has crates.io with ~345k crates (not the ~150k this file
 #   used to say); zig has no central registry, so there is no comparable
 #   number to quote. the ratio is the point. zig's package manager arrived in
@@ -121,7 +169,10 @@
 
 # realistic outcome
 
-# probably zig replaces neither c nor rust. instead:
+# probably zig replaces neither c nor rust. BUN LEAVING IS EVIDENCE FOR THIS
+# SECTION, not against it: a large application-level runtime was the one
+# thing on the winning list that did NOT fit the niche below, and it's the
+# one that left. instead:
 # - rust keeps the security-critical-systems slot it's already winning
 #   (kernels, browsers, crypto, network parsers, cloud infra).
 # - zig carves out a niche where rust feels like overkill: tooling, game
